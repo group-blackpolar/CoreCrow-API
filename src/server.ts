@@ -6,6 +6,12 @@ import { auth } from "./lib/auth.js";
 import { healthRoutes } from "./routes/health.js";
 import { userRoutes } from "./routes/users.js";
 import { authAdminRoutes } from "./routes/auth-admin.js";
+import { startUptimeMonitor } from "./lib/uptimeMonitor.js";
+import staticPlugin from "@fastify/static";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = Fastify({
   logger: {
@@ -20,6 +26,7 @@ const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,ht
 
 async function main() {
   await app.register(helmet);
+  
 
   await app.register(cors, {
     origin: trustedOrigins,
@@ -30,6 +37,11 @@ async function main() {
     max: 100,
     timeWindow: "1 minute",
   });
+
+  await app.register(staticPlugin, {
+    root: path.join(__dirname, "public"),
+    prefix: "/",
+  }); 
 
   // Better Auth maneja /api/auth/login, /api/auth/register, /api/auth/session, etc.
   app.all("/api/auth/*", async (request, reply) => {
@@ -55,12 +67,13 @@ async function main() {
     return reply.send(await response.text());
   });
 
-  await app.register(healthRoutes, { prefix: "/api" });
+  await app.register(healthRoutes);
   await app.register(userRoutes, { prefix: "/api" });
   await app.register(authAdminRoutes, { prefix: "/api" });
 
   const port = Number(process.env.PORT) || 4000;
   await app.listen({ port, host: "0.0.0.0" });
+  startUptimeMonitor();
   console.log(`API corriendo en puerto ${port}`);
 }
 

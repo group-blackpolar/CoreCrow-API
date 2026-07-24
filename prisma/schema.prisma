@@ -99,3 +99,12 @@ model ApiKey {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("api_keys")
 }
+
+model UptimeCheck {
+  id             String   @id @default(cuid())
+  checkedAt      DateTime @default(now())
+  responseTimeMs Int
+  ok             Boolean
+
+  @@index([checkedAt])
+}

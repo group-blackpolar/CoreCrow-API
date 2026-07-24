@@ -44,7 +44,7 @@ async function main() {
         response.headers.forEach((value, key) => reply.header(key, value));
         return reply.send(await response.text());
     });
-    await app.register(healthRoutes, { prefix: "/api" });
+    await app.register(healthRoutes);
     await app.register(userRoutes, { prefix: "/api" });
     await app.register(authAdminRoutes, { prefix: "/api" });
     const port = Number(process.env.PORT) || 4000;
