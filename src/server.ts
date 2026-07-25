@@ -25,8 +25,6 @@ const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,ht
   .filter(Boolean);
 
 async function main() {
-  await app.register(helmet);
-  
 
   await app.register(cors, {
     origin: trustedOrigins,
@@ -39,10 +37,15 @@ async function main() {
   });
 
   await app.register(staticPlugin, {
-    root: path.join(__dirname, "public"),
-    prefix: "/",
+      root: path.join(__dirname, "public"),
+      prefix: "/",
   }); 
 
+    
+  app.get('/favicon.ico', async (req, reply) => {
+      return reply.sendFile('images/bpfav.png');
+  });
+    
   // Better Auth maneja /api/auth/login, /api/auth/register, /api/auth/session, etc.
   app.all("/api/auth/*", async (request, reply) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -67,7 +70,17 @@ async function main() {
     return reply.send(await response.text());
   });
 
-  await app.register(healthRoutes);
+  await app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], 
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+});
+
+  await app.register(healthRoutes); {}
   await app.register(userRoutes, { prefix: "/api" });
   await app.register(authAdminRoutes, { prefix: "/api" });
 

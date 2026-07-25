@@ -6,6 +6,11 @@ import { auth } from "./lib/auth.js";
 import { healthRoutes } from "./routes/health.js";
 import { userRoutes } from "./routes/users.js";
 import { authAdminRoutes } from "./routes/auth-admin.js";
+import { startUptimeMonitor } from "./lib/uptimeMonitor.js";
+import staticPlugin from "@fastify/static";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = Fastify({
     logger: {
         level: process.env.NODE_ENV === "production" ? "warn" : "info",
@@ -24,6 +29,10 @@ async function main() {
     await app.register(rateLimit, {
         max: 100,
         timeWindow: "1 minute",
+    });
+    await app.register(staticPlugin, {
+        root: path.join(__dirname, "public"),
+        prefix: "/",
     });
     // Better Auth maneja /api/auth/login, /api/auth/register, /api/auth/session, etc.
     app.all("/api/auth/*", async (request, reply) => {
@@ -49,6 +58,7 @@ async function main() {
     await app.register(authAdminRoutes, { prefix: "/api" });
     const port = Number(process.env.PORT) || 4000;
     await app.listen({ port, host: "0.0.0.0" });
+    startUptimeMonitor();
     console.log(`API corriendo en puerto ${port}`);
 }
 main().catch((err) => {
