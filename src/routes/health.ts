@@ -75,13 +75,12 @@ export async function healthRoutes(app: FastifyInstance) {
 
     const svgPoints = days.map((d, i) => {
       const x = (i / (days.length - 1)) * width;
-      // Invertir Y porque en SVG 0 es arriba
       const y = height - padding - (d.avgMs / maxMs) * (height - 2 * padding);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
 
     const bars = days
-      .map((d, i) => {
+      .map((d) => {
         let cls = "bar-empty";
         if (d.status === "ok") cls = "bar-ok";
         if (d.status === "degraded") cls = "bar-degraded";
@@ -104,54 +103,47 @@ export async function healthRoutes(app: FastifyInstance) {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>CoreCrow - System Status</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <title>CoreCrow - Health</title>
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: #f8f9fa;
-      background-image: url('https://i.pinimg.com/originals/4b/65/28/4b65285a3d31f68d1350e8b23c19ddd7.gif');
-      background-size: cover;         
-      background-position: center;     
-      background-repeat: no-repeat;    
-      background-attachment: fixed;
       color: #111827;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      padding: 3rem 1rem;
+      padding: 2rem 1rem;
       display: flex;
       justify-content: center;
-
-      
+      min-height: 100vh;
     }
     .container {
       width: 100%;
       max-width: 580px;
       display: flex;
       flex-direction: column;
-      gap: 1.5rem;
+      gap: 1.25rem;
     }
     
-    /* Header Timestamp */
-    
+    /* Compact Top Bar */
     .card-sm {
       position: relative; 
-      border-radius: 16px;
-      padding: 0.5rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-      background: rgba(255, 255, 255, 0.85); 
-      backdrop-filter: blur(8px);        
-      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 10px;
+      padding: 0.6rem 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
     }
 
     .top-bar {
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 0.75rem;
-      font-size: 1rem;
-      color: #9ca3af;
-      margin-bottom: 0.5rem;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: #6b7280;
+      flex-wrap: wrap;
     }
 
     .top-bar .dot {
@@ -163,47 +155,37 @@ export async function healthRoutes(app: FastifyInstance) {
     }
 
     .top-bar img {
-      height: 24px;
-    }
-
-    .card-sm .top-bar {
-      margin-bottom: 0;
-      gap: 0.5rem;
-      font-size: 0.75rem;
-    }
-
-    .card-sm .top-bar img {
-      height: 24px;
+      height: 20px;
+      width: auto;
     }
 
     /* Main Title */
     .main-title {
       text-align: center;
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       font-weight: 700;
       color: #10b981;
-      margin: 0 0 1rem 0;
+      margin: 0.5rem 0;
     }
 
     /* Cards */
     .card {
       position: relative; 
       border-radius: 16px;
-      padding: 1.5rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-      background: rgba(255, 255, 255, 0.85); 
-      backdrop-filter: blur(8px);        
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
     }
 
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1.25rem;
+      margin-bottom: 1rem;
     }
     .card-title {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 600;
       color: #111827;
     }
@@ -228,7 +210,7 @@ export async function healthRoutes(app: FastifyInstance) {
     .tooltip {
       position: absolute;
       display: none;
-      pointer-events: none; /* Evita que el tooltip interfiera con el mouse */
+      pointer-events: none;
       background: #1e293b;
       color: #f8fafc;
       padding: 8px 12px;
@@ -237,7 +219,7 @@ export async function healthRoutes(app: FastifyInstance) {
       line-height: 1.4;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       z-index: 10;
-      transform: translate(-50%, -120%); /* Lo posiciona justo arriba del cursor */
+      transform: translate(-50%, -120%);
       white-space: nowrap;
     }
 
@@ -259,11 +241,11 @@ export async function healthRoutes(app: FastifyInstance) {
       margin-bottom: 1rem;
     }
     .metric-label {
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       color: #6b7280;
     }
     .metric-value {
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       font-weight: 600;
       color: #111827;
     }
@@ -275,18 +257,19 @@ export async function healthRoutes(app: FastifyInstance) {
     /* Chart / Bars */
     .chart {
       display: flex;
-      gap: 3px;
+      gap: 2px;
       align-items: stretch;
-      height: 48px;
+      height: 42px;
       margin-bottom: 0.75rem;
+      touch-action: manipulation;
     }
     .bar {
       flex: 1;
-      border-radius: 4px;
+      border-radius: 3px;
       cursor: pointer;
       transition: opacity 0.15s ease;
     }
-    .bar:hover { opacity: 0.8; }
+    .bar:hover, .bar:active { opacity: 0.8; }
     
     .bar-ok { background: #10b981; }
     .bar-degraded { background: #eab308; }
@@ -308,29 +291,28 @@ export async function healthRoutes(app: FastifyInstance) {
     .chart-labels {
       display: flex;
       justify-content: space-between;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: #9ca3af;
     }
 
-    /* Detail Tooltip area */
-    .detail {
-      display: none;
-      margin-top: 1rem;
-      padding: 0.75rem 1rem;
-      background: #f9fafb;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      color: #4b5563;
-    }
-    .detail.active { display: block; }
-    .detail strong { color: #111827; display: block; margin-bottom: 2px; }
-
-    /* Footer */
-    .footer {
-      font-size: 0.75rem;
-      color: #9ca3af;
-      text-align: center;
-      margin-top: 1rem;
+    /* Ajustes específicos para pantallas pequeñas (Mobile) */
+    @media (max-width: 480px) {
+      body {
+        padding: 1rem 0.75rem;
+      }
+      .card {
+        padding: 1rem;
+      }
+      .main-title {
+        font-size: 1.25rem;
+      }
+      .top-bar {
+        font-size: 0.7rem;
+        gap: 0.35rem;
+      }
+      .top-bar .dot:nth-of-type(2) {
+        display: none; /* Oculta separadores extra en pantallas muy estrechas si quiebra línea */
+      }
     }
   </style>
 </head>
@@ -338,24 +320,22 @@ export async function healthRoutes(app: FastifyInstance) {
   <div class="container">
     
     <!-- Header info -->
-  <div class="card-sm">
-    <div class="top-bar">
-      <img src="/images/logoblack.png" alt="Black Polar" />
-      <span>${currentDateStr}</span>
-      <span class="dot"></span>
-      <span>Last update: ${currentTimeStr}</span>
-      <span class="dot"></span>
-      <span>Process uptime: ${hours}h ${minutes}m</span>
+    <div class="card-sm">
+      <div class="top-bar">
+        <img src="/images/logoblack.png" alt="Black Polar" />
+        <span>${currentDateStr}</span>
+        <span class="dot"></span>
+        <span>Last update: ${currentTimeStr}</span>
+        <span class="dot"></span>
+        <span>Uptime: ${hours}h ${minutes}m</span>
+      </div>
     </div>
-  </div>
 
     <!-- Main Heading -->
     <h1 class="main-title">All systems operational</h1>
 
     <!-- Success Rate Card -->
-<!-- Success Rate Card -->
     <div class="card">
-      <!-- Mueve el tooltip AQUÍ para que sea hijo directo de .card -->
       <div class="tooltip" id="tooltip"></div>
 
       <div class="card-header">
@@ -368,7 +348,7 @@ export async function healthRoutes(app: FastifyInstance) {
 
       <div class="metric-container">
         <span class="metric-label">Uptime</span>
-        <span class="metric-value">${uptimePct}% <span class="metric-sub">- No current issue</span></span>
+        <span class="metric-value">${uptimePct}% <span class="metric-sub">- No issue</span></span>
       </div>
 
       <div class="chart">${bars}</div>
@@ -378,8 +358,6 @@ export async function healthRoutes(app: FastifyInstance) {
         <span>15 days ago</span>
         <span>Today</span>
       </div>
-
-      <!-- Eliminamos <div class="detail"> ya no es necesario -->
     </div>
 
     <!-- Response Time Card -->
@@ -393,14 +371,13 @@ export async function healthRoutes(app: FastifyInstance) {
       </div>
 
       <div class="metric-container">
-        <span class="metric-label">Uptime</span>
-        <span class="metric-value">${avgResponseTime} sn <span class="metric-sub">- No current issue</span></span>
+        <span class="metric-label">Avg Latency</span>
+        <span class="metric-value">${avgResponseTime} s <span class="metric-sub">- Normal</span></span>
       </div>
 
       <!-- Line Chart en SVG -->
       <div class="line-chart-container">
         <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
-          <!-- Línea con los promedios de ms -->
           <polyline
             fill="none"
             stroke="#60a5fa"
@@ -420,46 +397,63 @@ export async function healthRoutes(app: FastifyInstance) {
     </div>
   </div>
 
-<script>
-    const days = ${JSON.stringify(days)};
+  <script>
     const tooltip = document.getElementById('tooltip');
     
+    function showTooltip(bar, clientX, clientY) {
+      const date = bar.dataset.date;
+      const status = bar.dataset.status;
+      const avgMs = bar.dataset.avgms;
+      const checks = Number(bar.dataset.checks);
+
+      if (!checks || status === 'empty') {
+        tooltip.innerHTML = '<strong>' + date + '</strong>No details';
+      } else {
+        let statusText = 'Operational';
+        if (status === 'degraded') statusText = 'Minor Outages';
+        if (status === 'down') statusText = 'Major Outage';
+
+        tooltip.innerHTML = 
+          '<strong>' + date + '</strong>' +
+          'Status: ' + statusText + '<br/>' +
+          'Avg response: ' + avgMs + ' ms<br/>' +
+          'Checks: ' + checks;
+      }
+
+      const cardRect = bar.closest('.card').getBoundingClientRect();
+      const x = clientX - cardRect.left;
+      const y = clientY - cardRect.top;
+
+      tooltip.style.left = x + 'px';
+      tooltip.style.top = y + 'px';
+      tooltip.classList.add('active');
+    }
+
+    function hideTooltip() {
+      tooltip.classList.remove('active');
+    }
+
     document.querySelectorAll('.bar').forEach((bar) => {
-        bar.addEventListener('mouseenter', (e) => {
-          const date = bar.dataset.date;
-          const status = bar.dataset.status;
-          const avgMs = bar.dataset.avgms;
-          const checks = Number(bar.dataset.checks);
+      // Eventos para Mouse (Escritorio)
+      bar.addEventListener('mouseenter', (e) => showTooltip(bar, e.clientX, e.clientY));
+      bar.addEventListener('mousemove', (e) => showTooltip(bar, e.clientX, e.clientY));
+      bar.addEventListener('mouseleave', hideTooltip);
 
-          if (!checks || status === 'empty') {
-            tooltip.innerHTML = '<strong>' + date + '</strong>No details';
-          } else {
-            let statusText = 'Operational';
-            if (status === 'degraded') statusText = 'Minor Outages';
-            if (status === 'down') statusText = 'Major Outage';
+      // Eventos Táctiles (Móviles)
+      bar.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) {
+          const touch = e.touches[0];
+          showTooltip(bar, touch.clientX, touch.clientY);
+        }
+      }, { passive: true });
+    });
 
-            tooltip.innerHTML = 
-              '<strong>' + date + '</strong>' +
-              'Status: ' + statusText + '<br/>' +
-              'Avg response: ' + avgMs + ' ms<br/>' +
-              'Checks: ' + checks;
-          }
-          tooltip.classList.add('active');
-        });
-
-        bar.addEventListener('mousemove', (e) => {
-          const cardRect = bar.closest('.card').getBoundingClientRect();
-          const x = e.clientX - cardRect.left;
-          const y = e.clientY - cardRect.top;
-
-          tooltip.style.left = x + 'px';
-          tooltip.style.top = y + 'px';
-        });
-
-        bar.addEventListener('mouseleave', () => {
-          tooltip.classList.remove('active');
-        });
-      });
+    // Ocultar tooltip si se toca fuera
+    document.addEventListener('touchstart', (e) => {
+      if (!e.target.classList.contains('bar')) {
+        hideTooltip();
+      }
+    }, { passive: true });
   </script>
 </body>
 </html>
