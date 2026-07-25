@@ -97,6 +97,7 @@ export async function healthRoutes(app: FastifyInstance) {
 
     const currentDateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const serverTimestamp = new Date().toISOString();
 
     reply.type("text/html").send(`
 <!DOCTYPE html>
@@ -325,7 +326,7 @@ export async function healthRoutes(app: FastifyInstance) {
         <img src="/images/logoblack.png" alt="Black Polar" />
         <span>${currentDateStr}</span>
         <span class="dot"></span>
-        <span>Last update: ${currentTimeStr}</span>
+        <span>Last update: <span id="client-time">...</span></span>
         <span class="dot"></span>
         <span>Uptime: ${hours}h ${minutes}m</span>
       </div>
@@ -399,6 +400,7 @@ export async function healthRoutes(app: FastifyInstance) {
 
   <script>
     const tooltip = document.getElementById('tooltip');
+    const serverDate = new Date("${serverTimestamp}");
     
     function showTooltip(bar, clientX, clientY) {
       const date = bar.dataset.date;
@@ -454,6 +456,18 @@ export async function healthRoutes(app: FastifyInstance) {
         hideTooltip();
       }
     }, { passive: true });
+
+    document.getElementById('client-date').textContent = serverDate.toLocaleDateString(navigator.language, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
+    document.getElementById('client-time').textContent = serverDate.toLocaleTimeString(navigator.language, {
+      hour12: false,
+      timeZoneName: 'short' // Muestra el GMT o la abreviación de la zona del cliente
+    });
+
   </script>
 </body>
 </html>
