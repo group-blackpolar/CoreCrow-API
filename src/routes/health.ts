@@ -97,7 +97,6 @@ export async function healthRoutes(app: FastifyInstance) {
 
     const currentDateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
-    const serverTimestamp = new Date().toISOString();
 
     reply.type("text/html").send(`
 <!DOCTYPE html>
@@ -324,7 +323,7 @@ export async function healthRoutes(app: FastifyInstance) {
     <div class="card-sm">
       <div class="top-bar">
         <img src="/images/logoblack.png" alt="Black Polar" />
-        <span>${currentDateStr}</span>
+        <span id="client-date">...</span>
         <span class="dot"></span>
         <span>Last update: <span id="client-time">...</span></span>
         <span class="dot"></span>
@@ -400,7 +399,7 @@ export async function healthRoutes(app: FastifyInstance) {
 
   <script>
     const tooltip = document.getElementById('tooltip');
-    const serverDate = new Date("${serverTimestamp}");
+    const serverDate = new Date("${new Date().toISOString()}");
     
     function showTooltip(bar, clientX, clientY) {
       const date = bar.dataset.date;
@@ -457,15 +456,23 @@ export async function healthRoutes(app: FastifyInstance) {
       }
     }, { passive: true });
 
-    document.getElementById('client-date').textContent = serverDate.toLocaleDateString(navigator.language, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+    document.addEventListener('DOMContentLoaded', () => {
+        const dateEl = document.getElementById('client-date');
+        const timeEl = document.getElementById('client-time');
 
-    document.getElementById('client-time').textContent = serverDate.toLocaleTimeString(navigator.language, {
-      hour12: false,
-      timeZoneName: 'short' // Muestra el GMT o la abreviación de la zona del cliente
+        if (dateEl) {
+          dateEl.textContent = serverDate.toLocaleDateString(navigator.language, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          });
+        }
+
+        if (timeEl) {
+          timeEl.textContent = serverDate.toLocaleTimeString(navigator.language, {
+            hour12: false,
+          });
+        }
     });
 
   </script>
