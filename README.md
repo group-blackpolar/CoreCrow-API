@@ -4,7 +4,7 @@ API de Black Polar, sirviendo en producción en `api.blackpolar.org`.
 OpenSource Baseline por Group Black Polar
 ---
 
-## 1. Overview de arquitectura
+## 1. Arquitectura
 
 | Componente | Detalle |
 |---|---|
@@ -153,7 +153,7 @@ Workflow: **"Deploy CoreClaw API"** (`.github/workflows/...`), dispara con `push
 |---|---|---|---|
 | Better Auth | Usuarios finales (registro público) | Cookie de sesión, email+password o Google OAuth, cacheado en Redis como `secondaryStorage` | 12h absolutas, se refresca cada 30 min de actividad (`updateAge`) |
 | Sistema de `adminUniqueId` | Administradores (North) | `POST /api/admin/login` con el ID único → token de sesión propio (tabla `Session`) | 24h fijas, generado con `crypto.getRandomValues` |
-| API Keys | Integraciones / North → CoreCrow-API | Bearer token, hash SHA-256 contra `ApiKey.keyHash`, con `scopes` | Definido por `expiresAt` al crearla (mencionaste 7 días fijos) |
+| API Keys | Integraciones / North → CoreCrow-API | Bearer token, hash SHA-256 contra `ApiKey.keyHash`, con `scopes` | Definido por `expiresAt` al crearla (7 dias fijos) |
 
 ---
 
