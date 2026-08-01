@@ -19,15 +19,19 @@ export async function authAdminRoutes(app: FastifyInstance) {
    * Login de admin con unique ID
    * Body: { adminUniqueId: string }
    */
-  app.post<{ Body: { adminUniqueId: string } }>(
+  app.post<{ Body: { adminUniqueId: string , email: string} }>(
     "/admin/login",
     { onResponse: audit({ action: "admin.login", targetType: "User" }) },
     async (request, reply) => {
     try {
-      const { adminUniqueId } = request.body;
+      const { adminUniqueId, email } = request.body;
 
       if (!adminUniqueId || adminUniqueId.trim().length === 0) {
         return reply.status(400).send({ error: "Admin ID is required" });
+      }
+
+      if (!email || email.trim().length === 0) {
+        return reply.status(400).send({ error: "Email is required" });
       }
 
       // Buscar admin por unique ID
@@ -36,10 +40,15 @@ export async function authAdminRoutes(app: FastifyInstance) {
       });
 
       if (!admin) {
-        return reply.status(401).send({ error: "Invalid admin ID" });
+        return reply.status(401).send({ error: "Invalid admin ID or email" });
       }
 
-      if (admin.role !== "ADMIN" && admin.role !== "SUPERADMIN") {
+      // Verificar que el email coincida con el dueño de ese Admin ID
+      if (admin.email.toLowerCase() !== email.trim().toLowerCase()) {
+        return reply.status(401).send({ error: "Invalid admin ID or email" });
+      }
+
+      if (admin.role !== "ADMIN") {
         return reply.status(403).send({ error: "User is not an admin" });
       }
 
