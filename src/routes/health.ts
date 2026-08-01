@@ -351,7 +351,7 @@ export async function healthRoutes(app: FastifyInstance) {
         <span class="metric-value">${uptimePct}% <span class="metric-sub">- No issue</span></span>
       </div>
 
-      <div class="chart">${bars}</div>
+      <div class="chart">${bars}</div>}
       
       <div class="chart-labels">
         <span>&lt; 30 days ago</span>

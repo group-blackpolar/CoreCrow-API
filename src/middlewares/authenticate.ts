@@ -18,10 +18,9 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
 
     const apiKey = await prisma.apiKey.findUnique({ where: { keyHash: tokenHash } });
 
-    if (!apiKey || apiKey.revokedAt || apiKey.expiresAt < new Date()) {
+    if (!apiKey || apiKey.revokedAt || (apiKey.expiresAt && apiKey.expiresAt < new Date())) {
       return reply.code(401).send({ error: 'Token inválido o expirado' });
     }
-
     // no bloqueante: actualiza lastUsed sin esperar
     prisma.apiKey.update({
       where: { id: apiKey.id },

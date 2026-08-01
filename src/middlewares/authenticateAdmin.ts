@@ -31,4 +31,5 @@ export async function authenticateAdmin(req: FastifyRequest, reply: FastifyReply
   }
 
   req.admin = { id: session.user.id, role: session.user.role };
+  req.user = { id: session.user.id, role: session.user.role }; 
 }

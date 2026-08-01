@@ -13,7 +13,7 @@ export const registerSchema = z.object({
 
 export const createApiKeySchema = z.object({
   name: z.string().min(2).max(50),
-  expiresAt: z.coerce.date().optional(),
+  scopes: z.array(z.string()).default([]),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

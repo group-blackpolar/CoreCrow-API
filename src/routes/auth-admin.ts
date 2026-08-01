@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/database.js";
+import { audit } from "../middlewares/audit.js";
+import { requireBootstrapSecret } from "../middlewares/requireBootstrapSecret.js";
+import crypto from "node:crypto";
 
 /**
  * Admin authentication routes
@@ -7,12 +10,19 @@ import { prisma } from "../lib/database.js";
  * - POST /api/admin/init - Inicializar usuario admin (solo si no existe)
  */
 
+function hashToken(raw: string) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
 export async function authAdminRoutes(app: FastifyInstance) {
   /**
    * Login de admin con unique ID
    * Body: { adminUniqueId: string }
    */
-  app.post<{ Body: { adminUniqueId: string } }>("/admin/login", async (request, reply) => {
+  app.post<{ Body: { adminUniqueId: string } }>(
+    "/admin/login",
+    { onResponse: audit({ action: "admin.login", targetType: "User" }) },
+    async (request, reply) => {
     try {
       const { adminUniqueId } = request.body;
 
@@ -29,16 +39,20 @@ export async function authAdminRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: "Invalid admin ID" });
       }
 
-      if (admin.role !== "ADMIN") {
+      if (admin.role !== "ADMIN" && admin.role !== "SUPERADMIN") {
         return reply.status(403).send({ error: "User is not an admin" });
       }
 
+      // Para que el hook de audit registre quién hizo login
+      request.admin = { id: admin.id, role: admin.role };
+
       // Crear o actualizar sesión
+      const rawToken = generateToken();
       const session = await prisma.session.create({
         data: {
           userId: admin.id,
-          token: generateToken(),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
+          token: hashToken(rawToken),   // se guarda el hash
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           ipAddress: request.ip,
           userAgent: request.headers["user-agent"],
         },
@@ -48,16 +62,11 @@ export async function authAdminRoutes(app: FastifyInstance) {
         success: true,
         session: {
           id: session.id,
-          token: session.token,
+          token: rawToken,              // el crudo se entrega solo esta vez
           userId: session.userId,
           expiresAt: session.expiresAt,
         },
-        user: {
-          id: admin.id,
-          email: admin.email,
-          name: admin.name,
-          role: admin.role,
-        },
+        user: { id: admin.id, email: admin.email, name: admin.name, role: admin.role },
       });
     } catch (error) {
       app.log.error(error);
@@ -72,21 +81,10 @@ export async function authAdminRoutes(app: FastifyInstance) {
    */
   app.post<{ Body: { adminUniqueId: string; email: string; name?: string } }>(
     "/admin/init",
+    { preHandler: requireBootstrapSecret, onResponse: audit({ action: "admin.init", targetType: "User" }) },
     async (request, reply) => {
       try {
         const { adminUniqueId, email, name } = request.body;
-
-        // Verificar si ya existe algún admin
-        const existingAdmin = await prisma.user.findFirst({
-          where: { role: "ADMIN" },
-        });
-
-        if (existingAdmin) {
-          return reply.status(403).send({
-            error: "Admin user already exists",
-            adminId: existingAdmin.id,
-          });
-        }
 
         // Validar entrada
         if (!adminUniqueId || !email) {
@@ -128,6 +126,9 @@ export async function authAdminRoutes(app: FastifyInstance) {
           },
         });
 
+        // Para que el hook de audit registre quién quedó como actor (el propio admin recién creado)
+        request.admin = { id: admin.id, role: admin.role };
+
         return reply.status(201).send({
           success: true,
           admin: {
@@ -163,6 +164,19 @@ export async function authAdminRoutes(app: FastifyInstance) {
       app.log.error(error);
       return reply.status(500).send({ error: "Internal server error" });
     }
+  });
+
+  /**
+   * Lista todos los admins con su adminUniqueId 
+   */
+  app.get("/admin/users", { preHandler: requireBootstrapSecret }, async (request, reply) => {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPERADMIN"] } },
+      select: { id: true, email: true, name: true, role: true, adminUniqueId: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return reply.send({ admins });
   });
 }
 

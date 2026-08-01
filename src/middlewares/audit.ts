@@ -13,7 +13,7 @@ export function audit(options: AuditOptions) {
     // onResponse corre después del handler; solo auditamos 2xx
     if (reply.statusCode < 200 || reply.statusCode >= 300) return;
 
-    const actorId = req.user?.id ?? null;
+    const actorId = req.admin?.id ?? req.user?.id ?? null;
     const targetId = options.getTargetId?.(req);
 
     await prisma.auditLog.create({
