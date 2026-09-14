@@ -12,8 +12,8 @@ const applyTheme = (theme) => {
   root.dataset.theme = theme;
   if (!button) return;
   const dark = theme === "dark";
-  button.setAttribute("aria-label", `Appearance: ${dark ? "Dark" : "Light"}`);
-  button.setAttribute("title", `Switch to ${dark ? "light" : "dark"} theme`);
+  button.setAttribute("aria-label", `Apariencia: ${dark ? "Oscuro" : "Claro"}`);
+  button.setAttribute("title", `Cambiar a tema ${dark ? "claro" : "oscuro"}`);
 };
 
 applyTheme(preferredTheme());

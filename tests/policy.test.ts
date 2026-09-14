@@ -27,8 +27,8 @@ test("health reflects a failed dependency rather than inventing uptime history",
   assert.equal(state.apiVersion, "v1");
   assert.ok(state.uptimeSeconds >= 0);
   const page = healthPage(state);
-  assert.match(page, /Process uptime/);
-  assert.match(page, /No telemetry data/);
-  assert.match(page, /Requests \/ second<\/small><strong class="unavailable-value">—/);
+  assert.match(page, /Tiempo activo del proceso/);
+  assert.match(page, /Sin datos de telemetría/);
+  assert.match(page, /Solicitudes \/ segundo<\/small><strong class="unavailable-value">—/);
   assert.doesNotMatch(page, /requestsPerSecond|averageLatencyMs/);
 });

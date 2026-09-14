@@ -1,7 +1,17 @@
 import type { HealthSnapshot } from "./service.js";
 
 const statusLabel = (available: boolean) =>
-  available ? "Operational" : "Degraded";
+  available ? "Operativo" : "Degradado";
+
+const moduleLabels: Record<string, string> = {
+  Identity: "Identidad",
+  Authorization: "Autorización",
+  "Multi-tenancy": "Multiempresa",
+  Audit: "Auditoría",
+  Security: "Seguridad",
+  Commerce: "Comercio",
+  "Business services": "Servicios empresariales",
+};
 
 export function healthPage(state: HealthSnapshot) {
   const apiUp = state.status === "operational";
@@ -19,50 +29,50 @@ export function healthPage(state: HealthSnapshot) {
   )}m`;
   const checkedAt = state.checkedAt.slice(11, 19);
   const services = [
-    ["API", apiUp, `Contract ${state.apiVersion}`],
-    ["Database", databaseUp, "CoreCrow persistence"],
-    ["Authentication", authUp, "Identity and policy"],
+    ["API", apiUp, `Contrato ${state.apiVersion}`],
+    ["Base de datos", databaseUp, "Persistencia de CoreCrow"],
+    ["Autenticación", authUp, "Identidad y políticas"],
   ] as const;
 
   return `<!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Live operational status for the CoreCrow API.">
-  <title>CoreCrow API status · Black Polar</title>
+  <meta name="description" content="Estado operativo en vivo de la API de CoreCrow.">
+  <title>Estado de CoreCrow API · Black Polar</title>
   <link rel="stylesheet" href="/status.css">
   <script src="/status.js" defer></script>
 </head>
 <body>
   <header class="shell topbar">
-    <a class="brand" href="https://blackpolar.org" aria-label="Black Polar home"><span><img src="/images/logoblack.png" alt=""></span> BLACK POLAR</a>
-    <div class="topbar-actions"><span class="environment">CORECROW / PRODUCTION</span><button class="theme-toggle" type="button" aria-label="Appearance: Light" title="Switch to dark theme"><span aria-hidden="true">☼</span><b aria-hidden="true"></b><span aria-hidden="true">☾</span></button></div>
+    <a class="brand" href="https://blackpolar.org/es-lat" aria-label="Inicio de Black Polar"><span><img src="/images/logoblack.png" alt=""></span> BLACK POLAR</a>
+    <div class="topbar-actions"><span class="environment">CORECROW / PRODUCCIÓN</span><button class="theme-toggle" type="button" aria-label="Apariencia: Claro" title="Cambiar a tema oscuro"><span aria-hidden="true">☼</span><b aria-hidden="true"></b><span aria-hidden="true">☾</span></button></div>
   </header>
   <main class="shell">
     <section class="hero">
       <div>
-        <span class="eyebrow">PUBLIC SYSTEM STATUS</span>
-        <h1>CoreCrow <span>API dashboard</span></h1>
-        <p>Current readiness of the shared service foundation behind Black Polar products.</p>
+        <span class="eyebrow">ESTADO PÚBLICO DEL SISTEMA</span>
+        <h1>CoreCrow <span>panel de la API</span></h1>
+        <p>Disponibilidad actual de la base de servicios compartida que conecta los productos de Black Polar.</p>
       </div>
       <div class="status ${apiUp ? "" : "degraded"}">${statusLabel(apiUp)}</div>
     </section>
 
     <section aria-labelledby="metrics-title">
-      <div class="section-heading"><div><span class="index">01</span><h2 id="metrics-title">Key metrics</h2></div><p>Live values only. No production data is simulated.</p></div>
+      <div class="section-heading"><div><span class="index">01</span><h2 id="metrics-title">Métricas clave</h2></div><p>Solo valores reales. No se simulan datos de producción.</p></div>
       <div class="metrics">
-        <article><small>Requests / second</small><strong class="unavailable-value">—</strong><span>Telemetry endpoint required</span></article>
-        <article><small>Average latency</small><strong class="unavailable-value">—</strong><span>Telemetry endpoint required</span></article>
-        <article><small>Process uptime</small><strong>${duration}</strong><span>Since this API instance started</span></article>
-        <article><small>Errors 4xx / 5xx</small><strong class="unavailable-value">—</strong><span>Telemetry endpoint required</span></article>
+        <article><small>Solicitudes / segundo</small><strong class="unavailable-value">—</strong><span>Requiere un endpoint de telemetría</span></article>
+        <article><small>Latencia promedio</small><strong class="unavailable-value">—</strong><span>Requiere un endpoint de telemetría</span></article>
+        <article><small>Tiempo activo del proceso</small><strong>${duration}</strong><span>Desde el inicio de esta instancia</span></article>
+        <article><small>Errores 4xx / 5xx</small><strong class="unavailable-value">—</strong><span>Requiere un endpoint de telemetría</span></article>
       </div>
     </section>
 
     <section class="dashboard-grid">
       <div class="services" aria-labelledby="services-title">
-        <div class="panel-heading"><div><span class="index">02</span><h2 id="services-title">Service status</h2></div><span>Checked ${checkedAt} UTC</span></div>
+        <div class="panel-heading"><div><span class="index">02</span><h2 id="services-title">Estado de los servicios</h2></div><span>Comprobado ${checkedAt} UTC</span></div>
         ${services
           .map(
             ([name, available, detail]) =>
@@ -72,29 +82,29 @@ export function healthPage(state: HealthSnapshot) {
       </div>
 
       <div class="chart-panel" aria-labelledby="traffic-title">
-        <div class="panel-heading"><div><span class="index">03</span><h2 id="traffic-title">Traffic history</h2></div><span>24 hours</span></div>
-        <div class="empty-chart" role="img" aria-label="Traffic history unavailable">
+        <div class="panel-heading"><div><span class="index">03</span><h2 id="traffic-title">Historial de tráfico</h2></div><span>24 horas</span></div>
+        <div class="empty-chart" role="img" aria-label="Historial de tráfico no disponible">
           <div class="grid-lines" aria-hidden="true"></div>
-          <strong>No telemetry data</strong>
-          <span>Connect an aggregated metrics endpoint to display request and uptime history.</span>
+          <strong>Sin datos de telemetría</strong>
+          <span>Conecta un endpoint de métricas agregadas para mostrar solicitudes y disponibilidad histórica.</span>
         </div>
       </div>
     </section>
 
     <section class="details" aria-labelledby="details-title">
-      <div class="panel-heading"><div><span class="index">04</span><h2 id="details-title">Dependency detail</h2></div><span>Cached for 15 seconds</span></div>
+      <div class="panel-heading"><div><span class="index">04</span><h2 id="details-title">Detalle de dependencias</h2></div><span>Caché de 15 segundos</span></div>
       <div class="dependency-list">${state.modules
         .map(
           (module) =>
-            `<div><span>${module.name}</span><b class="pill ${module.status === "available" ? "" : "degraded"}">${module.status === "available" ? "Available" : "Unavailable"}</b></div>`,
+            `<div><span>${moduleLabels[module.name] ?? module.name}</span><b class="pill ${module.status === "available" ? "" : "degraded"}">${module.status === "available" ? "Disponible" : "No disponible"}</b></div>`,
         )
         .join("")}</div>
-      <div class="integration-note"><span>Email delivery</span><strong>${state.emailDelivery === "configured" ? "Configured (delivery not probed)" : "Not configured"}</strong></div>
+      <div class="integration-note"><span>Entrega de correo</span><strong>${state.emailDelivery === "configured" ? "Configurada (entrega sin verificar)" : "No configurada"}</strong></div>
     </section>
 
-    <nav aria-label="Developer resources"><a href="/v1/health">JSON health ↗</a><a href="https://blackpolar.org">Black Polar ↗</a></nav>
+    <nav aria-label="Recursos técnicos"><a href="/v1/health">Salud en JSON ↗</a><a href="https://blackpolar.org/es-lat">Black Polar ↗</a></nav>
   </main>
-  <footer class="shell"><span>CORECROW / BLACK POLAR</span><span>Public service status · UTC</span></footer>
+  <footer class="shell"><span>CORECROW / BLACK POLAR</span><span>Estado público del servicio · UTC</span></footer>
 </body>
 </html>`;
 }
