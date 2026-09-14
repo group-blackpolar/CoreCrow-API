@@ -12,17 +12,10 @@ export function startUptimeMonitor() {
             ok = false;
         }
         const responseTimeMs = Date.now() - start;
-        // prisma may not have a generated "uptimeCheck" client. Use it if present,
-        // otherwise fall back to a raw INSERT into a likely table name.
-        const uptimeClient = prisma.uptimeCheck;
-        if (uptimeClient && typeof uptimeClient.create === "function") {
-            await uptimeClient.create({ data: { responseTimeMs, ok } }).catch(() => { });
-        }
-        else {
-            // fallback: attempt raw insert into a common table name. Adjust if needed.
-            await prisma
-                .$executeRaw `INSERT INTO uptime_checks (response_time_ms, ok) VALUES (${responseTimeMs}, ${ok})`
-                .catch(() => { });
-        }
+        await prisma.uptimeCheck
+            .create({ data: { responseTimeMs, ok } })
+            .catch((err) => {
+            console.error("No se pudo registrar el uptime check:", err);
+        });
     }, CHECK_INTERVAL_MS);
 }

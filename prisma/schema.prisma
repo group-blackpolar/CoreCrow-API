@@ -28,6 +28,7 @@ model User {
   sessions Session[]
   accounts Account[]
   apiKeys  ApiKey[]
+  memberships Membership[]
 
   @@map("users")
 }
@@ -40,6 +41,7 @@ model Session {
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -53,7 +55,11 @@ model Account {
   providerId   String
   accessToken  String?
   refreshToken String?
-  expiresAt    DateTime
+  expiresAt    DateTime?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope        String?
+  idToken      String?
   password     String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -70,6 +76,7 @@ model Verification {
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@map("verifications")
 }
@@ -78,11 +85,135 @@ model Verification {
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
+  organizationId String?
   action     String   // "user.create", "token.revoke", "logs.view", etc.
   targetType String?
   targetId   String?
   metadata   Json?
   createdAt  DateTime @default(now())
+  @@index([organizationId, createdAt, id])
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Organization {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships Membership[]
+  invitations Invitation[]
+  subscriptions Subscription[]
+  entitlements Entitlement[]
+}
+
+model Membership {
+  id String @id @default(cuid())
+  organizationId String
+  userId String
+  role TenantRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Invitation {
+  id String @id @default(cuid())
+  organizationId String
+  email String
+  role TenantRole @default(MEMBER)
+  tokenHash String @unique
+  expiresAt DateTime
+  acceptedAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  @@index([organizationId, email])
+}
+
+model Product {
+  id String @id @default(cuid())
+  code String @unique
+  name String
+  active Boolean @default(true)
+  plans Plan[]
+}
+
+model Plan {
+  id String @id @default(cuid())
+  productId String
+  code String
+  name String
+  priceMinor Int
+  currency String
+  interval String
+  features String[]
+  active Boolean @default(true)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  subscriptions Subscription[]
+  @@unique([productId, code])
+}
+
+model Subscription {
+  id String @id @default(cuid())
+  organizationId String
+  planId String
+  status String @default("active")
+  startsAt DateTime @default(now())
+  endsAt DateTime
+  idempotencyKey String @unique
+  requestHash String
+  createdAt DateTime @default(now())
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoices Invoice[]
+  entitlements Entitlement[]
+  @@index([organizationId])
+}
+
+model Invoice {
+  id String @id @default(cuid())
+  subscriptionId String
+  amountMinor Int
+  currency String
+  status String @default("open")
+  createdAt DateTime @default(now())
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+}
+
+model Entitlement {
+  id String @id @default(cuid())
+  organizationId String
+  subscriptionId String
+  productCode String
+  feature String
+  expiresAt DateTime
+  revokedAt DateTime?
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  @@unique([subscriptionId, feature])
+  @@index([organizationId, productCode])
+}
+
+model ContactRequest {
+  id String @id @default(cuid())
+  name String
+  email String
+  organization String
+  country String
+  project String
+  message String
+  locale String
+  consentAt DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model ApiKey {

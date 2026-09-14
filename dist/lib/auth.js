@@ -1,48 +1,121 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { createClient } from "redis";
 import { prisma } from "./database.js";
-const redis = createClient({ url: process.env.REDIS_URL });
-redis.on("error", (err) => console.error("Redis error:", err));
-await redis.connect();
-const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,http://localhost:3001")
+import { sendIdentityMail } from "../modules/security/mail.js";
+import { auditRepository } from "../modules/audit/repository.js";
+import { openAPI } from "better-auth/plugins";
+export const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,http://localhost:3001")
     .split(",")
-    .map((origin) => origin.trim())
+    .map((value) => value.trim())
     .filter(Boolean);
+// PostgreSQL sessions are authoritative; no Redis or cookie cache delays revocation.
 export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: "postgresql",
+        transaction: true,
     }),
-    secondaryStorage: {
-        get: (key) => redis.get(key),
-        set: (key, value, ttl) => (ttl ? redis.set(key, value, { EX: ttl }) : redis.set(key, value)),
-        delete: async (key) => {
-            await redis.del(key);
-            return null;
-        },
-    },
+    basePath: "/v1/auth",
+    baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:4000",
+    secret: process.env.BETTER_AUTH_SECRET,
+    trustedOrigins,
+    plugins: [openAPI({ disableDefaultReference: true })],
+    logger: { disabled: true },
     session: {
-        expiresIn: 60 * 60 * 12, // timeout absoluto: 12 horas
-        updateAge: 60 * 30, // idle: se refresca si hay actividad cada 30 min
+        expiresIn: 60 * 60 * 12,
+        disableSessionRefresh: true,
+        cookieCache: { enabled: false },
     },
     emailAndPassword: {
         enabled: true,
+        minPasswordLength: 12,
+        maxPasswordLength: 128,
         requireEmailVerification: true,
+        sendResetPassword: async ({ user, url }) => {
+            await sendIdentityMail(user.email, "Reset your Black Polar password", url);
+        },
+        revokeSessionsOnPasswordReset: true,
     },
-    socialProviders: {
-        google: {
-            clientId: process.env.GOOGLE_CLIENT_ID || "",
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-            redirectURL: process.env.GOOGLE_REDIRECT_URL || "http://localhost:4000/api/auth/callback/google",
+    emailVerification: {
+        sendOnSignUp: true,
+        sendVerificationEmail: async ({ user, url }) => {
+            await sendIdentityMail(user.email, "Verify your Black Polar email", url);
         },
     },
+    socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+        ? {
+            google: {
+                clientId: process.env.GOOGLE_CLIENT_ID,
+                clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+                redirectURI: process.env.GOOGLE_REDIRECT_URL,
+            },
+        }
+        : {},
     user: {
         additionalFields: {
             role: { type: "string", defaultValue: "USER", input: false },
-            adminUniqueId: { type: "string", input: false },
         },
     },
-    trustedOrigins,
-    secret: process.env.BETTER_AUTH_SECRET,
-    baseURL: process.env.BETTER_AUTH_URL,
+    rateLimit: { enabled: true, window: 60, max: 30 },
+    databaseHooks: {
+        user: {
+            create: {
+                after: async (user) => {
+                    await auditRepository.append(prisma, {
+                        actorId: user.id,
+                        action: "identity.register",
+                        targetId: user.id,
+                    });
+                },
+            },
+            update: {
+                after: async (user) => {
+                    await auditRepository.append(prisma, {
+                        actorId: user.id,
+                        action: "identity.update",
+                        targetId: user.id,
+                    });
+                },
+            },
+        },
+        account: {
+            create: {
+                after: async (account) => {
+                    await auditRepository.append(prisma, {
+                        actorId: account.userId,
+                        action: "identity.account.link",
+                        targetId: account.id,
+                    });
+                },
+            },
+            delete: {
+                after: async (account) => {
+                    await auditRepository.append(prisma, {
+                        actorId: account.userId,
+                        action: "identity.account.unlink",
+                        targetId: account.id,
+                    });
+                },
+            },
+        },
+        session: {
+            create: {
+                after: async (session) => {
+                    await auditRepository.append(prisma, {
+                        actorId: session.userId,
+                        action: "identity.session.create",
+                        targetId: session.id,
+                    });
+                },
+            },
+            delete: {
+                after: async (session) => {
+                    await auditRepository.append(prisma, {
+                        actorId: session.userId,
+                        action: "identity.session.revoke",
+                        targetId: session.id,
+                    });
+                },
+            },
+        },
+    },
 });

@@ -1,0 +1,41 @@
+name: Verify CoreCrow
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: corecrow_test
+          POSTGRES_PASSWORD: local-test-only
+          POSTGRES_DB: corecrow_test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://corecrow_test:local-test-only@127.0.0.1:5432/corecrow_test
+      TEST_DATABASE_URL: postgresql://corecrow_test:local-test-only@127.0.0.1:5432/corecrow_test
+      BETTER_AUTH_SECRET: isolated-ci-only-strong-secret-1234567890
+      BETTER_AUTH_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:migrate:deploy
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm openapi
+      - run: git diff --exit-code -- openapi.json openapi.yaml

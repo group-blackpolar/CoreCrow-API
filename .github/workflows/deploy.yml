@@ -1,41 +1,38 @@
-name: Deploy CoreClaw API
-
+name: Deploy CoreCrow API
 on:
   push:
-    branches:
-      - main
-
+    branches: [main]
   workflow_dispatch:
-
+permissions:
+  contents: read
+concurrency:
+  group: corecrow-production
+  cancel-in-progress: false
 jobs:
+  verify:
+    uses: ./.github/workflows/check.yml
   deploy:
-    name: Deploy to VPS
+    needs: verify
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-
+      - uses: actions/checkout@v4
+      - name: Bundle verified source
+        run: git archive --format=tar.gz HEAD > corecrow-source.tar.gz
+      - uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-
+          source: corecrow-source.tar.gz
+          target: /var/www/releases/corecrow-${{ github.sha }}
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 20m
           script: |
-              set -e
-
-              cd /var/www/corecrow-api
-
-              git fetch origin main
-              git reset --hard origin/main
-
-              docker compose build --no-cache api
-
-              # Migración
-              docker compose run --rm api npx prisma migrate deploy
-
-              docker compose down
-              docker compose up -d
-
-              docker image prune -f
-              docker compose ps
+            set -eu
+            cd /var/www/releases/corecrow-${{ github.sha }}
+            tar -xzf corecrow-source.tar.gz
+            bash scripts/deploy-vps.sh '${{ github.sha }}'

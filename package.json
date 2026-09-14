@@ -5,32 +5,46 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "node scripts/build.mjs",
     "start": "node dist/server.js",
     "lint": "eslint src",
+    "test": "tsx --test tests/*.test.ts",
+    "test:watch": "tsx --test --watch tests/*.test.ts",
+    "test:unit": "tsx --test tests/policy.test.ts",
     "create-admin": "tsx scripts/create-admin.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "test:integration": "tsx --test tests/integration.test.ts",
+    "openapi": "tsx scripts/openapi.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/helmet": "^13.1.0",
     "@fastify/rate-limit": "^10.2.0",
     "@fastify/static": "^10.1.2",
+    "@fastify/swagger": "^9.8.1",
     "@prisma/client": "^6.1.0",
     "better-auth": "^1.1.0",
     "fastify": "^5.2.0",
+    "nodemailer": "^10.0.9",
     "prisma": "^6.1.0",
-    "redis": "^6.1.0",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/smtp-server": "^3.5.13",
+    "embedded-postgres": "16.14.0-beta.17",
+    "eslint": "^9.39.5",
+    "smtp-server": "^3.19.12",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.70.0"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {

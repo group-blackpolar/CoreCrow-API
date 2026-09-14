@@ -1,6 +1,6 @@
 // src/middlewares/audit.ts
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { prisma } from '../lib/database.js';
+import { FastifyRequest, FastifyReply } from "fastify";
+import { prisma } from "../lib/database.js";
 
 interface AuditOptions {
   action: string;
@@ -16,20 +16,22 @@ export function audit(options: AuditOptions) {
     const actorId = req.admin?.id ?? req.user?.id ?? null;
     const targetId = options.getTargetId?.(req);
 
-    await prisma.auditLog.create({
-      data: {
-        actorId,
-        action: options.action,
-        targetType: options.targetType,
-        targetId,
-        metadata: {
-          apiKeyId: req.apiKey?.id ?? null,
-          ip: req.ip,
+    await prisma.auditLog
+      .create({
+        data: {
+          actorId,
+          action: options.action,
+          targetType: options.targetType,
+          targetId,
+          metadata: {
+            apiKeyId: req.apiKey?.id ?? null,
+            ip: req.ip,
+          },
         },
-      },
-    }).catch((err: unknown) => {
-      // un fallo de auditoría nunca debe tumbar la respuesta ya enviada
-      req.log.error({ err }, 'No se pudo escribir en AuditLog');
-    });
+      })
+      .catch((err: unknown) => {
+        // un fallo de auditoría nunca debe tumbar la respuesta ya enviada
+        req.log.error({ err }, "No se pudo escribir en AuditLog");
+      });
   };
 }

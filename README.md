@@ -1,260 +1,53 @@
-# CoreCrow API — Documentación
+# CORECROW API
 
-API de Black Polar, sirviendo en producción en `api.blackpolar.org`.
-OpenSource Baseline por Group Black Polar
----
+Black Polar's shared backend foundation: Fastify + TypeScript + PostgreSQL + Better Auth. Mainsite and product clients communicate through versioned HTTPS APIs. Only backend repositories own persistence.
 
-## 1. Arquitectura
+## Start locally
 
-| Componente | Detalle |
-|---|---|
-| Framework HTTP | Fastify 5 |
-| ORM | Prisma 6 (`@prisma/client`) |
-| Auth de usuarios finales | Better Auth (email/password + Google OAuth) |
-| Auth de administradores | Sistema propio vía `adminUniqueId` (no pasa por Better Auth) |
-| Base de datos | PostgreSQL 16 (contenedor `corecrow-db`) |
-| Cache / sesiones | Redis 7 (contenedor `corecrow-redis`), usado como `secondaryStorage` de Better Auth |
-| Runtime en VPS | Docker Compose, contenedor `corecrow-api`, puerto interno `4000` |
-| Proxy público | Nginx en el host → `proxy_pass` a `127.0.0.1:4000` |
-| Deploy | GitHub Actions (`appleboy/ssh-action`) → SSH al VPS → `docker compose build/up` |
-| Directorio | `/var/www/corecrow-api` |
+Use Node 22+ and pnpm 9.15.0. Copy `.env.example` to `.env` and configure a local PostgreSQL database, a strong auth secret, trusted origins, and SMTP. The process does not auto-load `.env`; use your process manager, `node --env-file`, or `tsx --env-file=.env src/server.ts`.
 
----
+```sh
+pnpm install --frozen-lockfile
+pnpm db:generate
+pnpm db:migrate:deploy
+pnpm build
+node --env-file=.env dist/server.js
+```
 
-## 2. Lanzamiento en máquina local
+Email/password signup requires email verification. Without SMTP, the API starts with degraded readiness and email-dependent requests return 503 before creating accounts. For the first operator, register/verify through Better Auth, then run `pnpm create-admin` on the backend host with environment variables loaded. The CLI promotes an existing verified identity; it never creates an identifier-only login.
 
-### 2.1 Requisitos
+## Contracts
 
-| Herramienta | Versión |
-|---|---|
-| Node.js | ≥ 20 |
-| pnpm | 9.15.0 (declarado en `packageManager`) |
-| Docker | Para levantar Postgres/Redis locales en vez de usar la VPS |
+- `GET /`: public HTML status dashboard; `/health` is an HTML alias. Readiness and process uptime come from the existing health service. Traffic rate, latency, HTTP error totals, and historical charts remain explicitly unavailable until an aggregated telemetry contract is approved and implemented; the production page does not invent these values.
+- `GET /v1/live`: process liveness.
+- `GET /v1/health`: dependency/configuration readiness (503 when degraded).
+- `GET /v1/openapi.json`: generated application contract.
+- `GET /v1/auth/open-api/generate-schema`: Better Auth's own endpoint schemas.
+- `/v1/auth/*`: email/password, verification, recovery, Google when configured, sessions, revocation.
+- `/v1/me`, `/v1/users`: identity/profile operations and protected operator administration.
+- `/v1/organizations/*`: organizations, memberships, invitations, effective permissions, tenant audit, subscriptions, entitlements.
+- `/v1/invitations/accept`: recipient-bound, single-use invitation acceptance.
+- `/v1/security/keys`: self-owned read-only API keys with explicit scopes.
+- `/v1/commerce/*`: products, plans, audited contract provisioning, cancellation.
+- `/v1/contact`: public consented submission; operator-only audited GET for follow-up.
 
-### 2.2 Variables de entorno (`.env`)
+Application errors use `{ error: { code, message, requestId } }`. Better Auth retains its provider error contract. Schemas reject unrecognized request properties. List limits and supported parameters are specified in OpenAPI. Responses project only contract fields, excluding hashes and authentication credentials.
 
-| Variable | Usada en | Descripción | Default si falta |
-|---|---|---|---|
-| `DATABASE_URL` | `lib/database.ts` (vía Prisma) | Cadena de conexión Postgres | — (falla) |
-| `REDIS_URL` | `lib/auth.ts` | Cadena de conexión Redis | — (falla) |
-| `TRUSTED_ORIGINS` | `server.ts`, `lib/auth.ts` | Orígenes permitidos para CORS y Better Auth, separados por coma | `http://localhost:3000,http://localhost:3001` |
-| `BETTER_AUTH_SECRET` | `lib/auth.ts` |   — |
-| `BETTER_AUTH_URL` | `lib/auth.ts` | Base URL pública de la API para Better Auth | — |
-| `GOOGLE_CLIENT_ID` | `lib/auth.ts` | OAuth Google | `""` |
-| `GOOGLE_CLIENT_SECRET` | `lib/auth.ts` | OAuth Google | `""` |
-| `GOOGLE_REDIRECT_URL` | `lib/auth.ts` | Callback OAuth Google | `http://localhost:4000/api/auth/callback/google` |
-| `NODE_ENV` | `server.ts`, `lib/database.ts` | Nivel de logs de Fastify/Prisma | — |
-| `PORT` | `server.ts` | Puerto donde escucha Fastify | `4000` |
-| `POSTGRES_PASSWORD` | solo `docker-compose.yml` | Password del contenedor `db` | — |
+## Implemented boundaries
 
-### 2.3 Pasos para correr localmente
+`src/contracts` owns shared HTTP schemas; `src/routes/v1.ts` maps requests to module services. `src/modules` separates identity, authorization, tenancy, audit, security, commerce, business services, and health. Repositories use Prisma; application services orchestrate transactional invariants. There is no NORTH, ARCTIC FOX, ERMINE, or SNOWY OWL application implementation here.
 
-| Paso | Comando |
-|---|---|
-| 1. Clonar | `git clone https://github.com/group-blackpolar/CoreCrow-API.git` |
-| 2. Instalar deps | `pnpm install` |
-| 3. Crear `.env` | Copiar las variables de la tabla anterior |
-| 4. Levantar Postgres/Redis | Con Docker local, o vía túnel SSH a la VPS (ver sección 6) |
-| 5. Generar cliente Prisma | `pnpm db:generate` |
-| 6. Aplicar schema | `pnpm db:push` (dev rápido) o `pnpm db:migrate` (con migración versionada) |
-| 7. Crear admin inicial | `pnpm create-admin` (prompt interactivo) o `POST /api/admin/init` |
-| 8. Correr en modo dev | `pnpm dev` (tsx watch, recarga automática) |
-| 9. Build de producción | `pnpm build && pnpm start` |
+Tenant authority comes from current membership, never a browser-supplied role. Global administrators do not bypass tenant reads. Sensitive application mutations commit with audit records; PostgreSQL rejects audit mutation. Contract commerce uses exact minor units, explicit entitlement grants, idempotency, and atomic cancellation. It does not collect payments or implement a payment provider, recurring billing, purchases, or seat-license policy.
 
-### 2.4 Scripts disponibles (`package.json`)
+## Verification
 
-| Script | Qué hace |
-|---|---|
-| `dev` | `tsx watch src/server.ts` — desarrollo con hot reload |
-| `build` | `tsc` — compila a `dist/` |
-| `start` | `node dist/server.js` — corre el build de producción |
-| `lint` | `eslint src` |
-| `create-admin` | Wizard interactivo para crear el primer usuario `ADMIN` |
-| `db:generate` | `prisma generate` |
-| `db:push` | `prisma db push` — sincroniza el schema sin migración formal |
-| `db:migrate` | `prisma migrate dev` — crea y aplica migración en dev |
-| `db:migrate:deploy` | `prisma migrate deploy` — aplica migraciones pendientes en producción |
-| `db:studio` | `prisma studio` — UI visual de la base de datos |
+```sh
+pnpm build
+pnpm lint
+pnpm test:unit
+pnpm openapi
+```
 
----
+Full tests require `TEST_DATABASE_URL` pointing to a dedicated loopback PostgreSQL database whose name ends in `_test`. Tests never infer or reuse `DATABASE_URL`. After migrating that test database, run `pnpm test`; the integration suite uses an ephemeral loopback SMTP sink. Without `TEST_DATABASE_URL`, the database suite is explicitly skipped. `scripts/test-database.mjs` can start a local PostgreSQL 16 test instance at 127.0.0.1:55432 without Docker. Stop it with Ctrl+C; its data is under ignored `node_modules/.cache`.
 
-## 3. Acceso con GitHub
-
-| Ítem | Detalle |
-|---|---|
-| Repo | `group-blackpolar/CoreCrow-API`, público |
-| Branch de deploy | `main` — cualquier push a `main` dispara el deploy automático |
-| workflow secrets | `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` — generar en GitHub Secrets |
-
----
-
-## 4. Cómo funcionan los deploys
-
-Workflow: **"Deploy CoreClaw API"** (`.github/workflows/...`), dispara con `push` a `main` o manualmente (`workflow_dispatch`).
-
-### 4.1 Flujo
-
-| Paso | Acción |
-|---|---|
-| 1 | GitHub Actions se conecta por SSH al VPS usando `appleboy/ssh-action`, con `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` desde Secrets |
-| 2 | `cd /var/www/corecrow-api` |
-| 3 | `git fetch origin main` + `git reset --hard origin/main` — descarta cualquier cambio local no versionado en el VPS |
-| 4 | `docker compose build --no-cache api` — reconstruye la imagen desde cero |
-| 5 | `docker compose run --rm api npx prisma migrate deploy` — **aplica migraciones automáticamente antes del swap** |
-| 6 | `docker compose down` → `docker compose up -d` — reinicia todos los servicios |
-| 7 | `docker image prune -f` — limpia imágenes huérfanas |
-| 8 | `docker compose ps` — confirma que los contenedores están arriba |
-
-### 4.2 Consideraciones
-
-- `--no-cache` en el build significa que cada deploy reconstruye todo desde cero (más lento, pero evita builds corruptos por cache stale).
-- El `.env` real vive directamente en el VPS (`env_file: .env` en `docker-compose.yml`), no se inyecta desde GitHub Secrets — si cambias una variable, hay que editarla a mano en el servidor.
-- Si `prisma migrate deploy` falla (por ejemplo por una migración con conflicto), el `set -e` del script corta el deploy ahí — no llega a hacer `down`/`up`, por lo que el contenedor viejo sigue corriendo hasta que se resuelva.
-
----
-
-## 5. La API y su uso
-
-### 5.1 Rutas registradas
-
-| Prefijo | Plugin | Maneja |
-|---|---|---|
-| `/` | `healthRoutes` | Health check público |
-| `/api/*` | `userRoutes` | Usuarios |
-| `/api/*` | `authAdminRoutes` | Login de administradores |
-| `/api/auth/*` | Better Auth handler | Login/registro/sesión de usuarios finales |
-
-### 5.2 Endpoints
-
-| Método | Ruta | Auth requerida | Descripción |
-|---|---|---|---|
-| `GET` | `/` | Ninguna | Redirige a `/health` |
-| `GET` | `/health` | Ninguna | Página HTML pública con uptime, % de éxito y latencia de los últimos 30 días (ya implementado, con gráfico) |
-| `GET` | `/api/users` | Ninguna todavía | Lista todos los usuarios (comentario en el código: *"agregar middleware de rol después"* — pendiente) |
-| `GET` | `/api/users/:id` | Ninguna todavía | Detalle de un usuario |
-| `POST` | `/api/admin/login` | Ninguna (es el login mismo) | Body `{ adminUniqueId }` → crea sesión de 24h si el rol es `ADMIN` |
-| `POST` | `/api/admin/init` | Ninguna, pero solo funciona si **no existe ningún admin** | Crea el primer admin del sistema. El propio código marca que debería protegerse en producción |
-| `GET` | `/api/admin/exists` | Ninguna | Devuelve si ya existe un admin (para que el frontend sepa si mostrar "setup inicial" o "login") |
-| `ALL` | `/api/auth/*` | — | Delegado completo a Better Auth: login/registro por email+password, OAuth Google, manejo de sesión |
-
-### 5.3 Middlewares existentes
-
-| Archivo | Estado | Qué hace |
-|---|---|---|
-| `middlewares/authenticate.ts` | Implementado, no conectado a rutas | Acepta Bearer token (API key con hash SHA-256) **o** sesión de Better Auth; setea `req.apiKey` o `req.user` |
-| `middlewares/authenticateAdmin.ts` | Implementado, no conectado a rutas | Valida sesión de admin (`Session` con `expiresAt` vigente) y rol `ADMIN`/`SUPERADMIN`; setea `req.admin` |
-| `middlewares/audit.ts` | Implementado, no conectado a rutas | Factory `audit({ action, targetType, getTargetId })` que escribe en `AuditLog` tras una respuesta 2xx |
-| `middlewares/requireRole.ts` | **Vacío (0 bytes)** | Pendiente de implementar |
-| `middlewares/requireScope.ts` | **Vacío (0 bytes)** | Pendiente de implementar — para validar `scopes` de `ApiKey` |
-
-### 5.5 Autenticación — separado para BP-Admin y UserClient
-
-| Sistema | Para quién | Mecanismo | Expiración |
-|---|---|---|---|
-| Better Auth | Usuarios finales (registro público) | Cookie de sesión, email+password o Google OAuth, cacheado en Redis como `secondaryStorage` | 12h absolutas, se refresca cada 30 min de actividad (`updateAge`) |
-| Sistema de `adminUniqueId` | Administradores (North) | `POST /api/admin/login` con el ID único → token de sesión propio (tabla `Session`) | 24h fijas, generado con `crypto.getRandomValues` |
-| API Keys | Integraciones / North → CoreCrow-API | Bearer token, hash SHA-256 contra `ApiKey.keyHash`, con `scopes` | Definido por `expiresAt` al crearla (7 dias fijos) |
-
----
-
-## 6. Diseño de la base de datos (Prisma schema)
-
-### 6.1 Tablas
-
-| Modelo | Tabla real | Propósito |
-|---|---|---|
-| `User` | `users` | Usuarios (finales y admins, diferenciados por `role`) |
-| `Session` | `sessions` | Sesiones activas (tanto de Better Auth como del login de admin) |
-| `Account` | `accounts` | Cuentas OAuth/credenciales vinculadas (Better Auth) |
-| `Verification` | `verifications` | Tokens de verificación de email (Better Auth) |
-| `AuditLog` | *(sin `@@map`, tabla `AuditLog`)* | Registro de acciones administrativas |
-| `ApiKey` | `api_keys` | Tokens de servicio con scopes |
-| `UptimeCheck` | *(sin `@@map`, tabla `UptimeCheck`)* | Historial de checks de salud (usado por `/health`) |
-
-### 6.2 `User`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `id` | `String` (cuid) | PK |
-| `email` | `String` | único |
-| `emailVerified` | `Boolean` | default `false` |
-| `name` | `String?` | opcional |
-| `image` | `String?` | opcional |
-| `role` | `Role` enum | `USER \| DEVELOPER \| ADMIN \| SUPERADMIN`, default `USER` |
-| `adminUniqueId` | `String?` | único, solo para admins |
-| `createdAt` / `updatedAt` | `DateTime` | auto |
-
-Relaciones: `sessions[]`, `accounts[]`, `apiKeys[]`
-
-### 6.3 `Session`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `id` | `String` (cuid) | PK |
-| `userId` | `String` | FK → `User`, `onDelete: Cascade` |
-| `token` | `String` | único |
-| `expiresAt` | `DateTime` | requerido |
-| `ipAddress` / `userAgent` | `String?` | metadata de la sesión |
-| `createdAt` | `DateTime` | auto |
-
-### 6.4 `Account`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `id` | `String` (cuid) | PK |
-| `userId` | `String` | FK → `User`, cascade |
-| `accountId` / `providerId` | `String` | identifican el proveedor (ej. google) |
-| `accessToken` / `refreshToken` | `String?` | tokens OAuth |
-| `expiresAt` | `DateTime` | |
-| `password` | `String?` | para el proveedor email/password |
-| Único compuesto | `[providerId, accountId]` | |
-
-### 6.5 `ApiKey`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `id` | `String` (cuid) | PK |
-| `userId` | `String` | FK → `User`, cascade |
-| `name` | `String` | etiqueta legible |
-| `keyHash` | `String` | único, SHA-256 del token real (el token en claro nunca se guarda) |
-| `prefix` | `String` | prefijo visible para identificar la key sin exponerla |
-| `scopes` | `String[]` | permisos (ej. `logs:read`) |
-| `lastUsed` | `DateTime?` | se actualiza en cada uso |
-| `expiresAt` | `DateTime` | requerido |
-| `revokedAt` | `DateTime?` | revocación manual |
-
-### 6.6 `AuditLog`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `id` | `String` (cuid) | PK |
-| `actorId` | `String?` | quién hizo la acción |
-| `action` | `String` | ej. `"user.create"`, `"token.revoke"`, `"logs.view"` |
-| `targetType` / `targetId` | `String?` | qué se afectó |
-| `metadata` | `Json?` | incluye `apiKeyId` e `ip` cuando aplica |
-| `createdAt` | `DateTime` | auto |
-
-### 6.7 `UptimeCheck`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `id` | `String` (cuid) | PK |
-| `checkedAt` | `DateTime` | indexado, cada 5 min via `startUptimeMonitor()` |
-| `responseTimeMs` | `Int` | latencia del `SELECT 1` |
-| `ok` | `Boolean` | si el check pasó |
-
----
-
-## 7. Infraestructura y contenedores
-
-| Contenedor | Imagen | Puerto | Notas |
-|---|---|---|---|
-| `corecrow-db` | `postgres:16-alpine` | `127.0.0.1:5432` | Volumen `pgdata`, healthcheck `pg_isready` |
-| `corecrow-redis` | `redis:7-alpine` | Sin puerto expuesto | Solo accesible dentro de la red interna de Compose; volumen `redisdata` |
-| `corecrow-api` | Build local (`Dockerfile` multi-stage) | `127.0.0.1:4000` | Depende de que `db` y `redis` estén `healthy` antes de arrancar |
-
-Nginx en el host hace `proxy_pass` de `api.blackpolar.org` (443, con Certbot SSL) hacia `127.0.0.1:4000`.
-
-**Dockerfile** — build multi-stage: `base` (Node 20 slim + openssl + corepack) → `deps` (pnpm install frozen) → `build` (prisma generate + tsc + prune prod) → `runtime` (copia solo `node_modules`, `dist`, `prisma`, `src/public`).
-
----
+See [implementation decisions](docs/decisions/006-v1-foundation.md) for session/role/commerce choices and limitations, and [release notes](docs/RELEASE.md) for verification and deployment prerequisites. [The old README](docs/legacy-baseline.md) is retained only as historical reference; its endpoint and security descriptions no longer apply.

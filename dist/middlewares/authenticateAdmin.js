@@ -1,24 +1,10 @@
-import { createHash } from 'node:crypto';
-import { prisma } from '../lib/database.js';
-function hashToken(raw) {
-    return createHash('sha256').update(raw).digest('hex');
-}
-export async function authenticateAdmin(req, reply) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-        return reply.code(401).send({ error: 'No autenticado' });
-    }
-    const rawToken = authHeader.slice(7);
-    const tokenHash = hashToken(rawToken);
-    const session = await prisma.session.findUnique({
-        where: { token: tokenHash },
-        include: { user: true },
-    });
-    if (!session || session.expiresAt < new Date()) {
-        return reply.code(401).send({ error: 'Sesión inválida o expirada' });
-    }
-    if (session.user.role !== 'ADMIN' && session.user.role !== 'SUPERADMIN') {
-        return reply.code(403).send({ error: 'No es una cuenta de administrador' });
-    }
-    req.admin = { id: session.user.id, role: session.user.role };
+import { principal } from "../modules/security/session.js";
+import { requireOperator } from "../modules/identity/service.js";
+import { legacyPrincipal } from "../modules/identity/legacy-service.js";
+export async function authenticateAdmin(req, _reply) {
+    const bearer = req.headers.authorization;
+    const user = bearer && /^Bearer [a-f0-9]{64}$/.test(bearer) ? await legacyPrincipal(bearer.slice(7)) : await principal(req);
+    await requireOperator(user.id);
+    req.admin = { id: user.id, role: user.role };
+    req.user = { id: user.id, role: user.role };
 }

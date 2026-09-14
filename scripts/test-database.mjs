@@ -1,0 +1,12 @@
+import EmbeddedPostgres from "embedded-postgres";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+const directory = mkdtempSync(resolve("node_modules/.cache/corecrow-test-"));
+const pg = new EmbeddedPostgres({ databaseDir: directory, user: "corecrow_test", password: "local-test-only", port: 55432, persistent: true, postgresFlags: ["-h", "127.0.0.1"], onLog: () => {}, onError: () => {} });
+await pg.initialise();
+await pg.start();
+await pg.createDatabase("corecrow_test");
+console.log("Isolated PostgreSQL 16 ready on loopback port 55432 (corecrow_test)");
+writeFileSync("node_modules/.cache/test-db-ready", directory);
+for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, async () => { await pg.stop(); process.exit(0); });
+setInterval(() => {}, 60000);

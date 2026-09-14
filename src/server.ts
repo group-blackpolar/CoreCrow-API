@@ -1,96 +1,26 @@
-import Fastify from "fastify";
-import cors from "@fastify/cors";
-import helmet from "@fastify/helmet";
-import rateLimit from "@fastify/rate-limit";
-import { auth } from "./lib/auth.js";
-import { healthRoutes } from "./routes/health.js";
-import { userRoutes } from "./routes/users.js";
-import { authAdminRoutes } from "./routes/auth-admin.js";
-import { startUptimeMonitor } from "./lib/uptimeMonitor.js";
-import staticPlugin from "@fastify/static";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const app = Fastify({
-  logger: {
-    level: process.env.NODE_ENV === "production" ? "warn" : "info",
-  },
-});
-
-const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,http://localhost:3001")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-async function main() {
-
-  await app.register(cors, {
-    origin: trustedOrigins,
-    credentials: true,
-  });
-
-  await app.register(rateLimit, {
-    max: 100,
-    timeWindow: "1 minute",
-  });
-
-  await app.register(staticPlugin, {
-      root: path.join(__dirname, "public"),
-      prefix: "/",
-  }); 
-
-    
-  app.get('/favicon.ico', async (req, reply) => {
-      return reply.sendFile('images/bpfav.png');
-  });
-    
-  // Better Auth maneja /api/auth/login, /api/auth/register, /api/auth/session, etc.
-  app.all("/api/auth/*", async (request, reply) => {
-    const url = new URL(request.url, `http://${request.headers.host}`);
-    const headers = new Headers();
-    Object.entries(request.headers).forEach(([key, value]) => {
-      if (value) headers.append(key, value.toString());
-    });
-
-    const response = await auth.handler(
-      new Request(url, {
-        method: request.method,
-        headers,
-        body:
-          request.method !== "GET" && request.method !== "HEAD"
-            ? JSON.stringify(request.body)
-            : undefined,
-      })
-    );
-
-    reply.status(response.status);
-    response.headers.forEach((value, key) => reply.header(key, value));
-    return reply.send(await response.text());
-  });
-
-  await app.register(helmet, {
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"], 
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-});
-
-  await app.register(healthRoutes); {}
-  await app.register(userRoutes, { prefix: "/api" });
-  await app.register(authAdminRoutes, { prefix: "/api" });
-
-  const port = Number(process.env.PORT) || 4000;
-  await app.listen({ port, host: "0.0.0.0" });
-  startUptimeMonitor();
-  console.log(`API corriendo en puerto ${port}`);
+import { buildApp } from "./app.js";
+import { prisma } from "./lib/database.js";
+if (process.env.NODE_ENV === "production") {
+  if (
+    !process.env.BETTER_AUTH_SECRET ||
+    process.env.BETTER_AUTH_SECRET.length < 32
+  )
+    throw new Error("A strong BETTER_AUTH_SECRET is required");
+  if (!process.env.BETTER_AUTH_URL?.startsWith("https://"))
+    throw new Error("An HTTPS BETTER_AUTH_URL is required");
+  if (!process.env.TRUSTED_ORIGINS)
+    throw new Error("Explicit TRUSTED_ORIGINS are required");
 }
-
-main().catch((err) => {
-  app.log.error(err);
-  process.exit(1);
-});
+const app = await buildApp();
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  process.once(signal, async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+try {
+  await app.listen({ port: Number(process.env.PORT ?? 4000), host: "0.0.0.0" });
+} catch {
+  app.log.error("API failed to start");
+  await prisma.$disconnect();
+  process.exitCode = 1;
+}
