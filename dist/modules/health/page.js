@@ -30,7 +30,7 @@ export function healthPage(state) {
   <meta name="description" content="Estado operativo en vivo de la API de CoreCrow.">
   <title>Estado de CoreCrow API · Black Polar</title>
   <link rel="stylesheet" href="/status.css">
-  <script src="/status.js" defer></script>
+  <script src="/status.js?v=es-1" defer></script>
 </head>
 <body>
   <header class="shell topbar">
