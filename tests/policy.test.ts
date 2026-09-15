@@ -62,4 +62,19 @@ test("telemetry exposes only real sanitized aggregates", () => {
     "requests",
     "startedAt",
   ]);
+  const page = healthPage(
+    {
+      status: "operational",
+      apiVersion: "v1",
+      uptimeSeconds: 3,
+      checkedAt: new Date(now).toISOString(),
+      modules: [],
+      emailDelivery: "configured",
+      emailTransport: "available",
+      commerceMode: "contract_provisioning",
+    },
+    summary,
+  );
+  assert.match(page, /class="traffic-bar/);
+  assert.doesNotMatch(page, /traffic-area/);
 });

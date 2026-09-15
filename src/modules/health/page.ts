@@ -31,21 +31,23 @@ function trafficChart(summary: StatusSummary) {
     1,
     ...summary.series.map((bucket) => bucket.requests),
   );
-  const points = summary.series
+  const slotWidth = (width - padding * 2) / Math.max(1, summary.series.length);
+  const barWidth = Math.max(1, Math.min(18, slotWidth * 0.62));
+  const bars = summary.series
     .map((bucket, index) => {
-      const x =
-        padding +
-        (index / Math.max(1, summary.series.length - 1)) *
-          (width - padding * 2);
-      const y =
-        height - padding - (bucket.requests / maximum) * (height - padding * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
+      const x = padding + index * slotWidth + (slotWidth - barWidth) / 2;
+      const measuredHeight =
+        (bucket.requests / maximum) * (height - padding * 2);
+      const barHeight = bucket.requests ? Math.max(3, measuredHeight) : 1;
+      const y = height - padding - barHeight;
+      const hasErrors = bucket.errors4xx + bucket.errors5xx > 0;
+      return `<rect class="traffic-bar${bucket.requests ? "" : " is-empty"}${hasErrors ? " has-errors" : ""}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="2"></rect>`;
     })
-    .join(" ");
+    .join("");
   const first = summary.series[0]?.startedAt.slice(11, 16) ?? "";
   const last = summary.series.at(-1)?.startedAt.slice(11, 16) ?? "";
   return `<div class="traffic-chart" role="img" aria-label="Solicitudes reales agrupadas cada cinco minutos">
-    <svg viewBox="0 0 ${width} ${height}" aria-hidden="true" preserveAspectRatio="none"><path class="traffic-area" d="M ${padding},${height - padding} L ${points.replaceAll(" ", " L ")} L ${width - padding},${height - padding} Z"></path><polyline points="${points}"></polyline></svg>
+    <svg viewBox="0 0 ${width} ${height}" aria-hidden="true" preserveAspectRatio="none"><line class="traffic-baseline" x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}"></line>${bars}</svg>
     <div><span>${first} UTC</span><strong>${summary.requests} solicitudes observadas</strong><span>${last} UTC</span></div>
   </div>`;
 }
@@ -83,7 +85,7 @@ export function healthPage(state: HealthSnapshot, summary: StatusSummary) {
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Estado operativo en vivo de la API de CoreCrow.">
   <title>Estado de CoreCrow API · Black Polar</title>
-  <link rel="stylesheet" href="/status.css?v=brand-1">
+  <link rel="stylesheet" href="/status.css?v=telemetry-2">
   <script src="/status.js?v=es-1" defer></script>
 </head>
 <body>
@@ -123,7 +125,7 @@ export function healthPage(state: HealthSnapshot, summary: StatusSummary) {
       </div>
 
       <div class="chart-panel" aria-labelledby="traffic-title">
-        <div class="panel-heading"><div><span class="index">03</span><h2 id="traffic-title">Historial de tráfico</h2></div><span>24 horas</span></div>
+        <div class="panel-heading"><div><span class="index">03</span><h2 id="traffic-title">Historial de tráfico</h2></div><span>${summary.window} · ${durationLabel(summary.coverageSeconds)} observadas</span></div>
         ${trafficChart(summary)}
       </div>
     </section>
