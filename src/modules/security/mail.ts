@@ -2,6 +2,17 @@ import nodemailer from "nodemailer";
 const transport = process.env.SMTP_URL
   ? nodemailer.createTransport(process.env.SMTP_URL)
   : undefined;
+
+export async function verifyIdentityMailTransport() {
+  if (!transport || !process.env.MAIL_FROM) return "not_configured" as const;
+  try {
+    await transport.verify();
+    return "available" as const;
+  } catch {
+    return "unavailable" as const;
+  }
+}
+
 export async function sendIdentityMail(
   to: string,
   subject: string,

@@ -25,10 +25,19 @@ import { healthPage } from "./modules/health/page.js";
 import { auditRepository } from "./modules/audit/repository.js";
 import { prisma } from "./lib/database.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { health as healthSchema } from "./contracts/schemas.js";
+import {
+  health as healthSchema,
+  statusSummary as statusSummarySchema,
+  statusSummaryQuery,
+} from "./contracts/schemas.js";
+import { RequestTelemetry } from "./modules/telemetry/service.js";
 
 export async function buildApp(
-  options: { logger?: boolean; health?: ReturnType<typeof healthService> } = {},
+  options: {
+    logger?: boolean;
+    health?: ReturnType<typeof healthService>;
+    telemetry?: RequestTelemetry;
+  } = {},
 ) {
   const app = Fastify({
     logger:
@@ -37,8 +46,13 @@ export async function buildApp(
         : {
             level: process.env.NODE_ENV === "production" ? "warn" : "info",
             serializers: {
-              req: (req: { method: string; url: string }) => ({ method: req.method, path: req.url.split("?")[0] }),
-              res: (reply: { statusCode: number }) => ({ statusCode: reply.statusCode }),
+              req: (req: { method: string; url: string }) => ({
+                method: req.method,
+                path: req.url.split("?")[0],
+              }),
+              res: (reply: { statusCode: number }) => ({
+                statusCode: reply.statusCode,
+              }),
             },
             redact: [
               "req.headers.authorization",
@@ -49,8 +63,12 @@ export async function buildApp(
           },
     bodyLimit: 32768,
     ajv: { customOptions: { removeAdditional: false } },
-    trustProxy: process.env.TRUST_PROXY === "loopback" ? "loopback" :
-      process.env.TRUST_PROXY && isIP(process.env.TRUST_PROXY) ? process.env.TRUST_PROXY : false,
+    trustProxy:
+      process.env.TRUST_PROXY === "loopback"
+        ? "loopback"
+        : process.env.TRUST_PROXY && isIP(process.env.TRUST_PROXY)
+          ? process.env.TRUST_PROXY
+          : false,
   });
   await app.register(helmet, {
     contentSecurityPolicy: {
@@ -98,6 +116,11 @@ export async function buildApp(
     prefix: "/",
     wildcard: false,
   });
+  const telemetry = options.telemetry ?? new RequestTelemetry();
+  const requestStartedAt = new Map<string, bigint>();
+  app.addHook("onRequest", async (req) => {
+    requestStartedAt.set(req.id, process.hrtime.bigint());
+  });
   app.addHook("onRequest", async (req, reply) => {
     reply.header("Cache-Control", "no-store");
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return;
@@ -106,25 +129,21 @@ export async function buildApp(
       (origin && !trustedOrigins.includes(origin)) ||
       (!origin && req.headers["sec-fetch-site"] === "cross-site")
     )
-      return reply
-        .code(403)
-        .send({
-          error: {
-            code: "ORIGIN_DENIED",
-            message: "Origin not allowed",
-            requestId: req.id,
-          },
-        });
+      return reply.code(403).send({
+        error: {
+          code: "ORIGIN_DENIED",
+          message: "Origin not allowed",
+          requestId: req.id,
+        },
+      });
     if (req.headers.cookie && !origin)
-      return reply
-        .code(403)
-        .send({
-          error: {
-            code: "ORIGIN_REQUIRED",
-            message: "Cookie writes require an Origin header",
-            requestId: req.id,
-          },
-        });
+      return reply.code(403).send({
+        error: {
+          code: "ORIGIN_REQUIRED",
+          message: "Cookie writes require an Origin header",
+          requestId: req.id,
+        },
+      });
   });
   app.setErrorHandler<FastifyError>((error, req, reply) => {
     let status = 500;
@@ -170,15 +189,13 @@ export async function buildApp(
       .send({ error: { code, message, requestId: req.id } });
   });
   app.setNotFoundHandler((req, reply) =>
-    reply
-      .code(404)
-      .send({
-        error: {
-          code: "NOT_FOUND",
-          message: "Route not found",
-          requestId: req.id,
-        },
-      }),
+    reply.code(404).send({
+      error: {
+        code: "NOT_FOUND",
+        message: "Route not found",
+        requestId: req.id,
+      },
+    }),
   );
   app.addHook("onResponse", async (req, reply) => {
     if (![401, 403, 429].includes(reply.statusCode)) return;
@@ -196,12 +213,23 @@ export async function buildApp(
       );
     }
   });
+  app.addHook("onResponse", async (req, reply) => {
+    const startedAt = requestStartedAt.get(req.id);
+    requestStartedAt.delete(req.id);
+    if (startedAt === undefined) return;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    telemetry.record(durationMs, reply.statusCode);
+  });
   const health = options.health ?? healthService();
   app.get("/", async (_, reply) =>
-    reply.type("text/html").send(healthPage(await health())),
+    reply
+      .type("text/html")
+      .send(healthPage(await health(), telemetry.summary("24h"))),
   );
   app.get("/health", async (_, reply) =>
-    reply.type("text/html").send(healthPage(await health())),
+    reply
+      .type("text/html")
+      .send(healthPage(await health(), telemetry.summary("24h"))),
   );
   const healthResponse = zodToJsonSchema(healthSchema, { target: "openApi3" });
   app.get(
@@ -216,6 +244,27 @@ export async function buildApp(
     async (_, reply) => {
       const state = await health();
       return reply.code(state.status === "operational" ? 200 : 503).send(state);
+    },
+  );
+  app.get(
+    "/v1/status/summary",
+    {
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Health"],
+        summary:
+          "Sanitized aggregate process traffic for the public status page",
+        querystring: zodToJsonSchema(statusSummaryQuery, {
+          target: "openApi3",
+        }),
+        response: {
+          200: zodToJsonSchema(statusSummarySchema, { target: "openApi3" }),
+        },
+      },
+    },
+    async (request) => {
+      const query = statusSummaryQuery.parse(request.query);
+      return telemetry.summary(query.window);
     },
   );
   app.get(
@@ -241,9 +290,25 @@ export async function buildApp(
   app.get("/v1/openapi.json", async () => app.swagger());
   const authHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     const requestPath = request.url.replace(/^\/api\/auth/, "/v1/auth");
-    const mailRequired = ["/v1/auth/sign-up/email", "/v1/auth/request-password-reset", "/v1/auth/send-verification-email"].includes(requestPath.split("?")[0]!);
-    if (request.method === "POST" && mailRequired && (!process.env.SMTP_URL || !process.env.MAIL_FROM)) {
-      return reply.code(503).send({ error: { code: "EMAIL_DELIVERY_UNAVAILABLE", message: "Account email delivery is not configured", requestId: request.id } });
+    const mailRequired = [
+      "/v1/auth/sign-up/email",
+      "/v1/auth/request-password-reset",
+      "/v1/auth/send-verification-email",
+    ].includes(requestPath.split("?")[0]!);
+    if (
+      request.method === "POST" &&
+      mailRequired &&
+      (!process.env.SMTP_URL || !process.env.MAIL_FROM)
+    ) {
+      return reply
+        .code(503)
+        .send({
+          error: {
+            code: "EMAIL_DELIVERY_UNAVAILABLE",
+            message: "Account email delivery is not configured",
+            requestId: request.id,
+          },
+        });
     }
     const headers = webHeaders(request.headers);
     // Derive the auth limiter address only from Fastify's configured proxy trust.

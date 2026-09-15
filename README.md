@@ -18,9 +18,10 @@ Email/password signup requires email verification. Without SMTP, the API starts 
 
 ## Contracts
 
-- `GET /`: public HTML status dashboard; `/health` is an HTML alias. Readiness and process uptime come from the existing health service. Traffic rate, latency, HTTP error totals, and historical charts remain explicitly unavailable until an aggregated telemetry contract is approved and implemented; the production page does not invent these values.
+- `GET /`: public HTML status dashboard; `/health` is an HTML alias. Readiness, verified SMTP connectivity, process uptime, traffic, latency and HTTP error aggregates come from live services. Telemetry coverage restarts with the process and is labeled accordingly; the page never invents historical availability.
 - `GET /v1/live`: process liveness.
 - `GET /v1/health`: dependency/configuration readiness (503 when degraded).
+- `GET /v1/status/summary?window=1h|6h|24h`: public, sanitized five-minute traffic buckets. It returns counts and latency histograms only—never paths, tenant identifiers, IPs, headers or bodies.
 - `GET /v1/openapi.json`: generated application contract.
 - `GET /v1/auth/open-api/generate-schema`: Better Auth's own endpoint schemas.
 - `/v1/auth/*`: email/password, verification, recovery, Google when configured, sessions, revocation.
@@ -51,3 +52,7 @@ pnpm openapi
 Full tests require `TEST_DATABASE_URL` pointing to a dedicated loopback PostgreSQL database whose name ends in `_test`. Tests never infer or reuse `DATABASE_URL`. After migrating that test database, run `pnpm test`; the integration suite uses an ephemeral loopback SMTP sink. Without `TEST_DATABASE_URL`, the database suite is explicitly skipped. `scripts/test-database.mjs` can start a local PostgreSQL 16 test instance at 127.0.0.1:55432 without Docker. Stop it with Ctrl+C; its data is under ignored `node_modules/.cache`.
 
 See [implementation decisions](docs/decisions/006-v1-foundation.md) for session/role/commerce choices and limitations, and [release notes](docs/RELEASE.md) for verification and deployment prerequisites. [The old README](docs/legacy-baseline.md) is retained only as historical reference; its endpoint and security descriptions no longer apply.
+
+## SMTP
+
+Production mail can use Google Workspace SMTP relay without storing a mailbox password. In Google Admin, authorize only the VPS public IP, restrict allowed senders to registered Black Polar users, and require TLS. Then set `SMTP_URL=smtp://smtp-relay.gmail.com:587?requireTLS=true` and a registered `MAIL_FROM` in the root-readable backend environment. An authenticated `smtp.gmail.com` connection with a dedicated app password is the fallback; percent-encode credentials in the URL and never commit them. Restart CoreCrow and confirm `emailTransport: "available"` at `/v1/health` before testing one controlled verification email.

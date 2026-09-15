@@ -4,7 +4,7 @@ This list extends the accepted architecture without pretending the routes alread
 
 ## P0 — close current operational gaps
 
-1. `GET /v1/status/summary?window=24h` — sanitized aggregate request rate, latency percentiles, 4xx/5xx counts, uptime and time-series buckets for the public status page. It must never expose tenant identifiers, raw paths, IPs, request bodies or secrets. Until this exists, the dashboard keeps metrics explicitly unavailable rather than using mocks.
+1. **Implemented:** `GET /v1/status/summary?window=1h|6h|24h` — sanitized aggregate request rate, latency percentiles, 4xx/5xx counts, process uptime and five-minute time-series buckets for the public status page. It never exposes tenant identifiers, raw paths, IPs, request bodies or secrets. Coverage begins at process start; persistent external availability remains future observability work.
 2. `GET /v1/organizations/:organizationId/invitations` — list pending invitations for authorized owners/admins, with pagination and without invitation tokens.
 3. `PATCH /v1/contact/:id` — operator-only contact triage state (`new`, `in_progress`, `closed`) with an audit event. Keep private notes out of the public submission response.
 4. Consistent cursor pagination and filtering for users, members, invitations, audit events and contact requests before their datasets grow.

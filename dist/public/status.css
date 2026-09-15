@@ -133,6 +133,12 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 5px; }
 .empty-chart strong, .empty-chart span { position: relative; }
 .empty-chart strong { font-size: 16px; }
 .empty-chart span { max-width: 390px; margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.traffic-chart { min-height: 234px; padding: 22px 22px 16px; display: flex; flex-direction: column; justify-content: flex-end; }
+.traffic-chart svg { width: 100%; height: 176px; overflow: visible; }
+.traffic-chart polyline { fill: none; stroke: var(--ink); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.traffic-chart .traffic-area { fill: color-mix(in srgb, var(--ink) 7%, transparent); stroke: none; }
+.traffic-chart > div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 9px; }
+.traffic-chart > div strong { color: var(--copy); font-weight: 600; }
 .details { margin-top: 14px; }
 .dependency-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .dependency-list > div { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 11px; }

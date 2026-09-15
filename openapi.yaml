@@ -72,6 +72,12 @@ paths:
                     enum:
                       - configured
                       - not_configured
+                  emailTransport:
+                    type: string
+                    enum:
+                      - available
+                      - unavailable
+                      - not_configured
                   commerceMode:
                     type: string
                     enum:
@@ -83,6 +89,7 @@ paths:
                   - checkedAt
                   - modules
                   - emailDelivery
+                  - emailTransport
                   - commerceMode
                 additionalProperties: false
         "503":
@@ -128,6 +135,12 @@ paths:
                     enum:
                       - configured
                       - not_configured
+                  emailTransport:
+                    type: string
+                    enum:
+                      - available
+                      - unavailable
+                      - not_configured
                   commerceMode:
                     type: string
                     enum:
@@ -139,7 +152,131 @@ paths:
                   - checkedAt
                   - modules
                   - emailDelivery
+                  - emailTransport
                   - commerceMode
+                additionalProperties: false
+  /v1/status/summary:
+    get:
+      summary: Sanitized aggregate process traffic for the public status page
+      tags:
+        - Health
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - 1h
+              - 6h
+              - 24h
+            default: 24h
+          in: query
+          name: window
+          required: false
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  window:
+                    type: string
+                    enum:
+                      - 1h
+                      - 6h
+                      - 24h
+                  bucketSeconds:
+                    type: integer
+                    minimum: 1
+                  generatedAt:
+                    type: string
+                    format: date-time
+                  observedSince:
+                    $ref: "#/properties/generatedAt"
+                  coverageSeconds:
+                    type: integer
+                    minimum: 1
+                  uptimeSeconds:
+                    type: integer
+                    minimum: 0
+                  requests:
+                    type: integer
+                    minimum: 0
+                  requestsPerSecond:
+                    type: number
+                    minimum: 0
+                  latencyMs:
+                    type: object
+                    properties:
+                      average:
+                        type: number
+                        minimum: 0
+                        nullable: true
+                      p50:
+                        type: number
+                        minimum: 0
+                        nullable: true
+                      p95:
+                        type: number
+                        minimum: 0
+                        nullable: true
+                    required:
+                      - average
+                      - p50
+                      - p95
+                    additionalProperties: false
+                  errors:
+                    type: object
+                    properties:
+                      client:
+                        type: integer
+                        minimum: 0
+                      server:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - client
+                      - server
+                    additionalProperties: false
+                  series:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        startedAt:
+                          $ref: "#/properties/generatedAt"
+                        requests:
+                          type: integer
+                          minimum: 0
+                        averageLatencyMs:
+                          type: number
+                          minimum: 0
+                          nullable: true
+                        errors4xx:
+                          type: integer
+                          minimum: 0
+                        errors5xx:
+                          type: integer
+                          minimum: 0
+                      required:
+                        - startedAt
+                        - requests
+                        - averageLatencyMs
+                        - errors4xx
+                        - errors5xx
+                      additionalProperties: false
+                required:
+                  - window
+                  - bucketSeconds
+                  - generatedAt
+                  - observedSince
+                  - coverageSeconds
+                  - uptimeSeconds
+                  - requests
+                  - requestsPerSecond
+                  - latencyMs
+                  - errors
+                  - series
                 additionalProperties: false
   /v1/live:
     get:

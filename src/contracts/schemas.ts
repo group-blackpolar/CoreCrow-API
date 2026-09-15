@@ -102,7 +102,39 @@ export const health = z.object({
     }),
   ),
   emailDelivery: z.enum(["configured", "not_configured"]),
+  emailTransport: z.enum(["available", "unavailable", "not_configured"]),
   commerceMode: z.literal("contract_provisioning"),
+});
+export const statusWindow = z.enum(["1h", "6h", "24h"]);
+export const statusSummaryQuery = z
+  .object({ window: statusWindow.default("24h") })
+  .strict();
+const statusBucket = z.object({
+  startedAt: date,
+  requests: z.number().int().nonnegative(),
+  averageLatencyMs: z.number().nonnegative().nullable(),
+  errors4xx: z.number().int().nonnegative(),
+  errors5xx: z.number().int().nonnegative(),
+});
+export const statusSummary = z.object({
+  window: statusWindow,
+  bucketSeconds: z.number().int().min(1),
+  generatedAt: date,
+  observedSince: date,
+  coverageSeconds: z.number().int().min(1),
+  uptimeSeconds: z.number().int().nonnegative(),
+  requests: z.number().int().nonnegative(),
+  requestsPerSecond: z.number().nonnegative(),
+  latencyMs: z.object({
+    average: z.number().nonnegative().nullable(),
+    p50: z.number().nonnegative().nullable(),
+    p95: z.number().nonnegative().nullable(),
+  }),
+  errors: z.object({
+    client: z.number().int().nonnegative(),
+    server: z.number().int().nonnegative(),
+  }),
+  series: z.array(statusBucket),
 });
 export const contactInput = z
   .object({

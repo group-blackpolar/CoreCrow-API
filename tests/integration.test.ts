@@ -129,6 +129,15 @@ test(
       expect(await call("GET", "/api/admin/exists"), 410);
       const health = expect(await call("GET", "/v1/health"), 200);
       assert.equal(health.status, "operational");
+      const telemetry = expect(
+        await call("GET", "/v1/status/summary?window=1h"),
+        200,
+      );
+      assert.equal(telemetry.window, "1h");
+      assert.ok(telemetry.requests > 0);
+      assert.equal(JSON.stringify(telemetry).includes("path"), false);
+      assert.equal(JSON.stringify(telemetry).includes("ip"), false);
+      expect(await call("GET", "/v1/status/summary?window=30d"), 400);
       const html = await call("GET", "/");
       assert.equal(html.statusCode, 200);
       assert.match(html.body, /CORECROW/);
@@ -579,27 +588,88 @@ test(
       expect(await call("POST", "/v1/auth/sign-out", outsider.cookie, {}), 200);
       expect(await call("GET", "/v1/me", outsider.cookie), 401);
     });
-    await t.test("missing SMTP fails closed before creating an account", async () => {
-      const smtpUrl = process.env.SMTP_URL; delete process.env.SMTP_URL;
-      try {
-        expect(await call("POST", "/v1/auth/sign-up/email", undefined, { email: `${prefix}-blocked@blackpolar.test`, name: "Blocked", password }), 503);
-        assert.equal(await prisma.user.count({ where: { email: `${prefix}-blocked@blackpolar.test` } }), 0);
-      } finally { process.env.SMTP_URL = smtpUrl; }
-    });
-    await t.test("opt-in legacy enrollment retires the ID and old sessions permanently", async () => {
-      process.env.ENABLE_LEGACY_ADMIN_AUTH = "true";
-      const legacyApp = await buildApp({ logger: false }); await legacyApp.ready();
-      try {
-        const legacyEmail = `${prefix}-legacy@blackpolar.test`; const legacyId = `legacy-test-${prefix}`;
-        await prisma.user.create({ data: { email: legacyEmail, name: "Legacy test", emailVerified: true, role: "ADMIN", adminUniqueId: legacyId } });
-        const login = await legacyApp.inject({ method: "POST", url: "/api/admin/login", payload: { email: legacyEmail, adminUniqueId: legacyId } });
-        assert.equal(login.statusCode, 200, login.body); const token = login.json().session.token;
-        const migration = await legacyApp.inject({ method: "POST", url: "/v1/identity/legacy-migration", headers: { authorization: `Bearer ${token}` }, payload: { email: legacyEmail, password } });
-        assert.equal(migration.statusCode, 200, migration.body);
-        const old = await legacyApp.inject({ method: "POST", url: "/api/admin/login", payload: { email: legacyEmail, adminUniqueId: legacyId } }); assert.equal(old.statusCode, 401);
-        const oldSession = await legacyApp.inject({ method: "GET", url: "/api/users", headers: { authorization: `Bearer ${token}` } }); assert.equal(oldSession.statusCode, 401);
-        const modern = await legacyApp.inject({ method: "POST", url: "/v1/auth/sign-in/email", remoteAddress: "127.0.0.2", headers: { origin: "http://localhost:3000" }, payload: { email: legacyEmail, password } }); expect(modern, 200);
-      } finally { await legacyApp.close(); delete process.env.ENABLE_LEGACY_ADMIN_AUTH; }
-    });
+    await t.test(
+      "missing SMTP fails closed before creating an account",
+      async () => {
+        const smtpUrl = process.env.SMTP_URL;
+        delete process.env.SMTP_URL;
+        try {
+          expect(
+            await call("POST", "/v1/auth/sign-up/email", undefined, {
+              email: `${prefix}-blocked@blackpolar.test`,
+              name: "Blocked",
+              password,
+            }),
+            503,
+          );
+          assert.equal(
+            await prisma.user.count({
+              where: { email: `${prefix}-blocked@blackpolar.test` },
+            }),
+            0,
+          );
+        } finally {
+          process.env.SMTP_URL = smtpUrl;
+        }
+      },
+    );
+    await t.test(
+      "opt-in legacy enrollment retires the ID and old sessions permanently",
+      async () => {
+        process.env.ENABLE_LEGACY_ADMIN_AUTH = "true";
+        const legacyApp = await buildApp({ logger: false });
+        await legacyApp.ready();
+        try {
+          const legacyEmail = `${prefix}-legacy@blackpolar.test`;
+          const legacyId = `legacy-test-${prefix}`;
+          await prisma.user.create({
+            data: {
+              email: legacyEmail,
+              name: "Legacy test",
+              emailVerified: true,
+              role: "ADMIN",
+              adminUniqueId: legacyId,
+            },
+          });
+          const login = await legacyApp.inject({
+            method: "POST",
+            url: "/api/admin/login",
+            payload: { email: legacyEmail, adminUniqueId: legacyId },
+          });
+          assert.equal(login.statusCode, 200, login.body);
+          const token = login.json().session.token;
+          const migration = await legacyApp.inject({
+            method: "POST",
+            url: "/v1/identity/legacy-migration",
+            headers: { authorization: `Bearer ${token}` },
+            payload: { email: legacyEmail, password },
+          });
+          assert.equal(migration.statusCode, 200, migration.body);
+          const old = await legacyApp.inject({
+            method: "POST",
+            url: "/api/admin/login",
+            payload: { email: legacyEmail, adminUniqueId: legacyId },
+          });
+          assert.equal(old.statusCode, 401);
+          const oldSession = await legacyApp.inject({
+            method: "GET",
+            url: "/api/users",
+            headers: { authorization: `Bearer ${token}` },
+          });
+          assert.equal(oldSession.statusCode, 401);
+          const modern = await legacyApp.inject({
+            method: "POST",
+            url: "/v1/auth/sign-in/email",
+            remoteAddress: "127.0.0.2",
+            headers: { origin: "http://localhost:3000" },
+            payload: { email: legacyEmail, password },
+          });
+          expect(modern, 200);
+        } finally {
+          await legacyApp.close();
+          delete process.env.ENABLE_LEGACY_ADMIN_AUTH;
+        }
+      },
+    );
   },
 );
