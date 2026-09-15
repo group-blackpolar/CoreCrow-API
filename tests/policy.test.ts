@@ -32,10 +32,10 @@ test("health reflects a failed dependency rather than inventing uptime history",
   assert.ok(state.uptimeSeconds >= 0);
   const telemetry = new RequestTelemetry();
   const page = healthPage(state, telemetry.summary("24h"));
-  assert.match(page, /Tiempo activo del proceso/);
-  assert.match(page, /Esperando tráfico real/);
-  assert.match(page, /Solicitudes \/ segundo<\/small><strong>0\.000/);
-  assert.doesNotMatch(page, /Requiere un endpoint de telemetría/);
+  assert.match(page, /Process uptime/);
+  assert.match(page, /Waiting for real traffic/);
+  assert.match(page, /Requests \/ second<\/small><strong>0\.000/);
+  assert.doesNotMatch(page, /Esperando tráfico real/);
 });
 
 test("telemetry exposes only real sanitized aggregates", () => {
@@ -76,5 +76,8 @@ test("telemetry exposes only real sanitized aggregates", () => {
     summary,
   );
   assert.match(page, /class="traffic-bar/);
+  assert.match(page, /class="chart-tooltip"/);
+  assert.match(page, /data-latency="79"/);
   assert.doesNotMatch(page, /traffic-area/);
+  assert.doesNotMatch(page, /Historial de tráfico/);
 });

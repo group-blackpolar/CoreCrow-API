@@ -214,6 +214,13 @@ model ContactRequest {
   locale String
   consentAt DateTime @default(now())
   createdAt DateTime @default(now())
+  notificationStatus String @default("not_requested")
+  notificationAttempts Int @default(0)
+  notificationNextAttemptAt DateTime?
+  notificationClaimedAt DateTime?
+  notificationSentAt DateTime?
+  notificationLastErrorCode String?
+  @@index([notificationStatus, notificationNextAttemptAt])
 }
 
 model ApiKey {

@@ -13,7 +13,7 @@ backup="/var/backups/blackpolar/corecrow-$version.dump"
 sudo -n sh -c 'umask 077; docker exec corecrow-db pg_dump -U blackpolar -d blackpolar -Fc > "$1"' sh "$backup"
 sudo -n docker run --rm --network corecrow-api_default --env-file "$runtime" "$image" node node_modules/prisma/build/index.js migrate deploy
 candidate="corecrow-check-$version"
-sudo -n docker run -d --name "$candidate" --network corecrow-api_default --env-file "$runtime" -p 127.0.0.1:4101:4000 "$image" >/dev/null
+sudo -n docker run -d --name "$candidate" --network corecrow-api_default --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
 trap 'sudo -n docker rm -f "$candidate" >/dev/null 2>&1 || true' EXIT
 ready=false
 for attempt in {1..20}; do

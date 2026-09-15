@@ -20,6 +20,7 @@ test(
     process.env.TRUSTED_ORIGINS = "http://localhost:3000";
     process.env.SMTP_URL = "smtp://127.0.0.1:5525?ignoreTLS=true";
     process.env.MAIL_FROM = "identity@blackpolar.test";
+    process.env.CONTACT_NOTIFICATION_TO = "contact@blackpolar.test";
     const messages: string[] = [];
     const smtp = new SMTPServer({
       disabledCommands: ["AUTH", "STARTTLS"],
@@ -566,9 +567,26 @@ test(
           await call("POST", "/v1/contact", undefined, data),
           201,
         );
-        assert.ok(
-          await prisma.contactRequest.findUnique({ where: { id: saved.id } }),
+        assert.equal(
+          (
+            await prisma.contactRequest.findUniqueOrThrow({
+              where: { id: saved.id },
+            })
+          ).notificationStatus,
+          "pending",
         );
+        const { processOneContactNotification } = await import(
+          "../src/modules/business/contact-notifications.js"
+        );
+        assert.equal(await processOneContactNotification(), true);
+        const notified = await prisma.contactRequest.findUniqueOrThrow({
+          where: { id: saved.id },
+        });
+        assert.equal(notified.notificationStatus, "sent");
+        assert.equal(notified.notificationAttempts, 1);
+        assert.ok(notified.notificationSentAt);
+        assert.match(messages.at(-1)!, /New Black Polar contact request/);
+        assert.match(messages.at(-1)!, /Test Person/);
         expect(
           await call("POST", "/v1/contact", undefined, data, {
             origin: "https://evil.test",
