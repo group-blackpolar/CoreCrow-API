@@ -1,6 +1,11 @@
 import nodemailer from "nodemailer";
 const transport = process.env.SMTP_URL
-  ? nodemailer.createTransport(process.env.SMTP_URL)
+  ? nodemailer.createTransport({
+      url: process.env.SMTP_URL,
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
+    })
   : undefined;
 
 export async function verifyIdentityMailTransport() {
