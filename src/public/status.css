@@ -53,14 +53,14 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 5px; }
 .brand > span {
   width: 36px;
   height: 36px;
+  position: relative;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: var(--surface);
 }
-.brand img { width: 25px; height: 25px; object-fit: contain; transition: filter 260ms ease; }
-:root[data-theme="dark"] .brand img { filter: invert(1); }
+.brand img { position: absolute; width: 31px; height: 31px; object-fit: contain; }
+.brand .logo-dark { display: none; }
+:root[data-theme="dark"] .brand .logo-light { display: none; }
+:root[data-theme="dark"] .brand .logo-dark { display: block; }
 .topbar-actions { display: flex; align-items: center; gap: 18px; }
 .theme-toggle {
   height: 32px;

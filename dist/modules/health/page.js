@@ -29,12 +29,12 @@ export function healthPage(state) {
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Estado operativo en vivo de la API de CoreCrow.">
   <title>Estado de CoreCrow API · Black Polar</title>
-  <link rel="stylesheet" href="/status.css">
+  <link rel="stylesheet" href="/status.css?v=brand-1">
   <script src="/status.js?v=es-1" defer></script>
 </head>
 <body>
   <header class="shell topbar">
-    <a class="brand" href="https://blackpolar.org/es-lat" aria-label="Inicio de Black Polar"><span><img src="/images/logoblack.png" alt=""></span> BLACK POLAR</a>
+    <a class="brand" href="https://blackpolar.org/es-lat" aria-label="Inicio de Black Polar"><span><img class="logo-light" src="/images/logo-black.png" alt=""><img class="logo-dark" src="/images/logo-white.png" alt=""></span> BLACK POLAR</a>
     <div class="topbar-actions"><span class="environment">CORECROW / PRODUCCIÓN</span><button class="theme-toggle" type="button" aria-label="Apariencia: Claro" title="Cambiar a tema oscuro"><span aria-hidden="true">☼</span><b aria-hidden="true"></b><span aria-hidden="true">☾</span></button></div>
   </header>
   <main class="shell">
