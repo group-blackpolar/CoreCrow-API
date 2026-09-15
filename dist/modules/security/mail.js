@@ -2,6 +2,9 @@ import nodemailer from "nodemailer";
 const transport = process.env.SMTP_URL
     ? nodemailer.createTransport({
         url: process.env.SMTP_URL,
+        // Relay providers use EHLO to identify the sending host. Docker's
+        // ephemeral container hostname is not a stable public identity.
+        name: process.env.SMTP_HELO_NAME,
         connectionTimeout: 5000,
         greetingTimeout: 5000,
         socketTimeout: 10000,
