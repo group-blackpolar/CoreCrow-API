@@ -290,7 +290,13 @@ export async function buildApp(
   );
   app.get("/v1/openapi.json", async () => app.swagger());
   const authHandler = async (request: FastifyRequest, reply: FastifyReply) => {
-    const requestPath = request.url.replace(/^\/api\/auth/, "/v1/auth");
+    let requestPath = request.url.replace(/^\/api\/auth/, "/v1/auth");
+    // Keep the Google Cloud callback already provisioned for Black Polar while
+    // routing it through Better Auth's canonical provider callback internally.
+    requestPath = requestPath.replace(
+      /^\/v1\/auth\/oauth\/google\/callback(?=\?|$)/,
+      "/v1/auth/callback/google",
+    );
     const mailRequired = [
       "/v1/auth/sign-up/email",
       "/v1/auth/request-password-reset",
