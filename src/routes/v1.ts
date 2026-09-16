@@ -5,7 +5,11 @@ import * as s from "../contracts/schemas.js";
 import { tenants } from "../modules/tenancy/service.js";
 import { commerce } from "../modules/commerce/service.js";
 import { identities } from "../modules/identity/repository.js";
-import { users, requireOperator } from "../modules/identity/service.js";
+import {
+  CURRENT_TERMS_VERSION,
+  users,
+  requireOperator,
+} from "../modules/identity/service.js";
 import { permissions, allows } from "../modules/authorization/policy.js";
 import { authorize } from "../modules/authorization/service.js";
 import { transaction } from "../shared/transaction.js";
@@ -27,11 +31,43 @@ export async function v1Routes(app: FastifyInstance) {
   });
   contract(app, {
     method: "GET",
+    url: "/identity/config",
+    tag: "Identity",
+    summary: "Read public identity and onboarding capabilities",
+    public: true,
+    response: z.object({
+      termsVersion: z.string(),
+      passwordMinLength: z.number().int(),
+      passwordMaxLength: z.number().int(),
+      googleAuthEnabled: z.boolean(),
+      captchaRequired: z.literal(false),
+    }),
+    run: async () => ({
+      termsVersion: CURRENT_TERMS_VERSION,
+      passwordMinLength: 12,
+      passwordMaxLength: 128,
+      googleAuthEnabled: Boolean(
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+      ),
+      captchaRequired: false as const,
+    }),
+  });
+  contract(app, {
+    method: "GET",
     url: "/security/keys",
     tag: "Security",
     summary: "List your API keys without secrets",
     response: z.array(key),
     run: ({ user }) => security.list(user.id),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/me/terms",
+    tag: "Identity",
+    summary: "Accept the current legal terms with a server timestamp",
+    body: z.object({ version: z.string().min(1).max(64) }).strict(),
+    response: s.user,
+    run: ({ user, body }) => users.acceptTerms(user.id, body.version),
   });
   contract(app, {
     method: "POST",

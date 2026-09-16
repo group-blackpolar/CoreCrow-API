@@ -7,6 +7,8 @@ export const publicUser = {
   name: true,
   role: true,
   emailVerified: true,
+  termsAcceptedAt: true,
+  termsVersion: true,
   createdAt: true,
 } as const;
 export const identities = {
@@ -47,6 +49,13 @@ export const identities = {
   ) {
     if (data.role) await tx.session.deleteMany({ where: { userId: id } });
     return tx.user.update({ where: { id }, data, select: publicUser });
+  },
+  acceptTerms(tx: Transaction, id: string, version: string, acceptedAt: Date) {
+    return tx.user.update({
+      where: { id },
+      data: { termsVersion: version, termsAcceptedAt: acceptedAt },
+      select: publicUser,
+    });
   },
   delete(tx: Transaction, id: string) {
     return tx.user.delete({ where: { id }, select: publicUser });

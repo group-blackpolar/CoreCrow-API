@@ -19,6 +19,8 @@ export const user = z.object({
   email: z.string().email(),
   role: globalRole,
   emailVerified: z.boolean(),
+  termsAcceptedAt: date.nullable(),
+  termsVersion: z.string().nullable(),
   createdAt: date,
 });
 export const member = z.object({

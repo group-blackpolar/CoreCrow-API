@@ -22,6 +22,8 @@ model User {
   image          String?
   role           Role     @default(USER)
   adminUniqueId  String?  @unique // Admin login con ID único
+  termsAcceptedAt DateTime?
+  termsVersion    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

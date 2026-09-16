@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { SMTPServer } from "smtp-server";
+import { hashPassword, verifyPassword } from "better-auth/crypto";
 
 test(
   "PostgreSQL foundation integration",
@@ -21,6 +22,8 @@ test(
     process.env.SMTP_URL = "smtp://127.0.0.1:5525?ignoreTLS=true";
     process.env.MAIL_FROM = "identity@blackpolar.test";
     process.env.CONTACT_NOTIFICATION_TO = "contact@blackpolar.test";
+    process.env.GOOGLE_CLIENT_ID = "integration-test-client";
+    process.env.GOOGLE_CLIENT_SECRET = "integration-test-secret";
     const messages: string[] = [];
     const smtp = new SMTPServer({
       disabledCommands: ["AUTH", "STARTTLS"],
@@ -123,10 +126,54 @@ test(
     let keyToken = "";
     await t.test("session authority and public status", async () => {
       expect(await call("GET", "/v1/me"), 401);
-      assert.equal(
-        expect(await call("GET", "/v1/me", owner.cookie), 200).role,
-        "USER",
+      const me = expect(await call("GET", "/v1/me", owner.cookie), 200);
+      assert.equal(me.role, "USER");
+      assert.equal(me.termsAcceptedAt, null);
+      assert.equal(me.termsVersion, null);
+      expect(
+        await call("POST", "/v1/me/terms", owner.cookie, {
+          version: "outdated",
+        }),
+        409,
       );
+      const accepted = expect(
+        await call("POST", "/v1/me/terms", owner.cookie, {
+          version: "2026-09-16",
+        }),
+        200,
+      );
+      assert.equal(accepted.termsVersion, "2026-09-16");
+      assert.ok(accepted.termsAcceptedAt);
+      const desktopToken = `north_session_${randomUUID().replaceAll("-", "").repeat(2)}`;
+      await prisma.session.create({
+        data: {
+          userId: owner.id,
+          token: desktopToken,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      assert.equal(
+        expect(
+          await call("GET", "/v1/me", undefined, undefined, {
+            authorization: `Bearer ${desktopToken}`,
+          }),
+          200,
+        ).id,
+        owner.id,
+      );
+      const identityConfig = expect(
+        await call("GET", "/v1/identity/config"),
+        200,
+      );
+      assert.equal(identityConfig.termsVersion, "2026-09-16");
+      assert.equal(identityConfig.googleAuthEnabled, true);
+      assert.equal(identityConfig.captchaRequired, false);
+      const desktopStart = await call(
+        "GET",
+        `/v1/desktop-auth/google/start?nonce=${"b".repeat(64)}&challenge=${"c".repeat(64)}&signup=1`,
+      );
+      assert.equal(desktopStart.statusCode, 302, desktopStart.body);
+      assert.match(desktopStart.headers.location ?? "", /^https:\/\/accounts\.google\.com\//);
       expect(await call("GET", "/api/admin/exists"), 410);
       const health = expect(await call("GET", "/v1/health"), 200);
       assert.equal(health.status, "operational");
@@ -145,6 +192,93 @@ test(
       assert.doesNotMatch(html.body, /postgresql:\/\//);
       assert.ok(html.headers["content-security-policy"]);
       assert.equal(html.headers["cache-control"], "no-store");
+    });
+    await t.test("verification resend and password recovery remain generic", async () => {
+      const unverifiedEmail = `${prefix}-unverified@blackpolar.test`;
+      const unverifiedId = randomUUID();
+      await prisma.user.create({
+        data: {
+          id: unverifiedId,
+          email: unverifiedEmail,
+          name: "Unverified",
+          accounts: {
+            create: {
+              accountId: unverifiedId,
+              providerId: "credential",
+              password: await hashPassword(password),
+            },
+          },
+        },
+      });
+      const beforeResend = messages.length;
+      expect(
+        await call("POST", "/v1/auth/send-verification-email", undefined, {
+          email: unverifiedEmail,
+          callbackURL: "http://localhost:3000",
+        }),
+        200,
+      );
+      assert.equal(messages.length, beforeResend + 1);
+
+      const resetEmail = `${prefix}-password-reset@blackpolar.test`;
+      const resetId = randomUUID();
+      await prisma.user.create({
+        data: {
+          id: resetId,
+          email: resetEmail,
+          name: "Password Reset",
+          emailVerified: true,
+          accounts: {
+            create: {
+              accountId: resetId,
+              providerId: "credential",
+              password: await hashPassword(password),
+            },
+          },
+        },
+      });
+      expect(
+        await call("POST", "/v1/auth/request-password-reset", undefined, {
+          email: resetEmail,
+          redirectTo: "http://localhost:3000",
+        }),
+        200,
+      );
+      const rawMail = messages
+        .at(-1)!
+        .replace(/=\r?\n/g, "")
+        .replace(/=3D/g, "=");
+      const resetUrl = rawMail.match(
+        /http:\/\/localhost:4000\/v1\/auth\/reset-password\/[^\s]+/,
+      )?.[0];
+      assert.ok(resetUrl, "Password email includes a reset URL");
+      const callback = await app.inject({
+        method: "GET",
+        url: new URL(resetUrl).pathname + new URL(resetUrl).search,
+      });
+      assert.equal(callback.statusCode, 302, callback.body);
+      const token = new URL(callback.headers.location!).searchParams.get("token");
+      assert.ok(token);
+      const newPassword = "Changed-password-only-456!";
+      expect(
+        await call("POST", "/v1/auth/reset-password", undefined, {
+          token,
+          newPassword,
+        }),
+        200,
+      );
+      const credential = await prisma.account.findFirstOrThrow({
+        where: { userId: resetId, providerId: "credential" },
+      });
+      assert.ok(credential.password);
+      assert.equal(
+        await verifyPassword({ hash: credential.password, password }),
+        false,
+      );
+      assert.equal(
+        await verifyPassword({ hash: credential.password, password: newPassword }),
+        true,
+      );
     });
     await t.test("strict validation and tenant isolation", async () => {
       expect(

@@ -23,6 +23,7 @@ import { prisma } from "./lib/database.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { health as healthSchema, statusSummary as statusSummarySchema, statusSummaryQuery, } from "./contracts/schemas.js";
 import { RequestTelemetry } from "./modules/telemetry/service.js";
+import { desktopAuthRoutes } from "./routes/desktop-auth.js";
 export async function buildApp(options = {}) {
     const app = Fastify({
         logger: options.logger === false
@@ -293,6 +294,7 @@ export async function buildApp(options = {}) {
     };
     app.all("/v1/auth/*", authHandler);
     app.all("/api/auth/*", authHandler);
+    await app.register(desktopAuthRoutes, { prefix: "/v1/desktop-auth" });
     await app.register(v1Routes, { prefix: "/v1" });
     await app.register(legacyMigrationRoute);
     await app.register(async (legacy) => {

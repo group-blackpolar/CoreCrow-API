@@ -4,11 +4,18 @@ import { webHeaders } from "../../shared/headers.js";
 import { fail } from "../../shared/errors.js";
 import { keys } from "./repository.js";
 import { hash } from "./crypto.js";
+import { desktopIdentity } from "../identity/desktop-service.js";
 export async function principal(request) {
     if (request.headers.authorization) {
         const token = request.headers.authorization;
+        const bearer = token.match(/^Bearer ([A-Za-z0-9._-]{20,256})$/);
+        if (bearer && !bearer[1].startsWith("bp_")) {
+            const user = await desktopIdentity.authenticate(bearer[1]);
+            request.user = { id: user.id, role: user.role };
+            return user;
+        }
         if (!/^Bearer bp_[a-f0-9]{64}$/.test(token))
-            fail(401, "UNAUTHENTICATED", "Invalid API key");
+            fail(401, "UNAUTHENTICATED", "Invalid bearer credential");
         const key = await keys.find(hash(token.slice(7)));
         if (!key || key.revokedAt || key.expiresAt <= new Date())
             fail(401, "UNAUTHENTICATED", "Invalid API key");

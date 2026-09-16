@@ -4,6 +4,7 @@ import { transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { auditRepository } from "../audit/repository.js";
 import { tenantRepository } from "../tenancy/repository.js";
+export const CURRENT_TERMS_VERSION = "2026-09-16";
 export async function requireOperator(id, superOnly = false) {
     const user = await identities.get(id);
     if (!user ||
@@ -12,6 +13,27 @@ export async function requireOperator(id, superOnly = false) {
     return user;
 }
 export const users = {
+    acceptTerms(actorId, version) {
+        if (version !== CURRENT_TERMS_VERSION)
+            fail(409, "TERMS_VERSION_OUTDATED", "A newer terms version is required");
+        return transaction(async (tx) => {
+            const current = await identities.getIn(tx, actorId);
+            if (!current)
+                fail(404, "NOT_FOUND", "User not found");
+            if (current.termsVersion === version &&
+                current.termsAcceptedAt !== null)
+                return current;
+            const acceptedAt = new Date();
+            const user = await identities.acceptTerms(tx, actorId, version, acceptedAt);
+            await auditRepository.append(tx, {
+                actorId,
+                action: "identity.terms.accept",
+                targetType: "TermsVersion",
+                targetId: version,
+            });
+            return user;
+        });
+    },
     async create(actorId, data) {
         await requireOperator(actorId, data.role !== "USER");
         const password = await hashPassword(data.password);

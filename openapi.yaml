@@ -341,6 +341,236 @@ paths:
     patch: *a2
     put: *a2
     post: *a2
+  /v1/desktop-auth/google/start:
+    get:
+      summary: Start Google authentication in the system browser for North desktop
+      tags:
+        - Identity
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[a-f0-9]{64}$
+          in: query
+          name: nonce
+          required: true
+        - schema:
+            $ref: "#/properties/nonce"
+          in: query
+          name: challenge
+          required: true
+        - schema:
+            type: string
+            enum:
+              - "0"
+              - "1"
+            default: "0"
+          in: query
+          name: signup
+          required: false
+      responses:
+        "200":
+          description: Default Response
+  /v1/desktop-auth/google/complete:
+    get:
+      summary: Finish browser authentication and return a one-time code to North
+      tags:
+        - Identity
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[a-f0-9]{64}$
+          in: query
+          name: nonce
+          required: true
+      responses:
+        "200":
+          description: Default Response
+  /v1/desktop-auth/google/error:
+    get:
+      summary: Return a sanitized OAuth error to North desktop
+      tags:
+        - Identity
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[a-f0-9]{64}$
+          in: query
+          name: nonce
+          required: true
+        - schema:
+            type: string
+            maxLength: 80
+          in: query
+          name: error
+          required: false
+      responses:
+        "200":
+          description: Default Response
+  /v1/desktop-auth/exchange:
+    post:
+      summary: Exchange a single-use desktop OAuth code using its PKCE verifier
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  pattern: ^[a-f0-9]{64}$
+                verifier:
+                  $ref: "#/properties/code"
+              required:
+                - code
+                - verifier
+              additionalProperties: false
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      name:
+                        type: string
+                        nullable: true
+                      email:
+                        type: string
+                        format: email
+                      role:
+                        type: string
+                        enum:
+                          - USER
+                          - DEVELOPER
+                          - ADMIN
+                          - SUPERADMIN
+                      emailVerified:
+                        type: boolean
+                      termsAcceptedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      termsVersion:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        $ref: "#/properties/user/properties/termsAcceptedAt"
+                    required:
+                      - id
+                      - name
+                      - email
+                      - role
+                      - emailVerified
+                      - termsAcceptedAt
+                      - termsVersion
+                      - createdAt
+                    additionalProperties: false
+                required:
+                  - token
+                  - user
+                additionalProperties: false
+  /v1/desktop-auth/session:
+    delete:
+      summary: Revoke the current North desktop session
+      tags:
+        - Identity
+      responses:
+        "204":
+          description: Default Response
+  /v1/identity/config:
+    get:
+      summary: Read public identity and onboarding capabilities
+      tags:
+        - Identity
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  termsVersion:
+                    type: string
+                  passwordMinLength:
+                    type: integer
+                  passwordMaxLength:
+                    type: integer
+                  googleAuthEnabled:
+                    type: boolean
+                  captchaRequired:
+                    type: boolean
+                    enum:
+                      - false
+                required:
+                  - termsVersion
+                  - passwordMinLength
+                  - passwordMaxLength
+                  - googleAuthEnabled
+                  - captchaRequired
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/security/keys:
     get:
       summary: List your API keys without secrets
@@ -572,6 +802,122 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/me/terms:
+    post:
+      summary: Accept the current legal terms with a server timestamp
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+              required:
+                - version
+              additionalProperties: false
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  name:
+                    type: string
+                    nullable: true
+                  email:
+                    type: string
+                    format: email
+                  role:
+                    type: string
+                    enum:
+                      - USER
+                      - DEVELOPER
+                      - ADMIN
+                      - SUPERADMIN
+                  emailVerified:
+                    type: boolean
+                  termsAcceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  termsVersion:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - name
+                  - email
+                  - role
+                  - emailVerified
+                  - termsAcceptedAt
+                  - termsVersion
+                  - createdAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/security/keys/{id}:
     delete:
       summary: Revoke your API key immediately
@@ -715,6 +1061,13 @@ paths:
                       - SUPERADMIN
                   emailVerified:
                     type: boolean
+                  termsAcceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  termsVersion:
+                    type: string
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -724,6 +1077,8 @@ paths:
                   - email
                   - role
                   - emailVerified
+                  - termsAcceptedAt
+                  - termsVersion
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -810,6 +1165,13 @@ paths:
                         - SUPERADMIN
                     emailVerified:
                       type: boolean
+                    termsAcceptedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    termsVersion:
+                      type: string
+                      nullable: true
                     createdAt:
                       type: string
                       format: date-time
@@ -819,6 +1181,8 @@ paths:
                     - email
                     - role
                     - emailVerified
+                    - termsAcceptedAt
+                    - termsVersion
                     - createdAt
                   additionalProperties: false
         4XX:
@@ -933,6 +1297,13 @@ paths:
                       - SUPERADMIN
                   emailVerified:
                     type: boolean
+                  termsAcceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  termsVersion:
+                    type: string
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -942,6 +1313,8 @@ paths:
                   - email
                   - role
                   - emailVerified
+                  - termsAcceptedAt
+                  - termsVersion
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -1053,6 +1426,13 @@ paths:
                       - SUPERADMIN
                   emailVerified:
                     type: boolean
+                  termsAcceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  termsVersion:
+                    type: string
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -1062,6 +1442,8 @@ paths:
                   - email
                   - role
                   - emailVerified
+                  - termsAcceptedAt
+                  - termsVersion
                   - createdAt
                 additionalProperties: false
         4XX:

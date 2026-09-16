@@ -31,6 +31,7 @@ import {
   statusSummaryQuery,
 } from "./contracts/schemas.js";
 import { RequestTelemetry } from "./modules/telemetry/service.js";
+import { desktopAuthRoutes } from "./routes/desktop-auth.js";
 
 export async function buildApp(
   options: {
@@ -339,6 +340,7 @@ export async function buildApp(
   };
   app.all("/v1/auth/*", authHandler);
   app.all("/api/auth/*", authHandler);
+  await app.register(desktopAuthRoutes, { prefix: "/v1/desktop-auth" });
   await app.register(v1Routes, { prefix: "/v1" });
   await app.register(legacyMigrationRoute);
   await app.register(

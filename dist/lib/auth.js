@@ -53,6 +53,8 @@ export const auth = betterAuth({
     user: {
         additionalFields: {
             role: { type: "string", defaultValue: "USER", input: false },
+            termsAcceptedAt: { type: "date", required: false, input: false },
+            termsVersion: { type: "string", required: false, input: false },
         },
     },
     rateLimit: { enabled: true, window: 60, max: 30 },
