@@ -6248,6 +6248,42 @@
         }
       }
     },
+    "/v1/admin/sign-in": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "adminUniqueId": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "email",
+                  "adminUniqueId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/users": {
       "get": {
         "responses": {
