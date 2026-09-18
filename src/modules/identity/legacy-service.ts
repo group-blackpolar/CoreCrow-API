@@ -5,8 +5,19 @@ import { legacyIdentity as repo } from "./legacy-repository.js";
 import { transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
 import { fail } from "../../shared/errors.js";
+import { prisma } from "../../lib/database.js";
 const attempts = new Map<string, { count: number; until: number }>();
 export function legacyEnabled() { return process.env.ENABLE_LEGACY_ADMIN_AUTH === "true"; }
+export async function validateAdminUniqueId(email: string, adminUniqueId: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await repo.user(prisma, normalizedEmail);
+  if (!user?.adminUniqueId || !user.emailVerified || !["ADMIN", "SUPERADMIN"].includes(user.role)) return null;
+  const matches = timingSafeEqual(
+    Buffer.from(hash(adminUniqueId)),
+    Buffer.from(hash(user.adminUniqueId)),
+  );
+  return matches ? user : null;
+}
 export async function legacyLogin(email: string, credential: string, ip: string) {
   if (!legacyEnabled()) fail(410, "LEGACY_AUTH_DISABLED", "Use Better Auth at /v1/auth");
   email = email.trim().toLowerCase();

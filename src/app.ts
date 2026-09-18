@@ -17,7 +17,7 @@ import { ZodError } from "zod";
 import { Prisma } from "./lib/database.js";
 import { v1Routes } from "./routes/v1.js";
 import { userRoutes } from "./routes/users.js";
-import { authAdminRoutes, legacyMigrationRoute } from "./routes/auth-admin.js";
+import { adminSignInRoutes, authAdminRoutes, legacyMigrationRoute } from "./routes/auth-admin.js";
 import { adminKeysRoutes } from "./routes/admin-keys.js";
 import { adminLogsRoutes } from "./routes/admin-logs.js";
 import { healthService } from "./modules/health/service.js";
@@ -349,6 +349,7 @@ export async function buildApp(
   await app.register(desktopAuthRoutes, { prefix: "/v1/desktop-auth" });
   await app.register(v1Routes, { prefix: "/v1" });
   await app.register(legacyMigrationRoute);
+  await app.register(adminSignInRoutes);
   await app.register(
     async (legacy) => {
       legacy.addHook("onRequest", async (_, reply) => {
