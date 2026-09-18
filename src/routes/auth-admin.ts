@@ -1,10 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { randomBytes } from "node:crypto";
-import { prisma } from "../lib/database.js";
 import { fail } from "../shared/errors.js";
-import { legacyEnabled, legacyLogin, migrateLegacyIdentity, validateAdminUniqueId } from "../modules/identity/legacy-service.js";
+import { createAdminSession, legacyEnabled, legacyLogin, migrateLegacyIdentity, validateAdminUniqueId } from "../modules/identity/legacy-service.js";
 import { authenticateAdmin } from "../middlewares/authenticateAdmin.js";
 // Removed authentication mechanism: identifiers are not account credentials.
 export async function adminSignInRoutes(app: FastifyInstance) {
@@ -13,14 +11,7 @@ export async function adminSignInRoutes(app: FastifyInstance) {
     const data = input.parse(req.body);
     const user = await validateAdminUniqueId(data.email, data.adminUniqueId);
     if (!user) fail(401, "UNAUTHENTICATED", "Invalid credentials");
-    const session = await prisma.session.create({
-      data: {
-        userId: user.id,
-        token: randomBytes(32).toString("hex"),
-        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
-        ipAddress: req.ip,
-      },
-    });
+    const session = await createAdminSession(user.id, req.ip);
     return { token: session.token };
   });
 }

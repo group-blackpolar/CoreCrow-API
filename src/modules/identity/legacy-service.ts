@@ -18,6 +18,16 @@ export async function validateAdminUniqueId(email: string, adminUniqueId: string
   );
   return matches ? user : null;
 }
+export async function createAdminSession(userId: string, ipAddress: string) {
+  return prisma.session.create({
+    data: {
+      userId,
+      token: randomBytes(32).toString("hex"),
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      ipAddress,
+    },
+  });
+}
 export async function legacyLogin(email: string, credential: string, ip: string) {
   if (!legacyEnabled()) fail(410, "LEGACY_AUTH_DISABLED", "Use Better Auth at /v1/auth");
   email = email.trim().toLowerCase();
