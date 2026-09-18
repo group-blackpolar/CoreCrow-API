@@ -12,12 +12,18 @@ export async function adminSignInRoutes(app: FastifyInstance) {
     const user = await validateAdminUniqueId(data.email, data.adminUniqueId);
     if (!user) fail(401, "UNAUTHENTICATED", "Invalid credentials");
     const session = await createAdminSession(user.id, req.ip);
-    const secure = process.env.NODE_ENV === "production";
-    reply.setCookie(
-      secure ? "__Secure-better-auth.session_token" : "better-auth.session_token",
-      session.token,
-      { path: "/", httpOnly: true, secure, sameSite: "lax", maxAge: 12 * 60 * 60 },
-    );
+    const forceInsecureCookie = process.env.COOKIE_SECURE === "false";
+    const secure = process.env.NODE_ENV === "production" && !forceInsecureCookie;
+    const cookieName = secure
+      ? "__Secure-better-auth.session_token"
+      : "better-auth.session_token";
+    reply.setCookie(cookieName, session.token, {
+      path: "/",
+      httpOnly: true,
+      secure,
+      sameSite: "lax",
+      maxAge: 12 * 60 * 60,
+    });
     return {
       token: session.token,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
