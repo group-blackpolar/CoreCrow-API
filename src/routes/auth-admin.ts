@@ -7,12 +7,21 @@ import { authenticateAdmin } from "../middlewares/authenticateAdmin.js";
 // Removed authentication mechanism: identifiers are not account credentials.
 export async function adminSignInRoutes(app: FastifyInstance) {
   const input = z.object({ email: z.string().email().max(254), adminUniqueId: z.string().min(8).max(256) }).strict();
-  app.post("/v1/admin/sign-in", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } }, schema: { body: zodToJsonSchema(input, { target: "openApi3" }) } }, async req => {
+  app.post("/v1/admin/sign-in", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } }, schema: { body: zodToJsonSchema(input, { target: "openApi3" }) } }, async (req, reply) => {
     const data = input.parse(req.body);
     const user = await validateAdminUniqueId(data.email, data.adminUniqueId);
     if (!user) fail(401, "UNAUTHENTICATED", "Invalid credentials");
     const session = await createAdminSession(user.id, req.ip);
-    return { token: session.token };
+    const secure = process.env.NODE_ENV === "production";
+    reply.setCookie(
+      secure ? "__Secure-better-auth.session_token" : "better-auth.session_token",
+      session.token,
+      { path: "/", httpOnly: true, secure, sameSite: "lax", maxAge: 12 * 60 * 60 },
+    );
+    return {
+      token: session.token,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    };
   });
 }
 

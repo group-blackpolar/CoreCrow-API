@@ -3,6 +3,7 @@ import Fastify, {
   type FastifyRequest,
   type FastifyReply,
 } from "fastify";
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -71,6 +72,7 @@ export async function buildApp(
           ? process.env.TRUST_PROXY
           : false,
   });
+  await app.register(cookie);
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
