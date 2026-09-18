@@ -6,6 +6,7 @@ import { transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
 import { fail } from "../../shared/errors.js";
 import { prisma } from "../../lib/database.js";
+import { auth } from "../../lib/auth.js";
 const attempts = new Map<string, { count: number; until: number }>();
 export function legacyEnabled() { return process.env.ENABLE_LEGACY_ADMIN_AUTH === "true"; }
 export async function validateAdminUniqueId(email: string, adminUniqueId: string) {
@@ -19,14 +20,17 @@ export async function validateAdminUniqueId(email: string, adminUniqueId: string
   return matches ? user : null;
 }
 export async function createAdminSession(userId: string, ipAddress: string) {
-  return prisma.session.create({
-    data: {
-      userId,
-      token: randomBytes(32).toString("hex"),
-      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
-      ipAddress,
-    },
+  const ctx = await auth.$context;
+  const session = await ctx.internalAdapter.createSession(userId, false, {
+    ipAddress,
+    userAgent: "",
   });
+  await auditRepository.append(prisma, {
+    actorId: userId,
+    action: "identity.admin.signin",
+    targetId: session.id,
+  });
+  return session;
 }
 export async function legacyLogin(email: string, credential: string, ip: string) {
   if (!legacyEnabled()) fail(410, "LEGACY_AUTH_DISABLED", "Use Better Auth at /v1/auth");
