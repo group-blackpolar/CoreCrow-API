@@ -1,10 +1,12 @@
 export class DomainError extends Error {
     statusCode;
     code;
-    constructor(statusCode, code, message) {
+    details;
+    constructor(statusCode, code, message, details) {
         super(message);
         this.statusCode = statusCode;
         this.code = code;
+        this.details = details;
     }
 }
 export function fail(status, code, message) {

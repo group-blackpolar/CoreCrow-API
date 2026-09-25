@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/database.js";
+import { prisma, } from "../../lib/database.js";
 export const tenantRepository = {
     membership(tx, organizationId, userId) {
         return tx.membership.findUnique({
@@ -7,6 +7,15 @@ export const tenantRepository = {
     },
     organization(tx, id) {
         return tx.organization.findUnique({ where: { id } });
+    },
+    organizationBySlug(tx, slug) {
+        return tx.organization.findUnique({ where: { slug } });
+    },
+    publicOrganization(slug) {
+        return prisma.organization.findFirst({
+            where: { slug, status: "ACTIVE" },
+            select: { name: true, slug: true },
+        });
     },
     list(userId) {
         return prisma.organization.findMany({
@@ -17,11 +26,15 @@ export const tenantRepository = {
     },
     create(tx, userId, data) {
         return tx.organization.create({
-            data: { ...data, memberships: { create: { userId, role: "OWNER" } } },
+            data: {
+                ...data,
+                memberships: { create: { userId, role: "OWNER" } },
+                billingProfile: { create: {} },
+            },
         });
     },
-    update(tx, id, name) {
-        return tx.organization.update({ where: { id }, data: { name } });
+    update(tx, id, data) {
+        return tx.organization.update({ where: { id }, data });
     },
     members(tx, organizationId) {
         return tx.membership.findMany({
@@ -39,14 +52,74 @@ export const tenantRepository = {
     remove(tx, id) {
         return tx.membership.delete({ where: { id } });
     },
-    invite(tx, data) {
-        return tx.invitation.create({ data });
+    revokePendingEmailInvitations(tx, organizationId, email) {
+        return tx.invitation.updateMany({
+            where: {
+                organizationId,
+                kind: "EMAIL",
+                email,
+                acceptedAt: null,
+                revokedAt: null,
+            },
+            data: { revokedAt: new Date() },
+        });
     },
-    invitation(tx, tokenHash) {
-        return tx.invitation.findUnique({ where: { tokenHash } });
+    invite(tx, data) {
+        const { groupIds, permissions, ...invitation } = data;
+        return tx.invitation.create({ data: invitation }).then(async (created) => {
+            if (groupIds.length)
+                await tx.invitationGroupGrant.createMany({
+                    data: groupIds.map((groupId) => ({
+                        invitationId: created.id,
+                        organizationId: data.organizationId,
+                        groupId,
+                    })),
+                });
+            if (permissions.length)
+                await tx.invitationPermissionGrant.createMany({
+                    data: permissions.map((permission) => ({
+                        invitationId: created.id,
+                        organizationId: data.organizationId,
+                        permission,
+                    })),
+                });
+            return tx.invitation.findUniqueOrThrow({
+                where: { id: created.id },
+                include: {
+                    groupGrants: { select: { groupId: true } },
+                    permissionGrants: { select: { permission: true } },
+                },
+            });
+        });
+    },
+    invitations(tx, organizationId) {
+        return tx.invitation.findMany({
+            where: { organizationId },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 100,
+            include: {
+                groupGrants: { select: { groupId: true } },
+                permissionGrants: { select: { permission: true } },
+            },
+        });
+    },
+    invitation(tx, tokenHashes) {
+        return tx.invitation.findFirst({
+            where: { tokenHash: { in: tokenHashes } },
+            include: {
+                groupGrants: { select: { groupId: true } },
+                permissionGrants: { select: { permission: true } },
+            },
+        });
     },
     invitationById(tx, id, organizationId) {
-        return tx.invitation.findFirst({ where: { id, organizationId } });
+        return tx.invitation.findFirst({
+            where: { id, organizationId },
+            include: {
+                groupGrants: { select: { groupId: true } },
+                permissionGrants: { select: { permission: true } },
+            },
+        });
     },
     revoke(tx, id) {
         return tx.invitation.update({
@@ -55,15 +128,32 @@ export const tenantRepository = {
         });
     },
     async accept(tx, id, organizationId, userId, role) {
-        await tx.invitation.update({
-            where: { id },
-            data: { acceptedAt: new Date() },
+        const consumed = await tx.invitation.updateMany({
+            where: { id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+            data: { acceptedAt: new Date(), acceptedByUserId: userId },
         });
+        if (consumed.count !== 1)
+            return null;
         // Existing members never gain a new role by replaying an old invitation.
-        return tx.membership.upsert({
+        const membership = await tx.membership.upsert({
             where: { organizationId_userId: { organizationId, userId } },
             create: { organizationId, userId, role },
             update: {},
         });
+        return membership;
+    },
+    addInvitationGrants(tx, organizationId, membershipId, groupIds, permissions) {
+        return Promise.all([
+            ...groupIds.map((groupId) => tx.organizationGroupMember.upsert({
+                where: { groupId_membershipId: { groupId, membershipId } },
+                create: { organizationId, groupId, membershipId },
+                update: {},
+            })),
+            ...permissions.map((permission) => tx.membershipPermissionGrant.upsert({
+                where: { membershipId_permission: { membershipId, permission } },
+                create: { organizationId, membershipId, permission },
+                update: {},
+            })),
+        ]);
     },
 };

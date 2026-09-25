@@ -14,25 +14,61 @@ enum Role {
   SUPERADMIN
 }
 
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum BillingStatus {
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CLOSED
+}
+
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  emailVerified  Boolean  @default(false)
-  name           String?
-  image          String?
-  role           Role     @default(USER)
-  adminUniqueId  String?  @unique // Admin login con ID único
-  termsAcceptedAt DateTime?
-  termsVersion    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                     String        @id @default(cuid())
+  email                  String        @unique
+  emailVerified          Boolean       @default(false)
+  name                   String?
+  image                  String?
+  role                   Role          @default(USER)
+  status                 AccountStatus @default(ACTIVE)
+  adminSecretHash        String?
+  passwordChangeRequired Boolean       @default(false)
+  termsAcceptedAt        DateTime?
+  termsVersion           String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
-  sessions Session[]
-  accounts Account[]
-  apiKeys  ApiKey[]
-  memberships Membership[]
+  sessions                   Session[]
+  accounts                   Account[]
+  apiKeys                    ApiKey[]
+  memberships                Membership[]
+  emailVerificationChallenge EmailVerificationChallenge?
+  northPlatformGrants        NorthPlatformGrant[]
+  northPanelRevisions        NorthPanelRevision[]
+  northAssets                NorthAsset[]
+  northTemplatesCreated      NorthTemplate[]        @relation("NorthTemplateCreator")
+  northTemplateVersionsMade  NorthTemplateVersion[] @relation("NorthTemplateVersionCreator")
 
+  @@index([status, createdAt])
   @@map("users")
+}
+
+model EmailVerificationChallenge {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("email_verification_challenges")
 }
 
 model Session {
@@ -51,20 +87,20 @@ model Session {
 }
 
 model Account {
-  id           String    @id @default(cuid())
-  userId       String
-  accountId    String
-  providerId   String
-  accessToken  String?
-  refreshToken String?
-  expiresAt    DateTime?
-  accessTokenExpiresAt DateTime?
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  expiresAt             DateTime?
+  accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
-  scope        String?
-  idToken      String?
-  password     String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -83,160 +119,664 @@ model Verification {
   @@map("verifications")
 }
 
-
 model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String?
+  id             String   @id @default(cuid())
+  actorId        String?
   organizationId String?
-  action     String   // "user.create", "token.revoke", "logs.view", etc.
-  targetType String?
-  targetId   String?
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  action         String // "user.create", "token.revoke", "logs.view", etc.
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  requestId      String?
+  createdAt      DateTime @default(now())
+
   @@index([organizationId, createdAt, id])
+}
+
+model NorthTemplate {
+  id             String                 @id @default(cuid())
+  slug           String                 @unique
+  name           Json
+  description    Json?
+  status         NorthResourceStatus    @default(ACTIVE)
+  currentVersion Int                    @default(1)
+  createdBy      String
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  creator        User                   @relation("NorthTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  versions       NorthTemplateVersion[]
+
+  @@index([status, slug])
+}
+
+model NorthTemplateVersion {
+  id         String        @id @default(cuid())
+  templateId String
+  version    Int
+  snapshot   Json
+  createdBy  String
+  createdAt  DateTime      @default(now())
+  template   NorthTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  creator    User          @relation("NorthTemplateVersionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, version])
+  @@index([templateId, createdAt])
 }
 
 enum TenantRole {
   OWNER
   ADMIN
+  BILLING_ADMIN
   MEMBER
   VIEWER
 }
 
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum InvitationKind {
+  EMAIL
+  CODE
+}
+
+enum NorthScope {
+  PLATFORM
+  ORGANIZATION
+  PERSONAL
+}
+
+enum NorthResourceKind {
+  SYSTEM
+  CONTENT
+}
+
+enum NorthCategoryClass {
+  SYSTEM
+  TEMPLATE
+  CUSTOM
+}
+
+enum NorthResourceStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum NorthPanelStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum NorthPermissionScope {
+  PLATFORM
+  ORGANIZATION
+  CATEGORY
+  SUBCATEGORY
+  PANEL
+}
+
+enum NorthAudienceType {
+  ALL_MEMBERS
+  ROLES
+  GROUPS
+  PERMISSIONS
+  SPECIFIC_USERS
+}
+
+enum NorthAssetStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  REJECTED
+  QUARANTINED
+}
+
 model Organization {
-  id String @id @default(cuid())
-  name String
-  slug String @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  memberships Membership[]
-  invitations Invitation[]
-  subscriptions Subscription[]
-  entitlements Entitlement[]
+  id                    String                      @id @default(cuid())
+  name                  String
+  slug                  String                      @unique
+  status                OrganizationStatus          @default(ACTIVE)
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  memberships           Membership[]
+  groups                OrganizationGroup[]
+  invitations           Invitation[]
+  subscriptions         Subscription[]
+  entitlements          Entitlement[]
+  billingProfile        OrganizationBillingProfile?
+  homePanelId           String?
+  storageLimitBytes     BigInt                      @default(10737418240)
+  storageUsedBytes      BigInt                      @default(0)
+  storageReservedBytes  BigInt                      @default(0)
+  northCategories       NorthCategory[]
+  northSubcategories    NorthSubcategory[]
+  northPanels           NorthPanel[]
+  northRoleGrants       NorthRoleGrant[]
+  northGroupGrants      NorthGroupGrant[]
+  northMembershipGrants NorthMembershipGrant[]
+  northAssets           NorthAsset[]
+
+  @@index([status, createdAt])
+}
+
+model OrganizationBillingProfile {
+  id               String        @id @default(cuid())
+  organizationId   String        @unique
+  status           BillingStatus @default(ACTIVE)
+  currency         String        @default("USD")
+  basePriceMinor   Int           @default(1400)
+  memberPriceMinor Int           @default(500)
+  billingEmail     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([status])
 }
 
 model Membership {
-  id String @id @default(cuid())
-  organizationId String
-  userId String
-  role TenantRole @default(MEMBER)
-  createdAt DateTime @default(now())
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id                    String                         @id @default(cuid())
+  organizationId        String
+  userId                String
+  role                  TenantRole                     @default(MEMBER)
+  createdAt             DateTime                       @default(now())
+  organization          Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user                  User                           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  groupMemberships      OrganizationGroupMember[]
+  permissionGrants      MembershipPermissionGrant[]
+  northPermissionGrants NorthMembershipGrant[]
+  northPanelAudiences   NorthPanelAudienceMembership[]
+
   @@unique([organizationId, userId])
+  @@unique([id, organizationId])
   @@index([userId])
 }
 
-model Invitation {
-  id String @id @default(cuid())
+model OrganizationGroup {
+  id                    String                    @id @default(cuid())
+  organizationId        String
+  name                  String
+  description           String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  memberships           OrganizationGroupMember[]
+  permissionGrants      GroupPermissionGrant[]
+  invitationGrants      InvitationGroupGrant[]
+  northPermissionGrants NorthGroupGrant[]
+  northPanelAudiences   NorthPanelAudienceGroup[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@index([organizationId])
+}
+
+model NorthCategory {
+  id                    String                   @id @default(cuid())
+  organizationId        String?
+  scope                 NorthScope
+  resourceKind          NorthResourceKind
+  categoryClass         NorthCategoryClass
+  name                  Json
+  description           Json?
+  icon                  String?
+  color                 String?
+  slug                  String
+  order                 Int                      @default(0)
+  navigationHidden      Boolean                  @default(false)
+  status                NorthResourceStatus      @default(ACTIVE)
+  sourceTemplateId      String?
+  sourceTemplateVersion Int?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  organization          Organization?            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subcategories         NorthSubcategory[]
+  aliases               NorthCategorySlugAlias[]
+  roleGrants            NorthRoleGrant[]
+  groupGrants           NorthGroupGrant[]
+  membershipGrants      NorthMembershipGrant[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([scope, status, order, id])
+}
+
+model NorthSubcategory {
+  id               String                      @id @default(cuid())
+  organizationId   String
+  categoryId       String
+  resourceKind     NorthResourceKind
+  name             Json
+  description      Json?
+  icon             String?
+  color            String?
+  slug             String
+  order            Int                         @default(0)
+  navigationHidden Boolean                     @default(false)
+  status           NorthResourceStatus         @default(ACTIVE)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  category         NorthCategory               @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  panels           NorthPanel[]
+  aliases          NorthSubcategorySlugAlias[]
+  roleGrants       NorthRoleGrant[]
+  groupGrants      NorthGroupGrant[]
+  membershipGrants NorthMembershipGrant[]
+
+  @@unique([id, organizationId])
+  @@unique([categoryId, slug])
+  @@index([organizationId, categoryId, status, order, id])
+}
+
+model NorthPanel {
+  id                  String                         @id @default(cuid())
+  organizationId      String
+  subcategoryId       String
+  resourceKind        NorthResourceKind
+  name                Json
+  description         Json?
+  icon                String?
+  color               String?
+  slug                String
+  order               Int                            @default(0)
+  navigationHidden    Boolean                        @default(false)
+  status              NorthPanelStatus               @default(DRAFT)
+  audienceType        NorthAudienceType              @default(ALL_MEMBERS)
+  publishedRevisionId String?
+  draftRevisionId     String?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  organization        Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subcategory         NorthSubcategory               @relation(fields: [subcategoryId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  aliases             NorthPanelSlugAlias[]
+  roleGrants          NorthRoleGrant[]
+  groupGrants         NorthGroupGrant[]
+  membershipGrants    NorthMembershipGrant[]
+  audienceRoles       NorthPanelAudienceRole[]
+  audienceGroups      NorthPanelAudienceGroup[]
+  audiencePermissions NorthPanelAudiencePermission[]
+  audienceMemberships NorthPanelAudienceMembership[]
+  revisions           NorthPanelRevision[]           @relation("PanelRevisions")
+  publishedRevision   NorthPanelRevision?            @relation("PublishedRevision", fields: [publishedRevisionId, id], references: [id, panelId], onDelete: Restrict)
+  draftRevision       NorthPanelRevision?            @relation("DraftRevision", fields: [draftRevisionId, id], references: [id, panelId], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([subcategoryId, slug])
+  @@index([organizationId, subcategoryId, status, order, id])
+}
+
+model NorthPanelRevision {
+  id              String       @id
+  organizationId  String
+  panelId         String
+  revisionNumber  Int
+  etag            String       @unique
+  document        Json
+  defaultLocale   String
+  fallbackLocales Json
+  message         String?
+  publishAt       DateTime?
+  unpublishAt     DateTime?
+  createdBy       String
+  createdAt       DateTime     @default(now())
+  panel           NorthPanel   @relation("PanelRevisions", fields: [panelId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  author          User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  publishedFor    NorthPanel[] @relation("PublishedRevision")
+  draftFor        NorthPanel[] @relation("DraftRevision")
+
+  @@unique([id, panelId])
+  @@unique([panelId, revisionNumber])
+  @@index([organizationId, panelId, revisionNumber])
+}
+
+model NorthAsset {
+  id             String           @id @default(cuid())
   organizationId String
-  email String
-  role TenantRole @default(MEMBER)
-  tokenHash String @unique
-  expiresAt DateTime
-  acceptedAt DateTime?
-  revokedAt DateTime?
-  createdAt DateTime @default(now())
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  ownerId        String
+  filename       String
+  mime           String
+  size           BigInt
+  checksum       String
+  storageKey     String           @unique
+  status         NorthAssetStatus @default(UPLOADING)
+  confirmedAt    DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner          User             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status, createdAt])
+  @@index([ownerId, createdAt])
+}
+
+model NorthCategorySlugAlias {
+  categoryId     String
+  organizationId String
+  slug           String
+  createdAt      DateTime      @default(now())
+  category       NorthCategory @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([organizationId, slug])
+  @@index([categoryId])
+}
+
+model NorthSubcategorySlugAlias {
+  subcategoryId String
+  categoryId    String
+  slug          String
+  createdAt     DateTime         @default(now())
+  subcategory   NorthSubcategory @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, slug])
+  @@index([subcategoryId])
+}
+
+model NorthPanelSlugAlias {
+  panelId       String
+  subcategoryId String
+  slug          String
+  createdAt     DateTime   @default(now())
+  panel         NorthPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@id([subcategoryId, slug])
+  @@index([panelId])
+}
+
+model NorthPlatformGrant {
+  userId     String
+  capability String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, capability])
+}
+
+model NorthRoleGrant {
+  id             String               @id @default(cuid())
+  organizationId String
+  role           TenantRole
+  capability     String
+  scope          NorthPermissionScope
+  categoryId     String?
+  subcategoryId  String?
+  panelId        String?
+  createdAt      DateTime             @default(now())
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category       NorthCategory?       @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  subcategory    NorthSubcategory?    @relation(fields: [subcategoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  panel          NorthPanel?          @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([organizationId, role, capability, scope, categoryId, subcategoryId, panelId])
+  @@index([organizationId, role, capability])
+}
+
+model NorthGroupGrant {
+  id             String               @id @default(cuid())
+  organizationId String
+  groupId        String
+  capability     String
+  scope          NorthPermissionScope
+  categoryId     String?
+  subcategoryId  String?
+  panelId        String?
+  createdAt      DateTime             @default(now())
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  group          OrganizationGroup    @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  category       NorthCategory?       @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  subcategory    NorthSubcategory?    @relation(fields: [subcategoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  panel          NorthPanel?          @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([organizationId, groupId, capability, scope, categoryId, subcategoryId, panelId])
+  @@index([organizationId, groupId, capability])
+}
+
+model NorthMembershipGrant {
+  id             String               @id @default(cuid())
+  organizationId String
+  membershipId   String
+  capability     String
+  scope          NorthPermissionScope
+  categoryId     String?
+  subcategoryId  String?
+  panelId        String?
+  createdAt      DateTime             @default(now())
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership     Membership           @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  category       NorthCategory?       @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  subcategory    NorthSubcategory?    @relation(fields: [subcategoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  panel          NorthPanel?          @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([organizationId, membershipId, capability, scope, categoryId, subcategoryId, panelId])
+  @@index([organizationId, membershipId, capability])
+}
+
+model NorthPanelAudienceRole {
+  organizationId String
+  panelId        String
+  role           TenantRole
+  panel          NorthPanel @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([panelId, role])
+  @@index([organizationId])
+}
+
+model NorthPanelAudienceGroup {
+  organizationId String
+  panelId        String
+  groupId        String
+  panel          NorthPanel        @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  group          OrganizationGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([panelId, groupId])
+  @@index([organizationId, groupId])
+}
+
+model NorthPanelAudiencePermission {
+  organizationId String
+  panelId        String
+  capability     String
+  panel          NorthPanel @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([panelId, capability])
+  @@index([organizationId])
+}
+
+model NorthPanelAudienceMembership {
+  organizationId String
+  panelId        String
+  membershipId   String
+  panel          NorthPanel @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  membership     Membership @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([panelId, membershipId])
+  @@index([organizationId, membershipId])
+}
+
+model OrganizationGroupMember {
+  organizationId String
+  groupId        String
+  membershipId   String
+  createdAt      DateTime          @default(now())
+  group          OrganizationGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  membership     Membership        @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([groupId, membershipId])
+  @@index([organizationId, membershipId])
+}
+
+model GroupPermissionGrant {
+  organizationId String
+  groupId        String
+  permission     String
+  createdAt      DateTime          @default(now())
+  group          OrganizationGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([groupId, permission])
+  @@index([organizationId])
+}
+
+model MembershipPermissionGrant {
+  organizationId String
+  membershipId   String
+  permission     String
+  createdAt      DateTime   @default(now())
+  membership     Membership @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([membershipId, permission])
+  @@index([organizationId])
+}
+
+model Invitation {
+  id               String                      @id @default(cuid())
+  organizationId   String
+  kind             InvitationKind              @default(EMAIL)
+  email            String?
+  role             TenantRole                  @default(MEMBER)
+  tokenHash        String                      @unique
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  revokedAt        DateTime?
+  createdAt        DateTime                    @default(now())
+  organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  groupGrants      InvitationGroupGrant[]
+  permissionGrants InvitationPermissionGrant[]
+
+  @@unique([id, organizationId])
   @@index([organizationId, email])
+  @@index([organizationId, kind, createdAt])
+}
+
+model InvitationGroupGrant {
+  invitationId   String
+  organizationId String
+  groupId        String
+  createdAt      DateTime          @default(now())
+  invitation     Invitation        @relation(fields: [invitationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  group          OrganizationGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([invitationId, groupId])
+  @@index([organizationId, groupId])
+}
+
+model InvitationPermissionGrant {
+  invitationId   String
+  organizationId String
+  permission     String
+  createdAt      DateTime   @default(now())
+  invitation     Invitation @relation(fields: [invitationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([invitationId, permission])
+  @@index([organizationId])
 }
 
 model Product {
-  id String @id @default(cuid())
-  code String @unique
-  name String
+  id     String  @id @default(cuid())
+  code   String  @unique
+  name   String
   active Boolean @default(true)
-  plans Plan[]
+  plans  Plan[]
 }
 
 model Plan {
-  id String @id @default(cuid())
-  productId String
-  code String
-  name String
-  priceMinor Int
-  currency String
-  interval String
-  features String[]
-  active Boolean @default(true)
-  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  id            String         @id @default(cuid())
+  productId     String
+  code          String
+  name          String
+  priceMinor    Int
+  currency      String
+  interval      String
+  features      String[]
+  active        Boolean        @default(true)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
   subscriptions Subscription[]
+
   @@unique([productId, code])
 }
 
 model Subscription {
-  id String @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String
-  planId String
-  status String @default("active")
-  startsAt DateTime @default(now())
-  endsAt DateTime
-  idempotencyKey String @unique
-  requestHash String
-  createdAt DateTime @default(now())
-  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  invoices Invoice[]
-  entitlements Entitlement[]
+  planId         String
+  status         String        @default("active")
+  startsAt       DateTime      @default(now())
+  endsAt         DateTime
+  idempotencyKey String        @unique
+  requestHash    String
+  createdAt      DateTime      @default(now())
+  plan           Plan          @relation(fields: [planId], references: [id], onDelete: Restrict)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoices       Invoice[]
+  entitlements   Entitlement[]
+
   @@index([organizationId])
 }
 
 model Invoice {
-  id String @id @default(cuid())
+  id             String       @id @default(cuid())
   subscriptionId String
-  amountMinor Int
-  currency String
-  status String @default("open")
-  createdAt DateTime @default(now())
-  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  amountMinor    Int
+  currency       String
+  status         String       @default("open")
+  createdAt      DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
 }
 
 model Entitlement {
-  id String @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   subscriptionId String
-  productCode String
-  feature String
-  expiresAt DateTime
-  revokedAt DateTime?
-  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  productCode    String
+  feature        String
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
   @@unique([subscriptionId, feature])
   @@index([organizationId, productCode])
 }
 
 model ContactRequest {
-  id String @id @default(cuid())
-  name String
-  email String
-  organization String
-  country String
-  project String
-  message String
-  locale String
-  consentAt DateTime @default(now())
-  createdAt DateTime @default(now())
-  notificationStatus String @default("not_requested")
-  notificationAttempts Int @default(0)
+  id                        String    @id @default(cuid())
+  name                      String
+  email                     String
+  organization              String
+  country                   String
+  project                   String
+  message                   String
+  locale                    String
+  consentAt                 DateTime  @default(now())
+  createdAt                 DateTime  @default(now())
+  notificationStatus        String    @default("not_requested")
+  notificationAttempts      Int       @default(0)
   notificationNextAttemptAt DateTime?
-  notificationClaimedAt DateTime?
-  notificationSentAt DateTime?
+  notificationClaimedAt     DateTime?
+  notificationSentAt        DateTime?
   notificationLastErrorCode String?
+
   @@index([notificationStatus, notificationNextAttemptAt])
 }
 
 model ApiKey {
-  id         String    @id @default(cuid())
-  userId     String
-  name       String
-  keyHash    String    @unique
-  prefix     String
-  scopes     String[]
-  lastUsed   DateTime?
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  keyHash   String    @unique
+  prefix    String
+  scopes    String[]
+  lastUsed  DateTime?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("api_keys")
 }
 

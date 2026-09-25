@@ -1,7 +1,8 @@
 import { prisma } from "../../lib/database.js";
+import { currentRequestId } from "../../shared/request-context.js";
 export const auditRepository = {
     append(tx, event) {
-        return tx.auditLog.create({ data: event });
+        return tx.auditLog.create({ data: { ...event, requestId: event.requestId ?? currentRequestId() } });
     },
     list(organizationId, limit, before) {
         return prisma.auditLog.findMany({
@@ -29,6 +30,7 @@ export const auditRepository = {
                 action: true,
                 targetType: true,
                 targetId: true,
+                requestId: true,
                 createdAt: true,
             },
         });

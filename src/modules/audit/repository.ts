@@ -1,5 +1,7 @@
 import { prisma } from "../../lib/database.js";
 import type { Transaction } from "../../shared/transaction.js";
+import type { Prisma } from "../../lib/database.js";
+import { currentRequestId } from "../../shared/request-context.js";
 export const auditRepository = {
   append(
     tx: Transaction,
@@ -9,9 +11,11 @@ export const auditRepository = {
       action: string;
       targetType?: string;
       targetId?: string;
+      requestId?: string;
+      metadata?: Prisma.InputJsonValue;
     },
   ) {
-    return tx.auditLog.create({ data: event });
+    return tx.auditLog.create({ data: { ...event, requestId: event.requestId ?? currentRequestId() } });
   },
   list(organizationId: string, limit: number, before?: Date) {
     return prisma.auditLog.findMany({
@@ -47,6 +51,7 @@ export const auditRepository = {
         action: true,
         targetType: true,
         targetId: true,
+        requestId: true,
         createdAt: true,
       },
     });

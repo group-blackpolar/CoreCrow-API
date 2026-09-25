@@ -1,9 +1,10 @@
-import type { FastifyInstance, FastifyRequest, HTTPMethods } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest, HTTPMethods } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { error } from "./schemas.js";
 import { principal } from "../modules/security/session.js";
 import { DomainError } from "../shared/errors.js";
+import { withRequestContext } from "../shared/request-context.js";
 const json = (schema: z.ZodTypeAny) =>
   zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
 export function contract<
@@ -25,12 +26,17 @@ export function contract<
     public?: boolean;
     rateLimit?: number;
     idempotency?: boolean;
+    headers?: {
+      properties: Record<string, { type: "string"; description?: string; pattern?: string }>;
+      required?: string[];
+    };
     run: (input: {
       body: z.infer<B>;
       params: z.infer<P>;
       query: z.infer<Q>;
       user: Awaited<ReturnType<typeof principal>>;
       request: FastifyRequest;
+      reply: FastifyReply;
     }) => Promise<unknown>;
   },
 ) {
@@ -44,17 +50,22 @@ export function contract<
       tags: [options.tag],
       summary: options.summary,
       security: options.public ? [] : [{ sessionCookie: [] }],
-      ...(options.idempotency
+      ...(options.idempotency || options.headers
         ? {
             headers: {
               type: "object",
-              required: ["idempotency-key"],
+              required: [
+                ...(options.idempotency ? ["idempotency-key"] : []),
+                ...(options.headers?.required ?? []),
+              ],
               properties: {
-                "idempotency-key": {
+                ...(options.idempotency ? { "idempotency-key": {
                   type: "string",
                   pattern: "^[A-Za-z0-9_-]{16,128}$",
-                },
+                } } : {}),
+                ...(options.headers?.properties ?? {}),
               },
+              additionalProperties: true,
             },
           }
         : {}),
@@ -68,26 +79,30 @@ export function contract<
       },
     },
     handler: async (request, reply) => {
-      const user = options.public ? undefined : await principal(request);
-      const value = await options.run({
-        body: options.body?.parse(request.body),
-        params: options.params?.parse(request.params),
-        query: options.query?.parse(request.query),
-        user: user!,
-        request,
-      });
-      // Project responses to the contract; never expose internal hashes or persistence fields.
-      const parsed = options.response.safeParse(
-        JSON.parse(JSON.stringify(value ?? null)),
-      );
-      if (!parsed.success)
-        throw new DomainError(
-          500,
-          "RESPONSE_CONTRACT_ERROR",
-          "The response could not be completed",
+      return withRequestContext(request.id, async () => {
+        const user = options.public ? undefined : await principal(request);
+        const value = await options.run({
+          body: options.body?.parse(request.body),
+          params: options.params?.parse(request.params),
+          query: options.query?.parse(request.query),
+          user: user!,
+          request,
+          reply,
+        });
+        // Project responses to the contract; never expose internal hashes or persistence fields.
+        const parsed = options.response.safeParse(
+          JSON.parse(JSON.stringify(value ?? null, (_key, item) =>
+            typeof item === "bigint" ? Number(item) : item,
+          )),
         );
-      const output = parsed.data;
-      return reply.code(options.status ?? 200).send(output);
+        if (!parsed.success)
+          throw new DomainError(
+            500,
+            "RESPONSE_CONTRACT_ERROR",
+            "The response could not be completed",
+          );
+        return reply.code(options.status ?? 200).send(parsed.data);
+      });
     },
   });
 }

@@ -13,7 +13,7 @@ export const desktopIdentity = {
             if (!session || session.expiresAt <= new Date())
                 fail(401, "UNAUTHENTICATED", "Desktop session unavailable");
             const user = await repo.user(tx, session.userId);
-            if (!user || !user.emailVerified)
+            if (!user || !user.emailVerified || user.status !== "ACTIVE")
                 fail(401, "UNAUTHENTICATED", "User unavailable");
             return user;
         });
@@ -68,7 +68,7 @@ export const desktopIdentity = {
                 !timingSafeEqual(actual, expected))
                 fail(401, "INVALID_DESKTOP_CODE", "Desktop code unavailable");
             const user = await repo.user(tx, value.userId);
-            if (!user || !user.emailVerified)
+            if (!user || !user.emailVerified || user.status !== "ACTIVE")
                 fail(401, "UNAUTHENTICATED", "User unavailable");
             const token = `north_session_${randomBytes(32).toString("hex")}`;
             const session = await repo.createSession(tx, user.id, token, new Date(Date.now() + 12 * 60 * 60_000));

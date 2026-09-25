@@ -1,4 +1,9 @@
-import { prisma, type TenantRole } from "../../lib/database.js";
+import {
+  prisma,
+  type InvitationKind,
+  type OrganizationStatus,
+  type TenantRole,
+} from "../../lib/database.js";
 import type { Transaction } from "../../shared/transaction.js";
 export const tenantRepository = {
   membership(tx: Transaction, organizationId: string, userId: string) {
@@ -8,6 +13,15 @@ export const tenantRepository = {
   },
   organization(tx: Transaction, id: string) {
     return tx.organization.findUnique({ where: { id } });
+  },
+  organizationBySlug(tx: Transaction, slug: string) {
+    return tx.organization.findUnique({ where: { slug } });
+  },
+  publicOrganization(slug: string) {
+    return prisma.organization.findFirst({
+      where: { slug, status: "ACTIVE" },
+      select: { name: true, slug: true },
+    });
   },
   list(userId: string) {
     return prisma.organization.findMany({
@@ -19,14 +33,22 @@ export const tenantRepository = {
   create(
     tx: Transaction,
     userId: string,
-    data: { name: string; slug: string },
+    data: { name: string; slug: string; storageLimitBytes?: bigint },
   ) {
     return tx.organization.create({
-      data: { ...data, memberships: { create: { userId, role: "OWNER" } } },
+      data: {
+        ...data,
+        memberships: { create: { userId, role: "OWNER" } },
+        billingProfile: { create: {} },
+      },
     });
   },
-  update(tx: Transaction, id: string, name: string) {
-    return tx.organization.update({ where: { id }, data: { name } });
+  update(
+    tx: Transaction,
+    id: string,
+    data: { name?: string; slug?: string; status?: OrganizationStatus },
+  ) {
+    return tx.organization.update({ where: { id }, data });
   },
   members(tx: Transaction, organizationId: string) {
     return tx.membership.findMany({
@@ -44,23 +66,90 @@ export const tenantRepository = {
   remove(tx: Transaction, id: string) {
     return tx.membership.delete({ where: { id } });
   },
+  revokePendingEmailInvitations(
+    tx: Transaction,
+    organizationId: string,
+    email: string,
+  ) {
+    return tx.invitation.updateMany({
+      where: {
+        organizationId,
+        kind: "EMAIL",
+        email,
+        acceptedAt: null,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+  },
   invite(
     tx: Transaction,
     data: {
       organizationId: string;
-      email: string;
+      kind: InvitationKind;
+      email?: string;
       role: TenantRole;
       tokenHash: string;
       expiresAt: Date;
+      groupIds: string[];
+      permissions: string[];
     },
   ) {
-    return tx.invitation.create({ data });
+    const { groupIds, permissions, ...invitation } = data;
+    return tx.invitation.create({ data: invitation }).then(async (created) => {
+      if (groupIds.length)
+        await tx.invitationGroupGrant.createMany({
+          data: groupIds.map((groupId) => ({
+            invitationId: created.id,
+            organizationId: data.organizationId,
+            groupId,
+          })),
+        });
+      if (permissions.length)
+        await tx.invitationPermissionGrant.createMany({
+          data: permissions.map((permission) => ({
+            invitationId: created.id,
+            organizationId: data.organizationId,
+            permission,
+          })),
+        });
+      return tx.invitation.findUniqueOrThrow({
+        where: { id: created.id },
+      include: {
+        groupGrants: { select: { groupId: true } },
+        permissionGrants: { select: { permission: true } },
+      },
+      });
+    });
   },
-  invitation(tx: Transaction, tokenHash: string) {
-    return tx.invitation.findUnique({ where: { tokenHash } });
+  invitations(tx: Transaction, organizationId: string) {
+    return tx.invitation.findMany({
+      where: { organizationId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      include: {
+        groupGrants: { select: { groupId: true } },
+        permissionGrants: { select: { permission: true } },
+      },
+    });
+  },
+  invitation(tx: Transaction, tokenHashes: string[]) {
+    return tx.invitation.findFirst({
+      where: { tokenHash: { in: tokenHashes } },
+      include: {
+        groupGrants: { select: { groupId: true } },
+        permissionGrants: { select: { permission: true } },
+      },
+    });
   },
   invitationById(tx: Transaction, id: string, organizationId: string) {
-    return tx.invitation.findFirst({ where: { id, organizationId } });
+    return tx.invitation.findFirst({
+      where: { id, organizationId },
+      include: {
+        groupGrants: { select: { groupId: true } },
+        permissionGrants: { select: { permission: true } },
+      },
+    });
   },
   revoke(tx: Transaction, id: string) {
     return tx.invitation.update({
@@ -75,15 +164,41 @@ export const tenantRepository = {
     userId: string,
     role: TenantRole,
   ) {
-    await tx.invitation.update({
-      where: { id },
-      data: { acceptedAt: new Date() },
+    const consumed = await tx.invitation.updateMany({
+      where: { id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { acceptedAt: new Date(), acceptedByUserId: userId },
     });
+    if (consumed.count !== 1) return null;
     // Existing members never gain a new role by replaying an old invitation.
-    return tx.membership.upsert({
+    const membership = await tx.membership.upsert({
       where: { organizationId_userId: { organizationId, userId } },
       create: { organizationId, userId, role },
       update: {},
     });
+    return membership;
+  },
+  addInvitationGrants(
+    tx: Transaction,
+    organizationId: string,
+    membershipId: string,
+    groupIds: string[],
+    permissions: string[],
+  ) {
+    return Promise.all([
+      ...groupIds.map((groupId) =>
+        tx.organizationGroupMember.upsert({
+          where: { groupId_membershipId: { groupId, membershipId } },
+          create: { organizationId, groupId, membershipId },
+          update: {},
+        }),
+      ),
+      ...permissions.map((permission) =>
+        tx.membershipPermissionGrant.upsert({
+          where: { membershipId_permission: { membershipId, permission } },
+          create: { organizationId, membershipId, permission },
+          update: {},
+        }),
+      ),
+    ]);
   },
 };

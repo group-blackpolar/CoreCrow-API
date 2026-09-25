@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "./database.js";
 import { sendIdentityMail } from "../modules/security/mail.js";
+import { issueEmailVerificationCode } from "../modules/identity/email-verification-service.js";
 import { auditRepository } from "../modules/audit/repository.js";
 import { openAPI } from "better-auth/plugins";
 export const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,http://localhost:3001")
@@ -36,9 +37,11 @@ export const auth = betterAuth({
         revokeSessionsOnPasswordReset: true,
     },
     emailVerification: {
-        sendOnSignUp: true,
-        sendVerificationEmail: async ({ user, url }) => {
-            await sendIdentityMail(user.email, "Verify your Black Polar email", url);
+        // The Fastify adapter issues the code after Better Auth has committed the
+        // new identity, avoiding an out-of-transaction lookup and duplicate mail.
+        sendOnSignUp: false,
+        sendVerificationEmail: async ({ user }) => {
+            await issueEmailVerificationCode(user.email);
         },
     },
     socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
@@ -53,6 +56,12 @@ export const auth = betterAuth({
     user: {
         additionalFields: {
             role: { type: "string", defaultValue: "USER", input: false },
+            status: { type: "string", defaultValue: "ACTIVE", input: false },
+            passwordChangeRequired: {
+                type: "boolean",
+                defaultValue: false,
+                input: false,
+            },
             termsAcceptedAt: { type: "date", required: false, input: false },
             termsVersion: { type: "string", required: false, input: false },
         },

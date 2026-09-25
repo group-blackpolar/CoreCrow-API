@@ -1,15 +1,19 @@
 import { hashPassword } from "better-auth/crypto";
-import type { Role } from "../../lib/database.js";
+import { randomBytes } from "node:crypto";
+import { Prisma, type Role } from "../../lib/database.js";
 import { identities } from "./repository.js";
 import { transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { auditRepository } from "../audit/repository.js";
 import { tenantRepository } from "../tenancy/repository.js";
+import { sendPreprovisionedAccountMail } from "../security/mail.js";
+import { issueEmailVerificationCode } from "./email-verification-service.js";
 export const CURRENT_TERMS_VERSION = "2026-09-16";
 export async function requireOperator(id: string, superOnly = false) {
   const user = await identities.get(id);
   if (
     !user ||
+    user.status !== "ACTIVE" ||
     !(superOnly ? ["SUPERADMIN"] : ["ADMIN", "SUPERADMIN"]).includes(user.role)
   )
     fail(403, "FORBIDDEN", "Operator permission required");
@@ -62,6 +66,59 @@ export const users = {
       });
       return user;
     });
+  },
+  async preprovision(
+    actorId: string,
+    data: { name: string; email: string; role: Exclude<Role, "SUPERADMIN"> },
+  ) {
+    await requireOperator(actorId, data.role === "ADMIN");
+    const temporaryPassword = `${randomBytes(18).toString("base64url")}!aA1`;
+    const password = await hashPassword(temporaryPassword);
+    const email = data.email.trim().toLowerCase();
+    let user;
+    try {
+      user = await transaction(async (tx) => {
+        const created = await identities.create(
+          tx,
+          {
+            name: data.name,
+            email,
+            role: data.role,
+            passwordChangeRequired: true,
+          },
+          password,
+        );
+        await auditRepository.append(tx, {
+          actorId,
+          action: "platform.user.preprovision",
+          targetType: "User",
+          targetId: created.id,
+          metadata: { role: data.role },
+        });
+        await auditRepository.append(tx, {
+          actorId,
+          action: "identity.credential.temporary.issue",
+          targetType: "User",
+          targetId: created.id,
+        });
+        return created;
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+        fail(409, "IDENTITY_EXISTS", "An identity with this email already exists");
+      throw error;
+    }
+    let delivery = "sent" as "sent" | "failed";
+    try {
+      await sendPreprovisionedAccountMail(email, temporaryPassword);
+      await issueEmailVerificationCode(email);
+    } catch {
+      delivery = "failed";
+    }
+    return { user, delivery };
   },
   async update(
     actorId: string,

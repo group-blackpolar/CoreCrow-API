@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -12,10 +13,7 @@ import { DomainError } from "./shared/errors.js";
 import { ZodError } from "zod";
 import { Prisma } from "./lib/database.js";
 import { v1Routes } from "./routes/v1.js";
-import { userRoutes } from "./routes/users.js";
-import { authAdminRoutes, legacyMigrationRoute } from "./routes/auth-admin.js";
-import { adminKeysRoutes } from "./routes/admin-keys.js";
-import { adminLogsRoutes } from "./routes/admin-logs.js";
+import { adminSignInRoutes } from "./routes/auth-admin.js";
 import { healthService } from "./modules/health/service.js";
 import { healthPage } from "./modules/health/page.js";
 import { auditRepository } from "./modules/audit/repository.js";
@@ -24,7 +22,13 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { health as healthSchema, statusSummary as statusSummarySchema, statusSummaryQuery, } from "./contracts/schemas.js";
 import { RequestTelemetry } from "./modules/telemetry/service.js";
 import { desktopAuthRoutes } from "./routes/desktop-auth.js";
+import { issueEmailVerificationCode } from "./modules/identity/email-verification-service.js";
+import { configureNorthContentReferenceResolvers } from "./modules/north/content-service.js";
+import { northAssets } from "./modules/north/asset-service.js";
 export async function buildApp(options = {}) {
+    configureNorthContentReferenceResolvers({
+        validateAssetReference: (organizationId, assetId, actorId, tx) => northAssets.validateReference(actorId, organizationId, assetId, tx),
+    });
     const app = Fastify({
         logger: options.logger === false
             ? false
@@ -42,7 +46,6 @@ export async function buildApp(options = {}) {
                 redact: [
                     "req.headers.authorization",
                     "req.headers.cookie",
-                    "req.headers.x-bootstrap-secret",
                     "res.headers.set-cookie",
                 ],
             },
@@ -54,6 +57,7 @@ export async function buildApp(options = {}) {
                 ? process.env.TRUST_PROXY
                 : false,
     });
+    await app.register(cookie);
     await app.register(helmet, {
         contentSecurityPolicy: {
             directives: {
@@ -69,8 +73,8 @@ export async function buildApp(options = {}) {
     await app.register(cors, {
         origin: trustedOrigins,
         credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
-        methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match"],
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     });
     await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
     await app.register(swagger, {
@@ -78,7 +82,7 @@ export async function buildApp(options = {}) {
             info: {
                 title: "CORECROW API",
                 version: "1.0.0",
-                description: "Black Polar shared backend. Cookie identity, tenant membership authorization, audited contract commerce. /api aliases are deprecated.",
+                description: "Black Polar shared backend. Cookie identity, tenant membership authorization, and audited contract commerce. Public contracts use /v1.",
             },
             servers: [{ url: "https://api.blackpolar.org" }],
             components: {
@@ -130,10 +134,12 @@ export async function buildApp(options = {}) {
         let status = 500;
         let code = "INTERNAL_ERROR";
         let message = "The request could not be completed";
+        let details;
         if (error instanceof DomainError) {
             status = error.statusCode;
             code = error.code;
             message = error.message;
+            details = error.details;
         }
         else if (error instanceof ZodError || error.validation) {
             status = 400;
@@ -168,7 +174,7 @@ export async function buildApp(options = {}) {
             req.log.error({ requestId: req.id, code }, "Request failed");
         return reply
             .code(status)
-            .send({ error: { code, message, requestId: req.id } });
+            .send({ error: { code, message, requestId: req.id, ...details } });
     });
     app.setNotFoundHandler((req, reply) => reply.code(404).send({
         error: {
@@ -186,6 +192,7 @@ export async function buildApp(options = {}) {
                 action: `security.request.denied.${reply.statusCode}`,
                 targetType: "HttpRequest",
                 targetId: req.id,
+                requestId: req.id,
             });
         }
         catch {
@@ -252,7 +259,7 @@ export async function buildApp(options = {}) {
     }, async () => ({ status: "alive", apiVersion: "v1" }));
     app.get("/v1/openapi.json", async () => app.swagger());
     const authHandler = async (request, reply) => {
-        let requestPath = request.url.replace(/^\/api\/auth/, "/v1/auth");
+        let requestPath = request.url;
         // Keep the Google Cloud callback already provisioned for Black Polar while
         // routing it through Better Auth's canonical provider callback internally.
         requestPath = requestPath.replace(/^\/v1\/auth\/oauth\/google\/callback(?=\?|$)/, "/v1/auth/callback/google");
@@ -285,6 +292,13 @@ export async function buildApp(options = {}) {
                 ? { body: JSON.stringify(request.body) }
                 : {}),
         }));
+        if (response.ok &&
+            request.method === "POST" &&
+            requestPath.split("?")[0] === "/v1/auth/sign-up/email") {
+            const email = request.body?.email;
+            if (typeof email === "string")
+                await issueEmailVerificationCode(email);
+        }
         reply.code(response.status);
         response.headers.forEach((value, key) => {
             if (key !== "set-cookie")
@@ -296,19 +310,8 @@ export async function buildApp(options = {}) {
         return reply.send(await response.text());
     };
     app.all("/v1/auth/*", authHandler);
-    app.all("/api/auth/*", authHandler);
     await app.register(desktopAuthRoutes, { prefix: "/v1/desktop-auth" });
     await app.register(v1Routes, { prefix: "/v1" });
-    await app.register(legacyMigrationRoute);
-    await app.register(async (legacy) => {
-        legacy.addHook("onRequest", async (_, reply) => {
-            reply.header("Deprecation", "true");
-            reply.header("Link", '</v1/openapi.json>; rel="successor-version"');
-        });
-        await legacy.register(userRoutes);
-        await legacy.register(adminKeysRoutes);
-        await legacy.register(adminLogsRoutes);
-        await legacy.register(authAdminRoutes);
-    }, { prefix: "/api" });
+    await app.register(adminSignInRoutes);
     return app;
 }

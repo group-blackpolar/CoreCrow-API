@@ -6,7 +6,9 @@ export const publicUser = {
   email: true,
   name: true,
   role: true,
+  status: true,
   emailVerified: true,
+  passwordChangeRequired: true,
   termsAcceptedAt: true,
   termsVersion: true,
   createdAt: true,
@@ -27,7 +29,12 @@ export const identities = {
   },
   create(
     tx: Transaction,
-    data: { email: string; name: string; role: Role },
+    data: {
+      email: string;
+      name: string;
+      role: Role;
+      passwordChangeRequired?: boolean;
+    },
     password: string,
   ) {
     const id = randomUUID();

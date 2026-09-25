@@ -3,7 +3,7 @@ import "fastify";
 
 declare module "fastify" {
   interface FastifyRequest {
-    user?: { id: string; role: string };
+    user?: { id: string; role: string; sessionId?: string };
     apiKey?: { id: string; scopes: string[] };
     admin?: { id: string; role: string };
   }

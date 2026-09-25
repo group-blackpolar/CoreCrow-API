@@ -14,7 +14,7 @@ pnpm build
 node --env-file=.env dist/server.js
 ```
 
-Email/password signup requires email verification. Without SMTP, the API starts with degraded readiness and email-dependent requests return 503 before creating accounts. For the first operator, register/verify through Better Auth, then run `pnpm create-admin` on the backend host with environment variables loaded. The CLI promotes an existing verified identity; it never creates an identifier-only login.
+Email/password signup requires a six-digit, single-use email verification code. Codes expire after 10 minutes, are stored only as keyed hashes, allow five validation attempts, and are replaced by resend. Without SMTP, the API starts with degraded readiness and signup fails before creating an account. To configure the superadmin, first register and verify a Better Auth credential identity, then run `pnpm create-admin` on the trusted backend host. The command prompts for the target email and a hidden permanent admin secret, stores only a password-grade hash, revokes that identity's sessions, and can safely rotate the same identity's secret. For non-interactive secret-manager integration, inject `CORECROW_BOOTSTRAP_EMAIL` and `CORECROW_ADMIN_SECRET` only into that command's process environment; never place the secret in arguments, logs, source, or deployment files.
 
 ## Contracts
 
@@ -24,15 +24,25 @@ Email/password signup requires email verification. Without SMTP, the API starts 
 - `GET /v1/status/summary?window=1h|6h|24h`: public, sanitized five-minute traffic buckets. It returns counts and latency histograms only—never paths, tenant identifiers, IPs, headers or bodies.
 - `GET /v1/openapi.json`: generated application contract.
 - `GET /v1/auth/open-api/generate-schema`: Better Auth's own endpoint schemas.
-- `/v1/auth/*`: email/password, verification, recovery, Google when configured, sessions, revocation.
+- `/v1/auth/*`: Better Auth email/password identity, recovery, Google when configured, sessions, and revocation. Signup sends the Black Polar verification code rather than a verification link.
+- `POST /v1/identity/verification/send`: generic `{ accepted: true }` resend response for known and unknown addresses; rate limited to 10 requests per minute per resolved client address.
+- `POST /v1/identity/verification/confirm`: confirm `{ email, code }`; success returns `{ verified: true }`, while unknown, expired, replaced, reused, or invalid codes share `400 INVALID_OR_EXPIRED_VERIFICATION_CODE`; rate limited to 20 requests per minute and each issued code permits five validation attempts.
+- `POST /v1/admin/sign-in`: rate-limited operator sign-in with email and permanent admin secret; success is delivered only as an HttpOnly session cookie.
+- `POST /v1/me/change-temporary-password`: authenticated one-time replacement of a recovery password; it preserves the current browser session and revokes the user's other sessions.
 - `/v1/me`, `/v1/users`: identity/profile operations and protected operator administration.
 - `/v1/organizations/*`: organizations, memberships, invitations, effective permissions, tenant audit, subscriptions, entitlements.
+- `/v1/organizations/{organizationId}/north/*`: authorized taxonomy, panels,
+  revisions, assets, scoped grants, templates, batch ordering, and tenant search.
+- `/v1/platform/north/templates`: versioned global template management for
+  explicitly authorized platform administrators.
 - `/v1/invitations/accept`: recipient-bound, single-use invitation acceptance.
 - `/v1/security/keys`: self-owned read-only API keys with explicit scopes.
 - `/v1/commerce/*`: products, plans, audited contract provisioning, cancellation.
 - `/v1/contact`: public consented submission; operator-only audited GET for follow-up.
 
 Application errors use `{ error: { code, message, requestId } }`. Better Auth retains its provider error contract. Schemas reject unrecognized request properties. List limits and supported parameters are specified in OpenAPI. Responses project only contract fields, excluding hashes and authentication credentials.
+
+The unversioned `/api/*` compatibility surface and legacy administrator identifier flow have been removed. Calls to those paths now receive the standard `404 NOT_FOUND` response. Consumers must migrate to the corresponding `/v1/*` contracts before deploying this release. Recovery-created credentials expose `passwordChangeRequired`; while it is true, protected application operations are denied except reading `/v1/me` and replacing the temporary password.
 
 ## Implemented boundaries
 

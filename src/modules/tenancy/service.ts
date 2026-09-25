@@ -1,25 +1,65 @@
-import { randomBytes } from "node:crypto";
-import type { TenantRole } from "../../lib/database.js";
+import { Prisma, type OrganizationStatus, type TenantRole } from "../../lib/database.js";
 import { transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { tenantRepository as repo } from "./repository.js";
 import { authorize } from "../authorization/service.js";
 import { canManageRole } from "../authorization/policy.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { hash } from "../security/crypto.js";
+import {
+  isReservedOrganizationSlug,
+  normalizeOrganizationSlug,
+} from "./slug.js";
+import { bootstrapNorthOrganization } from "../north/service.js";
+import { assetConfiguration } from "../north/asset-config.js";
+
+function validSlug(input: string) {
+  const slug = normalizeOrganizationSlug(input);
+  if (slug.length < 2)
+    fail(400, "ORGANIZATION_SLUG_INVALID", "Organization slug is invalid");
+  if (isReservedOrganizationSlug(slug))
+    fail(409, "ORGANIZATION_SLUG_RESERVED", "Organization slug is reserved");
+  return slug;
+}
+
+function slugConflict(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
 export const tenants = {
   list: repo.list,
-  create(userId: string, data: { name: string; slug: string }) {
-    return transaction(async (tx) => {
-      const org = await repo.create(tx, userId, data);
-      await audit.append(tx, {
-        actorId: userId,
-        organizationId: org.id,
-        action: "organization.create",
-        targetId: org.id,
+  async create(userId: string, data: { name: string; slug?: string }) {
+    const slug = validSlug(data.slug ?? data.name);
+    try {
+      return await transaction(async (tx) => {
+        const org = await repo.create(tx, userId, {
+          name: data.name,
+          slug,
+          storageLimitBytes: BigInt(assetConfiguration().defaultOrganizationStorageLimitBytes),
+        });
+        await bootstrapNorthOrganization(tx, org.id);
+        await audit.append(tx, {
+          actorId: userId,
+          organizationId: org.id,
+          action: "organization.create",
+          targetType: "organization",
+          targetId: org.id,
+          metadata: { slug },
+        });
+        return org;
       });
-      return org;
-    });
+    } catch (error) {
+      if (slugConflict(error))
+        fail(409, "ORGANIZATION_SLUG_TAKEN", "Organization slug is unavailable");
+      throw error;
+    }
+  },
+  async resolvePublic(slugInput: string) {
+    const slug = normalizeOrganizationSlug(slugInput);
+    const organization = await repo.publicOrganization(slug);
+    if (!organization) fail(404, "NOT_FOUND", "Organization not found");
+    return organization;
   },
   read(userId: string, organizationId: string) {
     return transaction(async (tx) => {
@@ -27,15 +67,69 @@ export const tenants = {
       return repo.organization(tx, organizationId);
     });
   },
-  update(userId: string, organizationId: string, name: string) {
+  async update(
+    userId: string,
+    organizationId: string,
+    data: { name?: string; slug?: string },
+  ) {
+    const update = {
+      ...(data.name ? { name: data.name } : {}),
+      ...(data.slug ? { slug: validSlug(data.slug) } : {}),
+    };
+    try {
+      return await transaction(async (tx) => {
+        await authorize(tx, userId, organizationId, "organization.update");
+        const current = await repo.organization(tx, organizationId);
+        if (!current) fail(404, "NOT_FOUND", "Organization not found");
+        if (current.status !== "ACTIVE")
+          fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
+        const org = await repo.update(tx, organizationId, update);
+        await audit.append(tx, {
+          actorId: userId,
+          organizationId,
+          action: "organization.update",
+          targetType: "organization",
+          targetId: organizationId,
+          metadata: { fields: Object.keys(update).sort() },
+        });
+        return org;
+      });
+    } catch (error) {
+      if (slugConflict(error))
+        fail(409, "ORGANIZATION_SLUG_TAKEN", "Organization slug is unavailable");
+      throw error;
+    }
+  },
+  setStatus(
+    userId: string,
+    organizationId: string,
+    status: Extract<OrganizationStatus, "ACTIVE" | "ARCHIVED">,
+  ) {
     return transaction(async (tx) => {
-      await authorize(tx, userId, organizationId, "organization.update");
-      const org = await repo.update(tx, organizationId, name);
+      const actor = await authorize(
+        tx,
+        userId,
+        organizationId,
+        "organization.update",
+      );
+      if (actor.role !== "OWNER")
+        fail(403, "FORBIDDEN", "Only an owner can change organization lifecycle");
+      const current = await repo.organization(tx, organizationId);
+      if (!current) fail(404, "NOT_FOUND", "Organization not found");
+      if (current.status === "SUSPENDED")
+        fail(
+          409,
+          "ORGANIZATION_SUSPENDED",
+          "A suspended organization requires platform administration",
+        );
+      const org = await repo.update(tx, organizationId, { status });
       await audit.append(tx, {
         actorId: userId,
         organizationId,
-        action: "organization.update",
+        action: status === "ARCHIVED" ? "organization.archive" : "organization.restore",
+        targetType: "organization",
         targetId: organizationId,
+        metadata: { previousStatus: current.status, status },
       });
       return org;
     });
@@ -79,96 +173,6 @@ export const tenants = {
         targetId: target.id,
       });
       return result;
-    });
-  },
-  invite(
-    userId: string,
-    organizationId: string,
-    email: string,
-    role: TenantRole,
-  ) {
-    return transaction(async (tx) => {
-      const actor = await authorize(
-        tx,
-        userId,
-        organizationId,
-        "invitations.manage",
-      );
-      if (role === "OWNER" || !canManageRole(actor.role, role, role))
-        fail(403, "FORBIDDEN", "Cannot invite this role");
-      const token = randomBytes(32).toString("hex");
-      const invitation = await repo.invite(tx, {
-        organizationId,
-        email: email.toLowerCase(),
-        role,
-        tokenHash: hash(token),
-        expiresAt: new Date(Date.now() + 7 * 86400000),
-      });
-      await audit.append(tx, {
-        actorId: userId,
-        organizationId,
-        action: "invitation.create",
-        targetId: invitation.id,
-      });
-      return {
-        id: invitation.id,
-        email: invitation.email,
-        role,
-        expiresAt: invitation.expiresAt,
-        token,
-      };
-    });
-  },
-  accept(
-    user: { id: string; email: string; emailVerified: boolean },
-    token: string,
-  ) {
-    return transaction(async (tx) => {
-      const invite = await repo.invitation(tx, hash(token));
-      if (
-        !invite ||
-        invite.revokedAt ||
-        invite.acceptedAt ||
-        invite.expiresAt <= new Date()
-      )
-        fail(404, "INVITATION_INVALID", "Invitation unavailable");
-      if (!user.emailVerified || user.email.toLowerCase() !== invite.email)
-        fail(403, "FORBIDDEN", "A verified matching email is required");
-      const member = await repo.accept(
-        tx,
-        invite.id,
-        invite.organizationId,
-        user.id,
-        invite.role,
-      );
-      await audit.append(tx, {
-        actorId: user.id,
-        organizationId: invite.organizationId,
-        action: "invitation.accept",
-        targetId: invite.id,
-      });
-      return member;
-    });
-  },
-  revoke(userId: string, organizationId: string, id: string) {
-    return transaction(async (tx) => {
-      const actor = await authorize(
-        tx,
-        userId,
-        organizationId,
-        "invitations.manage",
-      );
-      const invite = await repo.invitationById(tx, id, organizationId);
-      if (!invite) fail(404, "NOT_FOUND", "Invitation not found");
-      if (!canManageRole(actor.role, invite.role))
-        fail(403, "FORBIDDEN", "Cannot revoke this invitation");
-      await repo.revoke(tx, id);
-      await audit.append(tx, {
-        actorId: userId,
-        organizationId,
-        action: "invitation.revoke",
-        targetId: id,
-      });
     });
   },
 };

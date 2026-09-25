@@ -3,6 +3,7 @@ export class DomainError extends Error {
     public statusCode: number,
     public code: string,
     message: string,
+    public details?: Record<string, string | number | boolean | null>,
   ) {
     super(message);
   }

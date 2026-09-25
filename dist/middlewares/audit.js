@@ -13,6 +13,7 @@ export function audit(options) {
                 action: options.action,
                 targetType: options.targetType,
                 targetId,
+                requestId: req.id,
                 metadata: {
                     apiKeyId: req.apiKey?.id ?? null,
                     ip: req.ip,
