@@ -2199,6 +2199,104 @@ test(
         409,
       );
     });
+    await t.test("platform audit and summary contracts are additive and role-scoped", async () => {
+      const auditor = await signup("platform-superadmin");
+      const delegate = await signup("platform-admin");
+      const plain = await signup("platform-user");
+      await prisma.user.update({ where: { id: auditor.id }, data: { role: "SUPERADMIN" } });
+      await prisma.user.update({ where: { id: delegate.id }, data: { role: "ADMIN" } });
+
+      // Authorization: the global audit trail is superadmin-only and fails closed.
+      expect(await call("GET", "/v1/platform/audit"), 401);
+      expect(await call("GET", "/v1/platform/audit", plain.cookie), 403);
+      expect(await call("GET", "/v1/platform/audit", delegate.cookie), 403);
+      expect(await call("GET", "/v1/platform/audit?limit=0", auditor.cookie), 400);
+      expect(await call("GET", "/v1/platform/audit?limit=101", auditor.cookie), 400);
+      expect(await call("GET", "/v1/platform/audit?from=not-a-date", auditor.cookie), 400);
+      expect(await call("GET", "/v1/platform/audit?unknown=1", auditor.cookie), 400);
+
+      const first = expect(await call("GET", "/v1/platform/audit?limit=2", auditor.cookie), 200);
+      assert.equal("logs" in first, false, "the envelope is items + nextCursor");
+      assert.ok(Array.isArray(first.items));
+      assert.ok(first.items.length > 0 && first.items.length <= 2);
+      assert.ok("nextCursor" in first);
+      for (const field of ["id", "actorId", "organizationId", "action", "targetType", "targetId", "requestId", "metadata", "createdAt"]) {
+        assert.ok(field in first.items[0], `audit event exposes ${field}`);
+      }
+
+      // Filters are enforced server-side.
+      const byAction = expect(await call("GET", "/v1/platform/audit?action=logs.view&limit=5", auditor.cookie), 200);
+      assert.ok(byAction.items.every((item: { action: string }) => item.action === "logs.view"));
+      const byActor = expect(await call("GET", `/v1/platform/audit?actorId=${auditor.id}&limit=5`, auditor.cookie), 200);
+      assert.ok(byActor.items.length > 0, "the audited read itself is recorded");
+      assert.ok(byActor.items.every((item: { actorId: string | null }) => item.actorId === auditor.id));
+      const since = new Date(Date.now() - 3_600_000).toISOString();
+      const windowed = expect(await call("GET", `/v1/platform/audit?from=${encodeURIComponent(since)}&limit=5`, auditor.cookie), 200);
+      assert.ok(windowed.items.every((item: { createdAt: string }) => Date.parse(item.createdAt) >= Date.now() - 3_600_000 - 60_000));
+
+      // Cursor pagination resumes after the cursor without repeating rows.
+      const pageOne = expect(await call("GET", "/v1/platform/audit?limit=2", auditor.cookie), 200);
+      assert.ok(pageOne.nextCursor);
+      const pageTwo = expect(await call("GET", `/v1/platform/audit?limit=2&cursor=${pageOne.nextCursor}`, auditor.cookie), 200);
+      const seen = new Set(pageOne.items.map((item: { id: string }) => item.id));
+      assert.ok(pageTwo.items.length > 0);
+      assert.ok(pageTwo.items.every((item: { id: string }) => !seen.has(item.id)));
+
+      // The same identity flips from 403 to 200 only when its global role changes.
+      await prisma.user.update({ where: { id: delegate.id }, data: { role: "SUPERADMIN" } });
+      expect(await call("GET", "/v1/platform/audit?limit=1", delegate.cookie), 200);
+
+      // Tenant-scoped audit remains member-driven and organization-bound.
+      const tenantAudit = expect(await call("GET", `/v1/organizations/${organizationId}/audit?limit=5`, owner.cookie), 200);
+      assert.ok(Array.isArray(tenantAudit));
+      assert.ok(tenantAudit.every((item: { organizationId: string }) => item.organizationId === organizationId));
+      // Summary: operators read it, ordinary identities do not.
+      expect(await call("GET", "/v1/platform/summary"), 401);
+      expect(await call("GET", "/v1/platform/summary", plain.cookie), 403);
+      const adminSummary = expect(await call("GET", "/v1/platform/summary", delegate.cookie), 200);
+      const rootSummary = expect(await call("GET", "/v1/platform/summary", auditor.cookie), 200);
+      assert.ok(adminSummary.users.total >= 3);
+      assert.ok(rootSummary.organizations.total >= 1);
+      assert.ok(Number.isInteger(rootSummary.users.createdLast7Days));
+      assert.ok(Number.isInteger(rootSummary.users.createdLast30Days));
+      assert.ok(Number.isInteger(rootSummary.organizations.createdLast30Days));
+      assert.ok(Number.isInteger(rootSummary.memberships.total));
+      assert.ok(Number.isInteger(rootSummary.sessions.active));
+      assert.ok(Number.isInteger(rootSummary.users.active) && Number.isInteger(rootSummary.users.suspended));
+      assert.ok(rootSummary.users.active + rootSummary.users.suspended === rootSummary.users.total);
+
+      // BigInt byte counters must cross the contract as decimal strings.
+      for (const key of ["usedBytes", "limitBytes", "reservedBytes"]) {
+        assert.equal(typeof rootSummary.storage[key], "string", `${key} is a string`);
+        assert.match(rootSummary.storage[key], /^\d+$/);
+      }
+      assert.equal(rootSummary.billing.currency, "USD");
+      assert.equal(rootSummary.billing.basePriceMinor, 1400);
+      assert.equal(rootSummary.billing.memberPriceMinor, 500);
+      assert.ok(!Number.isNaN(Date.parse(rootSummary.generatedAt)));
+
+      // The dashboard must agree with the billing surface whose formula it reuses.
+      const billingSummary = expect(await call("GET", "/v1/platform/billing/summary", auditor.cookie), 200);
+      assert.equal(rootSummary.billing.estimatedMonthlyMinor, billingSummary.estimatedMonthlyMinor);
+      assert.equal(rootSummary.billing.billableMemberCount, billingSummary.billableMemberCount);
+      assert.equal(rootSummary.billing.billableOrganizationCount, billingSummary.organizationCount);
+
+      // The organization list exposes the accountable owner additively.
+      const organizations = expect(await call("GET", "/v1/platform/organizations?limit=100", auditor.cookie), 200);
+      const listed = organizations.items.find((item: { id: string }) => item.id === organizationId);
+      assert.ok(listed, "the platform list includes the tenant");
+      assert.ok("owner" in listed);
+      assert.equal(typeof listed.memberCount, "number");
+      assert.equal(typeof listed.groupCount, "number");
+      assert.ok("createdAt" in listed, "older fields are preserved");
+      const oldestOwner = await prisma.membership.findFirst({
+        where: { organizationId, role: "OWNER" },
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { id: true, email: true } } },
+      });
+      assert.equal(listed.owner?.id ?? null, oldestOwner?.user.id ?? null);
+      if (listed.owner) assert.match(listed.owner.email, /@/);
+    });
     await t.test("NORTH global templates, authorized search, and request-correlated audit are isolated", async () => {
       const layout = {
         desktop: { x: 0, y: 0, w: 12, h: 1 },

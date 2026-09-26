@@ -4941,6 +4941,31 @@
                             "maxLength": 128,
                             "nullable": true
                           },
+                          "owner": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "name": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "email": {
+                                "type": "string",
+                                "format": "email"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "email"
+                            ],
+                            "additionalProperties": false,
+                            "nullable": true
+                          },
                           "memberCount": {
                             "type": "integer",
                             "minimum": 0
@@ -4972,6 +4997,7 @@
                           "createdAt",
                           "updatedAt",
                           "homePanelId",
+                          "owner",
                           "memberCount",
                           "groupCount",
                           "billingStatus",
@@ -6209,6 +6235,554 @@
                     "billableMemberCount",
                     "groupsCostMinor",
                     "estimatedMonthlyMinor"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/summary": {
+      "get": {
+        "summary": "Read platform-wide aggregates for the administration dashboard",
+        "tags": [
+          "Platform administration"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "active": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "suspended": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "verified": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "createdLast7Days": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "createdLast30Days": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "active",
+                        "suspended",
+                        "verified",
+                        "createdLast7Days",
+                        "createdLast30Days"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "organizations": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "active": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "suspended": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "createdLast30Days": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "active",
+                        "suspended",
+                        "createdLast30Days"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "memberships": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "total"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "sessions": {
+                      "type": "object",
+                      "properties": {
+                        "active": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "active"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "storage": {
+                      "type": "object",
+                      "properties": {
+                        "usedBytes": {
+                          "type": "string"
+                        },
+                        "limitBytes": {
+                          "type": "string"
+                        },
+                        "reservedBytes": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "usedBytes",
+                        "limitBytes",
+                        "reservedBytes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "billing": {
+                      "type": "object",
+                      "properties": {
+                        "currency": {
+                          "type": "string",
+                          "enum": [
+                            "USD"
+                          ]
+                        },
+                        "basePriceMinor": {
+                          "type": "number",
+                          "enum": [
+                            1400
+                          ]
+                        },
+                        "memberPriceMinor": {
+                          "type": "number",
+                          "enum": [
+                            500
+                          ]
+                        },
+                        "billableOrganizationCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "billableMemberCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "estimatedMonthlyMinor": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "currency",
+                        "basePriceMinor",
+                        "memberPriceMinor",
+                        "billableOrganizationCount",
+                        "billableMemberCount",
+                        "estimatedMonthlyMinor"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "users",
+                    "organizations",
+                    "memberships",
+                    "sessions",
+                    "storage",
+                    "billing",
+                    "generatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/audit": {
+      "get": {
+        "summary": "Read the global audit trail (superadmin only)",
+        "tags": [
+          "Platform administration"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "action",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "actorId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "targetType",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "query",
+            "name": "targetId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "actorId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "nullable": true
+                          },
+                          "organizationId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "nullable": true
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "targetType": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "targetId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "nullable": true
+                          },
+                          "requestId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "metadata": {
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "actorId",
+                          "organizationId",
+                          "action",
+                          "targetType",
+                          "targetId",
+                          "requestId",
+                          "createdAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
                   ],
                   "additionalProperties": false
                 }
@@ -25052,6 +25626,9 @@
                       },
                       "requestId": {
                         "type": "string",
+                        "nullable": true
+                      },
+                      "metadata": {
                         "nullable": true
                       },
                       "createdAt": {

@@ -17,6 +17,7 @@ import { northCapabilities, northGlobalCapabilities, permissions } from "../modu
 import { authorizationGroups } from "../modules/authorization/groups-service.js";
 import { transaction } from "../shared/transaction.js";
 import { auditRepository } from "../modules/audit/repository.js";
+import { operatorLogs } from "../modules/audit/service.js";
 import { createContact, listContacts } from "../modules/business/service.js";
 import { fail } from "../shared/errors.js";
 import { security, keyScopes } from "../modules/security/service.js";
@@ -267,6 +268,14 @@ export async function v1Routes(app: FastifyInstance) {
     }),
   });
   const platformOrganizationSummary = s.org.extend({
+    // Oldest OWNER membership, or null when the organization has no owner yet.
+    owner: z
+      .object({
+        id: s.id,
+        name: z.string().nullable(),
+        email: z.string().email(),
+      })
+      .nullable(),
     memberCount: z.number().int().nonnegative(),
     groupCount: z.number().int().nonnegative(),
     billingStatus: z.enum(["ACTIVE", "PAST_DUE", "SUSPENDED", "CLOSED"]).nullable(),
@@ -424,6 +433,75 @@ export async function v1Routes(app: FastifyInstance) {
     response: billingView,
     run: ({ user, params, body }) =>
       billing.setStatus(user.id, params.id, body.status),
+  });
+  contract(app, {
+    method: "GET",
+    url: "/platform/summary",
+    tag: "Platform administration",
+    summary: "Read platform-wide aggregates for the administration dashboard",
+    response: z.object({
+      users: z.object({
+        total: z.number().int().nonnegative(),
+        active: z.number().int().nonnegative(),
+        suspended: z.number().int().nonnegative(),
+        verified: z.number().int().nonnegative(),
+        createdLast7Days: z.number().int().nonnegative(),
+        createdLast30Days: z.number().int().nonnegative(),
+      }),
+      organizations: z.object({
+        total: z.number().int().nonnegative(),
+        active: z.number().int().nonnegative(),
+        suspended: z.number().int().nonnegative(),
+        createdLast30Days: z.number().int().nonnegative(),
+      }),
+      memberships: z.object({ total: z.number().int().nonnegative() }),
+      sessions: z.object({ active: z.number().int().nonnegative() }),
+      // Byte counters are returned as decimal strings on purpose: BigInt values
+      // would be coerced to Number by the contract projection and lose precision.
+      storage: z.object({
+        usedBytes: z.string(),
+        limitBytes: z.string(),
+        reservedBytes: z.string(),
+      }),
+      billing: z.object({
+        currency: z.literal("USD"),
+        basePriceMinor: z.literal(1400),
+        memberPriceMinor: z.literal(500),
+        billableOrganizationCount: z.number().int().nonnegative(),
+        billableMemberCount: z.number().int().nonnegative(),
+        estimatedMonthlyMinor: z.number().int().nonnegative(),
+      }),
+      generatedAt: s.date,
+    }),
+    run: ({ user }) => platform.summary(user.id),
+  });
+  contract(app, {
+    method: "GET",
+    url: "/platform/audit",
+    tag: "Platform administration",
+    summary: "Read the global audit trail (superadmin only)",
+    query: z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        cursor: s.id.optional(),
+        action: z.string().trim().min(1).max(128).optional(),
+        actorId: s.id.optional(),
+        targetType: z.string().trim().min(1).max(128).optional(),
+        targetId: s.id.optional(),
+        from: s.date.optional(),
+        to: s.date.optional(),
+      })
+      .strict(),
+    response: z.object({
+      items: z.array(s.auditEvent),
+      nextCursor: s.id.nullable(),
+    }),
+    run: ({ user, query }) =>
+      operatorLogs(user.id, {
+        ...query,
+        from: query.from ? new Date(query.from) : undefined,
+        to: query.to ? new Date(query.to) : undefined,
+      }),
   });
   contract(app, {
     method: "POST",

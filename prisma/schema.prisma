@@ -131,6 +131,9 @@ model AuditLog {
   createdAt      DateTime @default(now())
 
   @@index([organizationId, createdAt, id])
+  @@index([createdAt, id])
+  @@index([actorId, createdAt, id])
+  @@index([action, createdAt, id])
 }
 
 model NorthTemplate {
