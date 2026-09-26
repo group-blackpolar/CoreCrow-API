@@ -106,9 +106,10 @@ export const billing = {
         groupsCostMinor: 0,
         organizationCount,
         billableMemberCount,
-        estimatedMonthlyMinor:
-          organizationCount * BASE_PRICE_MINOR +
-          billableMemberCount * MEMBER_PRICE_MINOR,
+        estimatedMonthlyMinor: estimateMonthlyMinor(
+          organizationCount,
+          billableMemberCount,
+        ),
         byStatusScope: "ALL_PROFILES" as const,
         byStatus: counts.map((entry) => ({
           status: entry.status,
@@ -125,3 +126,17 @@ export const billingPolicy = {
   memberPriceMinor: MEMBER_PRICE_MINOR,
   groupsCostMinor: 0,
 };
+
+/** Single source of truth for the provider-neutral monthly estimate. Both the
+ * billing summary and the platform dashboard use it so the formula cannot drift
+ * between surfaces. */
+export function estimateMonthlyMinor(
+  organizationCount: number,
+  billableMemberCount: number,
+  policy: { basePriceMinor: number; memberPriceMinor: number } = billingPolicy,
+) {
+  return (
+    organizationCount * policy.basePriceMinor +
+    billableMemberCount * policy.memberPriceMinor
+  );
+}

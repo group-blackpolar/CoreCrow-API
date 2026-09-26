@@ -185,6 +185,8 @@ export const auditEvent = z.object({
   targetType: z.string().nullable(),
   targetId: id.nullable(),
   requestId: z.string().nullable(),
+  // Persisted audit metadata is arbitrary JSON written by internal callers.
+  metadata: z.unknown().nullable(),
   createdAt: date,
 });
 export const error = z.object({

@@ -34,15 +34,30 @@ export const auditRepository = {
       cursor?: string;
       action?: string;
       actorId?: string;
+      targetType?: string;
+      targetId?: string;
+      from?: Date;
+      to?: Date;
     },
   ) {
+    const createdAt =
+      query.from || query.to
+        ? {
+            ...(query.from ? { gte: query.from } : {}),
+            ...(query.to ? { lte: query.to } : {}),
+          }
+        : undefined;
+    // One extra row is fetched so the caller can compute a real nextCursor.
     return tx.auditLog.findMany({
       where: {
         ...(query.action ? { action: query.action } : {}),
         ...(query.actorId ? { actorId: query.actorId } : {}),
+        ...(query.targetType ? { targetType: query.targetType } : {}),
+        ...(query.targetId ? { targetId: query.targetId } : {}),
+        ...(createdAt ? { createdAt } : {}),
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: query.limit,
+      take: query.limit + 1,
       ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}),
       select: {
         id: true,
@@ -52,6 +67,7 @@ export const auditRepository = {
         targetType: true,
         targetId: true,
         requestId: true,
+        metadata: true,
         createdAt: true,
       },
     });

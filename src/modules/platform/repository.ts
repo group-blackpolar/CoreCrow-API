@@ -62,9 +62,22 @@ export const platformRepository = {
         status: true,
         createdAt: true,
         updatedAt: true,
+        // Required by the declared `s.org` response contract; without it the
+        // whole list failed projection with RESPONSE_CONTRACT_ERROR (500).
+        homePanelId: true,
         _count: { select: { memberships: true, groups: true } },
         billingProfile: {
           select: { status: true, currency: true },
+        },
+        // The administrative list shows the accountable owner without trusting a
+        // client-side derivation or issuing one request per organization.
+        memberships: {
+          where: { role: "OWNER" },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+          select: {
+            user: { select: { id: true, name: true, email: true } },
+          },
         },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -116,5 +129,35 @@ export const platformRepository = {
     status: OrganizationStatus,
   ) {
     return tx.organization.update({ where: { id }, data: { status } });
+  },
+  userStatusCounts(tx: Transaction) {
+    return tx.user.groupBy({ by: ["status"], _count: { _all: true } });
+  },
+  verifiedUserCount(tx: Transaction) {
+    return tx.user.count({ where: { emailVerified: true } });
+  },
+  usersCreatedSince(tx: Transaction, since: Date) {
+    return tx.user.count({ where: { createdAt: { gte: since } } });
+  },
+  organizationStatusCounts(tx: Transaction) {
+    return tx.organization.groupBy({ by: ["status"], _count: { _all: true } });
+  },
+  organizationsCreatedSince(tx: Transaction, since: Date) {
+    return tx.organization.count({ where: { createdAt: { gte: since } } });
+  },
+  membershipCount(tx: Transaction) {
+    return tx.membership.count();
+  },
+  activeSessionCount(tx: Transaction, now: Date) {
+    return tx.session.count({ where: { expiresAt: { gt: now } } });
+  },
+  storageTotals(tx: Transaction) {
+    return tx.organization.aggregate({
+      _sum: {
+        storageUsedBytes: true,
+        storageLimitBytes: true,
+        storageReservedBytes: true,
+      },
+    });
   },
 };
