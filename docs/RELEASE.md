@@ -1,5 +1,25 @@
 # Release and verification
 
+## NORTH TASK 11A: authorized management taxonomy tree (2026-09-25)
+
+- Added `GET /v1/organizations/{organizationId}/north/management-tree` for an
+  authenticated tenant member holding `north.category.create` at organization
+  scope. The contract returns deterministic category, subcategory, and panel
+  metadata, including draft and archived resources, for the NORTH editor.
+- The response never includes revision bodies or document content. Every query
+  level is tenant-filtered, and a non-member receives the same not-found
+  boundary used by existing tenant contracts. A member without the required
+  capability is denied.
+- Reader navigation and published resolution are unchanged: drafts remain
+  absent from `/navigation` and cannot be resolved as published content.
+- Added authorized metadata-only reads for a panel's complete audience selector
+  set and for labeled tenant roles, groups, and memberships used by the scoped
+  NORTH permission editor. The subject lookup omits email and requires both an
+  actual tenant membership and `north.permission.read`; audience inspection
+  requires `north.panel.update` on the target panel.
+- Compatibility is additive. No migration or client change is required for
+  existing routes; management clients may adopt the new endpoint independently.
+
 ## NORTH TASK 8F: templates, authorized search, and audit correlation (2026-09-30)
 
 - Added immutable, versioned global templates managed by explicit platform

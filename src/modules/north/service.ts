@@ -146,6 +146,17 @@ export const northTaxonomy = {
   ensureBootstrap(organizationId: string) {
     return transaction((tx) => bootstrapNorthOrganization(tx, organizationId));
   },
+  managementTree(userId: string, organizationId: string) {
+    return transaction(async (tx) => {
+      const membership = await repo.membership(tx, organizationId, userId);
+      if (!membership) fail(404, "NOT_FOUND", "Organization not found");
+      await authorizeNorth(tx, userId, "north.category.create", {
+        organizationId,
+        scope: "ORGANIZATION",
+      });
+      return repo.managementTree(tx, organizationId);
+    });
+  },
   readPanel(userId: string, organizationId: string, id: string) {
     return transaction(async (tx) => {
       const target = await panelTarget(tx, organizationId, id);
@@ -312,6 +323,21 @@ export const northTaxonomy = {
       return repo.panel(tx, organizationId, panelId);
     });
   },
+  audience(userId: string, organizationId: string, panelId: string) {
+    return transaction(async (tx) => {
+      const target = await panelTarget(tx, organizationId, panelId);
+      await authorizeNorth(tx, userId, "north.panel.update", target);
+      const audience = await repo.panelAudience(tx, organizationId, panelId);
+      if (!audience) fail(404, "NOT_FOUND", "Panel not found");
+      return {
+        type: audience.audienceType,
+        roles: audience.audienceRoles.map(({ role }) => role).sort(),
+        groupIds: audience.audienceGroups.map(({ groupId }) => groupId).sort(),
+        capabilities: audience.audiencePermissions.map(({ capability }) => capability).sort(),
+        membershipIds: audience.audienceMemberships.map(({ membershipId }) => membershipId).sort(),
+      };
+    });
+  },
   navigation(userId: string, organizationId: string) {
     return transaction(async (tx) => {
       const membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
@@ -354,6 +380,24 @@ async function grantTarget(tx: Transaction, organizationId: string, input: Grant
 
 export const northPermissions = {
   list(userId: string, organizationId: string) { return transaction(async (tx) => { await authorizeNorth(tx, userId, "north.permission.read", { organizationId, scope: "ORGANIZATION" }); const [roles, groups, memberships] = await repo.scopedGrants(tx, organizationId); return { roles, groups, memberships }; }); },
+  subjects(userId: string, organizationId: string) {
+    return transaction(async (tx) => {
+      if (!(await repo.membership(tx, organizationId, userId)))
+        fail(404, "NOT_FOUND", "Organization not found");
+      await authorizeNorth(tx, userId, "north.permission.read", {
+        organizationId,
+        scope: "ORGANIZATION",
+      });
+      const [groups, memberships] = await repo.permissionSubjects(tx, organizationId);
+      return {
+        roles: ["OWNER", "ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"] as TenantRole[],
+        groups,
+        memberships: memberships
+          .map(({ user, ...membership }) => ({ ...membership, name: user.name }))
+          .sort((left, right) => (left.name ?? "").localeCompare(right.name ?? "") || left.id.localeCompare(right.id)),
+      };
+    });
+  },
   grant(userId: string, organizationId: string, input: GrantInput) {
     return transaction(async (tx) => {
       await authorizeNorth(tx, userId, "north.permission.manage", { organizationId, scope: "ORGANIZATION" }); const target = await grantTarget(tx, organizationId, input); await requireGrantAuthority(tx, userId, input.capability, target);

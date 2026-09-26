@@ -1,5 +1,10 @@
 import { Prisma } from "../../lib/database.js";
 export const northRepository = {
+    membership(tx, organizationId, userId) {
+        return tx.membership.findUnique({
+            where: { organizationId_userId: { organizationId, userId } },
+        });
+    },
     category(tx, organizationId, id) {
         return tx.northCategory.findFirst({ where: { id, organizationId } });
     },
@@ -8,6 +13,18 @@ export const northRepository = {
     },
     panel(tx, organizationId, id) {
         return tx.northPanel.findFirst({ where: { id, organizationId } });
+    },
+    panelAudience(tx, organizationId, id) {
+        return tx.northPanel.findFirst({
+            where: { id, organizationId },
+            select: {
+                audienceType: true,
+                audienceRoles: { select: { role: true } },
+                audienceGroups: { select: { groupId: true } },
+                audiencePermissions: { select: { capability: true } },
+                audienceMemberships: { select: { membershipId: true } },
+            },
+        });
     },
     categoryBySlug(tx, organizationId, slug) {
         return tx.northCategory.findFirst({
@@ -53,6 +70,24 @@ export const northRepository = {
                                 audiencePermissions: true,
                                 audienceMemberships: true,
                             },
+                        },
+                    },
+                },
+            },
+        });
+    },
+    managementTree(tx, organizationId) {
+        return tx.northCategory.findMany({
+            where: { organizationId },
+            orderBy: [{ order: "asc" }, { id: "asc" }],
+            include: {
+                subcategories: {
+                    where: { organizationId },
+                    orderBy: [{ order: "asc" }, { id: "asc" }],
+                    include: {
+                        panels: {
+                            where: { organizationId },
+                            orderBy: [{ order: "asc" }, { id: "asc" }],
                         },
                     },
                 },
@@ -129,6 +164,25 @@ export const northRepository = {
             tx.northRoleGrant.findMany({ where: { organizationId } }),
             tx.northGroupGrant.findMany({ where: { organizationId } }),
             tx.northMembershipGrant.findMany({ where: { organizationId } }),
+        ]);
+    },
+    permissionSubjects(tx, organizationId) {
+        return Promise.all([
+            tx.organizationGroup.findMany({
+                where: { organizationId },
+                orderBy: [{ name: "asc" }, { id: "asc" }],
+                select: { id: true, name: true },
+            }),
+            tx.membership.findMany({
+                where: { organizationId },
+                orderBy: { id: "asc" },
+                select: {
+                    id: true,
+                    userId: true,
+                    role: true,
+                    user: { select: { name: true } },
+                },
+            }),
         ]);
     },
     grantRole(tx, data) {

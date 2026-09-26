@@ -783,10 +783,21 @@ export async function v1Routes(app) {
         id: s.id, name: s.localizedText, icon: z.string().nullable(), color: z.string().nullable(), slug: z.string(),
         subcategories: z.array(z.object({ id: s.id, name: s.localizedText, icon: z.string().nullable(), slug: z.string(), panels: z.array(navigationPanel) })),
     }));
+    const managementTree = z.array(s.northCategory.extend({
+        subcategories: z.array(s.northSubcategory.extend({
+            panels: z.array(s.northPanel),
+        })),
+    }));
     contract(app, {
         method: "GET", url: "/organizations/:organizationId/navigation", tag: "NORTH taxonomy",
         summary: "Read compact server-authorized organization navigation", params: s.orgParams, response: navigation,
         run: ({ user, params }) => northTaxonomy.navigation(user.id, params.organizationId),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/north/management-tree", tag: "NORTH taxonomy",
+        summary: "Read complete tenant taxonomy metadata for authorized organization management", params: s.orgParams,
+        response: managementTree,
+        run: ({ user, params }) => northTaxonomy.managementTree(user.id, params.organizationId),
     });
     contract(app, {
         method: "POST", url: "/organizations/:organizationId/categories", tag: "NORTH taxonomy",
@@ -921,6 +932,19 @@ export async function v1Routes(app) {
         response: s.northPanel,
         run: ({ user, params, body }) => northTaxonomy.setAudience(user.id, params.organizationId, params.panelId, body),
     });
+    const northAudience = z.object({
+        type: s.northAudienceType,
+        roles: z.array(s.role),
+        groupIds: z.array(s.id),
+        capabilities: z.array(z.enum(northCapabilities)),
+        membershipIds: z.array(s.id),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/panels/:panelId/audience", tag: "NORTH authorization",
+        summary: "Read the complete authorized selector set for a panel audience", params: panelParams,
+        response: northAudience,
+        run: ({ user, params }) => northTaxonomy.audience(user.id, params.organizationId, params.panelId),
+    });
     contract(app, {
         method: "PUT", url: "/organizations/:organizationId/home-panel", tag: "NORTH taxonomy",
         summary: "Select a published authorized organization home panel or system fallback", params: s.orgParams,
@@ -937,6 +961,16 @@ export async function v1Routes(app) {
         summary: "List scoped role, group, and direct NORTH grants", params: s.orgParams,
         response: z.object({ roles: z.array(northGrant), groups: z.array(northGrant), memberships: z.array(northGrant) }),
         run: ({ user, params }) => northPermissions.list(user.id, params.organizationId),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/north/permission-subjects", tag: "NORTH authorization",
+        summary: "List tenant-scoped roles, groups, and labeled memberships for NORTH grant selection", params: s.orgParams,
+        response: z.object({
+            roles: z.array(s.role),
+            groups: z.array(z.object({ id: s.id, name: s.name })),
+            memberships: z.array(z.object({ id: s.id, userId: s.id, name: z.string().nullable(), role: s.role })),
+        }),
+        run: ({ user, params }) => northPermissions.subjects(user.id, params.organizationId),
     });
     const northPlatformGrant = z.object({ userId: s.id, capability: z.enum(northGlobalCapabilities), createdAt: s.date });
     contract(app, {
