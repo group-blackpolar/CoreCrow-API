@@ -1049,6 +1049,37 @@ test(
         const confidential = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${hrReports.id}/panels`, owner.cookie, {
           name: { en: "People" }, slug: "people",
         }), 201);
+        const managementTree = expect(await call("GET", `/v1/organizations/${organizationId}/north/management-tree`, owner.cookie), 200);
+        const managementCategories = managementTree as Array<{
+          id: string; order: number; organizationId: string;
+          subcategories: Array<{
+            id: string; order: number; organizationId: string;
+            panels: Array<{ id: string; order: number; organizationId: string; status: string }>;
+          }>;
+        }>;
+        assert.ok(managementCategories.flatMap((category) => category.subcategories).flatMap((subcategory) => subcategory.panels).some((panel) => panel.id === monthly.id && panel.status === "DRAFT"));
+        assert.deepEqual(
+          managementCategories.map(({ order, id }) => [order, id]),
+          managementCategories.map(({ order, id }) => [order, id]).toSorted(([leftOrder, leftId], [rightOrder, rightId]) => Number(leftOrder) - Number(rightOrder) || String(leftId).localeCompare(String(rightId))),
+        );
+        for (const category of managementCategories) {
+          assert.equal(category.organizationId, organizationId);
+          assert.deepEqual(
+            category.subcategories.map(({ order, id }) => [order, id]),
+            category.subcategories.map(({ order, id }) => [order, id]).toSorted(([leftOrder, leftId], [rightOrder, rightId]) => Number(leftOrder) - Number(rightOrder) || String(leftId).localeCompare(String(rightId))),
+          );
+          for (const subcategory of category.subcategories) {
+            assert.equal(subcategory.organizationId, organizationId);
+            assert.deepEqual(
+              subcategory.panels.map(({ order, id }) => [order, id]),
+              subcategory.panels.map(({ order, id }) => [order, id]).toSorted(([leftOrder, leftId], [rightOrder, rightId]) => Number(leftOrder) - Number(rightOrder) || String(leftId).localeCompare(String(rightId))),
+            );
+            for (const panel of subcategory.panels) assert.equal(panel.organizationId, organizationId);
+          }
+        }
+        expect(await call("GET", `/v1/organizations/${organizationId}/north/management-tree`, invited.cookie), 403);
+        expect(await call("GET", `/v1/organizations/${organizationId}/north/management-tree`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${secondOrg}/north/management-tree`, owner.cookie), 404);
         const draftNavigation = expect(await call("GET", `/v1/organizations/${organizationId}/navigation`, owner.cookie), 200);
         assert.equal(JSON.stringify(draftNavigation).includes(monthly.id), false, "ordinary navigation never exposes draft panel metadata");
         const cloned = expect(await call("POST", `/v1/organizations/${organizationId}/north/clone`, owner.cookie, {
@@ -1069,6 +1100,15 @@ test(
         expect(await call("POST", `/v1/organizations/${organizationId}/north/permission-grants`, owner.cookie, {
           subjectType: "MEMBERSHIP", membershipId: invitedMembership.id, capability: "north.permission.manage", scope: "ORGANIZATION",
         }), 201);
+        const permissionSubjects = expect(await call("GET", `/v1/organizations/${organizationId}/north/permission-subjects`, owner.cookie), 200);
+        assert.deepEqual(permissionSubjects.roles, ["OWNER", "ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]);
+        assert.equal(permissionSubjects.groups.find((group: { id: string }) => group.id === editors.id)?.name, "Finance scoped editors");
+        const invitedSubject = permissionSubjects.memberships.find((membership: { id: string }) => membership.id === invitedMembership.id);
+        assert.ok(invitedSubject);
+        assert.equal(invitedSubject?.name, "invited");
+        assert.equal("email" in invitedSubject, false);
+        expect(await call("GET", `/v1/organizations/${organizationId}/north/permission-subjects`, invited.cookie), 403);
+        expect(await call("GET", `/v1/organizations/${organizationId}/north/permission-subjects`, outsider.cookie), 404);
         const escalation = await call("POST", `/v1/organizations/${organizationId}/north/permission-grants`, invited.cookie, {
           subjectType: "MEMBERSHIP", membershipId: invitedMembership.id, capability: "north.panel.publish", scope: "CATEGORY", resourceId: finance.id,
         });
@@ -1124,6 +1164,10 @@ test(
         await assert.rejects(prisma.northPanelRevision.update({ where: { id: firstDraft.id }, data: { message: "mutated" } }));
         await assert.rejects(prisma.northPanelRevision.delete({ where: { id: firstDraft.id } }));
         expect(await call("PUT", `/v1/organizations/${organizationId}/panels/${monthly.id}/audience`, owner.cookie, { type: "GROUPS", groupIds: [editors.id] }), 200);
+        const audience = expect(await call("GET", `/v1/organizations/${organizationId}/panels/${monthly.id}/audience`, owner.cookie), 200);
+        assert.deepEqual(audience, { type: "GROUPS", roles: [], groupIds: [editors.id], capabilities: [], membershipIds: [] });
+        expect(await call("GET", `/v1/organizations/${organizationId}/panels/${confidential.id}/audience`, invited.cookie), 403);
+        expect(await call("GET", `/v1/organizations/${secondOrg}/panels/${monthly.id}/audience`, outsider.cookie), 404);
         const renamed = expect(await call("PATCH", `/v1/organizations/${organizationId}/categories/${finance.id}`, owner.cookie, { slug: "money" }), 200);
         assert.equal(renamed.id, finance.id);
         const resolved = expect(await call("GET", `/v1/content/resolve?organizationSlug=${prefix}-alpha&categorySlug=finance&subcategorySlug=reports&panelSlug=monthly-summary&locale=fr`, invited.cookie), 200);
@@ -1140,6 +1184,12 @@ test(
         assert.equal((await call("PATCH", `/v1/organizations/${organizationId}/subcategories/${reports.id}`, owner.cookie, { categoryId: archivedCategory.id })).json().error.code, "RESOURCE_ARCHIVED");
         assert.equal((await call("POST", `/v1/organizations/${organizationId}/north/clone`, owner.cookie, { kind: "SUBCATEGORY", sourceId: reports.id, destinationParentId: archivedCategory.id, slug: "rejected-copy" })).json().error.code, "RESOURCE_ARCHIVED");
         expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${archivedSubcategory.id}/archive`, owner.cookie), 200);
+        const managementTreeWithArchived = expect(await call("GET", `/v1/organizations/${organizationId}/north/management-tree`, owner.cookie), 200) as Array<{
+          id: string; status: string; subcategories: Array<{ id: string; status: string }>;
+        }>;
+        const archivedManagementCategory = managementTreeWithArchived.find((category) => category.id === archivedCategory.id);
+        assert.equal(archivedManagementCategory?.status, "ARCHIVED");
+        assert.equal(archivedManagementCategory?.subcategories.find((subcategory) => subcategory.id === archivedSubcategory.id)?.status, "ARCHIVED");
         assert.equal((await call("POST", `/v1/organizations/${organizationId}/subcategories/${archivedSubcategory.id}/panels`, owner.cookie, { name: { en: "Rejected" }, slug: "rejected" })).json().error.code, "RESOURCE_ARCHIVED");
         assert.equal((await call("POST", `/v1/organizations/${organizationId}/north/clone`, owner.cookie, { kind: "PANEL", sourceId: monthly.id, destinationParentId: archivedSubcategory.id, slug: "rejected-panel-copy" })).json().error.code, "RESOURCE_ARCHIVED");
 

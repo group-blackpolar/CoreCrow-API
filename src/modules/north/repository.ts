@@ -22,6 +22,11 @@ export type MetadataInput = {
 };
 
 export const northRepository = {
+  membership(tx: Transaction, organizationId: string, userId: string) {
+    return tx.membership.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
+    });
+  },
   category(tx: Transaction, organizationId: string, id: string) {
     return tx.northCategory.findFirst({ where: { id, organizationId } });
   },
@@ -30,6 +35,18 @@ export const northRepository = {
   },
   panel(tx: Transaction, organizationId: string, id: string) {
     return tx.northPanel.findFirst({ where: { id, organizationId } });
+  },
+  panelAudience(tx: Transaction, organizationId: string, id: string) {
+    return tx.northPanel.findFirst({
+      where: { id, organizationId },
+      select: {
+        audienceType: true,
+        audienceRoles: { select: { role: true } },
+        audienceGroups: { select: { groupId: true } },
+        audiencePermissions: { select: { capability: true } },
+        audienceMemberships: { select: { membershipId: true } },
+      },
+    });
   },
   categoryBySlug(tx: Transaction, organizationId: string, slug: string) {
     return tx.northCategory.findFirst({
@@ -75,6 +92,24 @@ export const northRepository = {
                 audiencePermissions: true,
                 audienceMemberships: true,
               },
+            },
+          },
+        },
+      },
+    });
+  },
+  managementTree(tx: Transaction, organizationId: string) {
+    return tx.northCategory.findMany({
+      where: { organizationId },
+      orderBy: [{ order: "asc" }, { id: "asc" }],
+      include: {
+        subcategories: {
+          where: { organizationId },
+          orderBy: [{ order: "asc" }, { id: "asc" }],
+          include: {
+            panels: {
+              where: { organizationId },
+              orderBy: [{ order: "asc" }, { id: "asc" }],
             },
           },
         },
@@ -170,6 +205,25 @@ export const northRepository = {
       tx.northRoleGrant.findMany({ where: { organizationId } }),
       tx.northGroupGrant.findMany({ where: { organizationId } }),
       tx.northMembershipGrant.findMany({ where: { organizationId } }),
+    ]);
+  },
+  permissionSubjects(tx: Transaction, organizationId: string) {
+    return Promise.all([
+      tx.organizationGroup.findMany({
+        where: { organizationId },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: { id: true, name: true },
+      }),
+      tx.membership.findMany({
+        where: { organizationId },
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+          user: { select: { name: true } },
+        },
+      }),
     ]);
   },
   grantRole(tx: Transaction, data: { organizationId: string; role: TenantRole; capability: string; scope: NorthPermissionScope; categoryId?: string; subcategoryId?: string; panelId?: string }) {
