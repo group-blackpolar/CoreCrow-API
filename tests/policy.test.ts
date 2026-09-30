@@ -158,6 +158,21 @@ test("TASK 8E signed URL expiry is explicit and bounded by configuration", async
   assert.ok(signed.expiresAt.getTime() >= before + 89_000);
   assert.ok(signed.expiresAt.getTime() <= Date.now() + 91_000);
 });
+test("shared object storage exposes uploaded bytes through a private stream", async () => {
+  const storage = new FakeObjectStorage();
+  const expected = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+  storage.put("tenant/import.xlsx", {
+    bytes: expected,
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    checksum: "a".repeat(64),
+  });
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of await storage.openPrivateRead("tenant/import.xlsx"))
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+
+  assert.deepEqual(Buffer.concat(chunks), Buffer.from(expected));
+});
 test("TASK 8E unconfigured malware scanning fails closed", async () => {
   await assert.rejects(
     new UnconfiguredMalwareScanner().scan({ storageKey: "opaque", mime: "image/png", size: 8, checksum: "a".repeat(64) }),
