@@ -36,6 +36,7 @@ import { northSearch } from "../modules/north/search-service.js";
 import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
 import { northData } from "../modules/north/data/service.js";
+import { northDatasetImports } from "../modules/north/data/import-service.js";
 
 export async function v1Routes(app: FastifyInstance) {
   const key = z.object({
@@ -52,6 +53,7 @@ export async function v1Routes(app: FastifyInstance) {
   const datasetFieldParams = datasetParams.extend({ fieldId: s.id });
   const datasetSchemaParams = datasetParams.extend({ schemaVersionId: s.id });
   const datasetAclParams = datasetParams.extend({ aclId: s.id });
+  const datasetImportParams = datasetParams.extend({ importId: s.id });
   const semanticType = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).nullable();
   const datasetMetadata = z.object({
     name: s.localizedText,
@@ -164,6 +166,48 @@ export async function v1Routes(app: FastifyInstance) {
       await northData.deleteAclRule(user.id, params.organizationId, params.datasetId, params.aclId);
       return null;
     },
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports", tag: "NORTH data imports",
+    summary: "Create or replay an idempotent private XLSX upload session; no parsing occurs in the request",
+    params: datasetParams, idempotency: true, rateLimit: 20,
+    body: z.object({
+      filename: z.string().trim().min(1).max(255),
+      mime: z.string().trim().min(1).max(127),
+      size: z.number().int().min(1),
+      checksum: z.string().regex(/^[0-9a-fA-F]{64}$/),
+    }).strict(),
+    response: z.object({ import: s.northDatasetImport, upload: s.northSignedObjectRequest }), status: 201,
+    run: ({ user, params, body, request }) => {
+      const key = request.headers["idempotency-key"];
+      if (typeof key !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(key))
+        fail(400, "IDEMPOTENCY_KEY_REQUIRED", "Provide a 16–128 character Idempotency-Key");
+      return northDatasetImports.prepare(user.id, params.organizationId, params.datasetId, body, key);
+    },
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports", tag: "NORTH data imports",
+    summary: "List up to 100 authorized durable import jobs without internal object identifiers",
+    params: datasetParams, response: z.array(s.northDatasetImport),
+    run: ({ user, params }) => northDatasetImports.list(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId", tag: "NORTH data imports",
+    summary: "Read sanitized progress and security-gate state for one authorized import job",
+    params: datasetImportParams, response: s.northDatasetImport,
+    run: ({ user, params }) => northDatasetImports.read(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/confirm", tag: "NORTH data imports",
+    summary: "Verify uploaded XLSX declaration and queue fail-closed security checks; never parse synchronously",
+    params: datasetImportParams, response: s.northDatasetImport, status: 202,
+    run: ({ user, params }) => northDatasetImports.confirm(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/cancel", tag: "NORTH data imports",
+    summary: "Idempotently cancel a waiting import or request cancellation from a claimed worker",
+    params: datasetImportParams, response: s.northDatasetImport,
+    run: ({ user, params }) => northDatasetImports.cancel(user.id, params.organizationId, params.datasetId, params.importId),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",

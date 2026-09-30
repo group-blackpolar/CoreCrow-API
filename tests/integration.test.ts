@@ -50,12 +50,20 @@ test(
     const { FakeObjectStorage } = await import("../src/modules/north/object-storage.js");
     const { FakeMalwareScanner } = await import("../src/modules/north/malware-scanner.js");
     const { assetConfiguration } = await import("../src/modules/north/asset-config.js");
+    const { NorthDatasetImportService, configureNorthDatasetImportService } =
+      await import("../src/modules/north/data/import-service.js");
+    const { datasetImportConfiguration } = await import("../src/modules/north/data/import-config.js");
     const assetStorage = new FakeObjectStorage();
+    const importStorage = new FakeObjectStorage();
     const assetScanner = new FakeMalwareScanner();
     configureNorthAssetService(new NorthAssetService({
       storage: assetStorage,
       scanner: assetScanner,
       config: assetConfiguration(),
+    }));
+    configureNorthDatasetImportService(new NorthDatasetImportService({
+      storage: importStorage,
+      configuration: datasetImportConfiguration(),
     }));
     const app = await buildApp({ logger: false });
     await app.ready();
@@ -1058,6 +1066,83 @@ test(
           membershipId: invitedMembership.id,
         }), 201);
         expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 200);
+
+        const workbook = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+        const workbookChecksum = createHash("sha256").update(workbook).digest("hex");
+        const importBody = {
+          filename: "master-house.xlsx",
+          mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          size: workbook.byteLength,
+          checksum: workbookChecksum,
+        };
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, invited.cookie, importBody, {
+          "idempotency-key": `${prefix}-readonly-import`,
+        }), 403);
+        const prepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-master-import`,
+        }), 201);
+        assert.equal(prepared.import.status, "AWAITING_UPLOAD");
+        assert.equal(prepared.import.scanStatus, "PENDING");
+        assert.equal(prepared.import.securityApprovedAt, null);
+        assert.equal("storageKey" in prepared.import, false);
+        assert.match(prepared.upload.url, /^https:\/\/storage\.invalid\/upload\//);
+        const replay = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-master-import`,
+        }), 201);
+        assert.equal(replay.import.id, prepared.import.id);
+        const conflict = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, {
+          ...importBody, filename: "different.xlsx",
+        }, { "idempotency-key": `${prefix}-master-import` });
+        assert.equal(conflict.statusCode, 409);
+        assert.equal(conflict.json().error.code, "IDEMPOTENCY_CONFLICT");
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}`, outsider.cookie), 404);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, outsider.cookie), 404);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}`, invited.cookie), 403);
+        const unavailableConfirmation = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie);
+        assert.equal(unavailableConfirmation.statusCode, 503);
+        assert.equal(unavailableConfirmation.json().error.code, "OBJECT_STORAGE_UNAVAILABLE");
+        const internalImport = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } });
+        importStorage.put(internalImport.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+        const confirmed = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie), 202);
+        assert.equal(confirmed.status, "SECURITY_PENDING");
+        assert.equal(confirmed.scanStatus, "PENDING");
+        assert.equal(confirmed.progress, 10);
+        assert.equal(confirmed.securityApprovedAt, null);
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie), 202).status, "SECURITY_PENDING");
+        assert.equal((expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie), 200) as Array<{ id: string }>).some((item) => item.id === prepared.import.id), true);
+        const cancelled = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, owner.cookie), 200);
+        assert.equal(cancelled.status, "CANCELLED");
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, owner.cookie), 200).status, "CANCELLED");
+
+        const leasedPrepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-leased-import`,
+        }), 201);
+        const leasedInternal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: leasedPrepared.import.id } });
+        importStorage.put(leasedInternal.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${leasedPrepared.import.id}/confirm`, owner.cookie), 202);
+        const claimedAt = new Date();
+        await prisma.northDatasetImportJob.update({
+          where: { id: leasedPrepared.import.id },
+          data: { claimedAt, claimExpiresAt: new Date(claimedAt.getTime() + 60_000), claimedBy: "integration-worker" },
+        });
+        const cancellationRequested = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${leasedPrepared.import.id}/cancel`, owner.cookie), 200);
+        assert.equal(cancellationRequested.status, "CANCEL_REQUESTED");
+        assert.equal(cancellationRequested.cancelledAt, null);
+
+        const invalidWorkbook = Uint8Array.from([0x4d, 0x5a, 0x00, 0x00]);
+        const invalidChecksum = createHash("sha256").update(invalidWorkbook).digest("hex");
+        const invalidPrepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, {
+          ...importBody, filename: "invalid.xlsx", checksum: invalidChecksum,
+        }, { "idempotency-key": `${prefix}-invalid-import` }), 201);
+        const invalidInternal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: invalidPrepared.import.id } });
+        importStorage.put(invalidInternal.storageKey, { bytes: invalidWorkbook, mime: importBody.mime, checksum: invalidChecksum });
+        const invalidConfirmation = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${invalidPrepared.import.id}/confirm`, owner.cookie);
+        assert.equal(invalidConfirmation.statusCode, 422);
+        assert.equal(invalidConfirmation.json().error.code, "IMPORT_MAGIC_INVALID");
+        const rejectedImport = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${invalidPrepared.import.id}`, owner.cookie), 200);
+        assert.equal(rejectedImport.status, "REJECTED");
+        assert.equal(rejectedImport.errorCode, "IMPORT_MAGIC_INVALID");
 
         const foreignPrincipal = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
           effect: "ALLOW",

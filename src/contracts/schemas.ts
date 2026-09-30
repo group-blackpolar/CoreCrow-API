@@ -176,6 +176,46 @@ export const northDatasetAcl = z.object({
   createdBy: id,
   createdAt: date,
 });
+export const northDatasetImportStatus = z.enum([
+  "AWAITING_UPLOAD",
+  "SECURITY_PENDING",
+  "SECURITY_APPROVED",
+  "ANALYZING",
+  "AWAITING_MAPPING",
+  "READY_TO_ACTIVATE",
+  "ACTIVATING",
+  "SUCCEEDED",
+  "CANCEL_REQUESTED",
+  "CANCELLED",
+  "REJECTED",
+  "FAILED",
+]);
+export const northDatasetImportScanStatus = z.enum([
+  "PENDING", "SCANNING", "APPROVED", "REJECTED", "QUARANTINED", "UNAVAILABLE",
+]);
+export const northDatasetImport = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  requestedBy: id,
+  filename: z.string().min(1).max(255),
+  mime: z.string(),
+  size: z.number().int().min(1),
+  checksum: z.string().regex(/^[0-9a-f]{64}$/),
+  status: northDatasetImportStatus,
+  scanStatus: northDatasetImportScanStatus,
+  progress: z.number().int().min(0).max(100),
+  attempts: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().min(1),
+  confirmedAt: date.nullable(),
+  securityApprovedAt: date.nullable(),
+  cancellationRequestedAt: date.nullable(),
+  cancelledAt: date.nullable(),
+  completedAt: date.nullable(),
+  errorCode: z.string().nullable(),
+  createdAt: date,
+  updatedAt: date,
+});
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({
   id,

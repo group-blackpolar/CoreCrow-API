@@ -14,6 +14,28 @@ import { validateAssetDeclaration, validateInspectedAsset } from "../src/modules
 import { FakeObjectStorage } from "../src/modules/north/object-storage.js";
 import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner.js";
 import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
+import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
+import { XLSX_MIME } from "../src/modules/north/data/import-config.js";
+
+test("XLSX declarations and uploaded bytes remain behind the security gate", () => {
+  const checksum = "a".repeat(64);
+  const declared = validateDatasetImportDeclaration({
+    filename: " Master House.XLSX ", mime: XLSX_MIME, size: 4, checksum: checksum.toUpperCase(),
+  }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 });
+  assert.equal(declared.filename, "Master House.XLSX");
+  assert.equal(declared.checksum, checksum);
+  assert.doesNotThrow(() => validateUploadedDatasetImport({
+    declaredMime: XLSX_MIME, declaredSize: 4n, declaredChecksum: checksum,
+  }, { size: 4, mime: XLSX_MIME, checksum, prefix: Uint8Array.from([0x50, 0x4b, 0x03, 0x04]) }));
+  assert.throws(() => validateUploadedDatasetImport({
+    declaredMime: XLSX_MIME, declaredSize: 4n, declaredChecksum: checksum,
+  }, { size: 4, mime: XLSX_MIME, checksum, prefix: Uint8Array.from([0x4d, 0x5a, 0, 0]) }),
+  (error) => error instanceof DomainError && error.code === "IMPORT_MAGIC_INVALID");
+  assert.throws(() => validateDatasetImportDeclaration({
+    filename: "unsafe.xlsm", mime: XLSX_MIME, size: 4, checksum,
+  }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 }),
+  (error) => error instanceof DomainError && error.code === "IMPORT_FILE_TYPE_UNSUPPORTED");
+});
 
 test("dataset ACL is default-deny and any matching explicit deny wins", () => {
   assert.equal(resolveDatasetAcl([]), false);

@@ -54,6 +54,7 @@ model User {
   northDatasetsCreated       NorthDataset[]              @relation("NorthDatasetCreator")
   northDatasetSchemasCreated NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaCreator")
   northDatasetAclRulesMade   NorthDatasetAcl[]           @relation("NorthDatasetAclCreator")
+  northDatasetImports        NorthDatasetImportJob[]     @relation("NorthDatasetImportRequester")
 
   @@index([status, createdAt])
   @@map("users")
@@ -278,6 +279,30 @@ enum NorthDatasetAclPrincipalType {
   CAPABILITY
 }
 
+enum NorthDatasetImportStatus {
+  AWAITING_UPLOAD
+  SECURITY_PENDING
+  SECURITY_APPROVED
+  ANALYZING
+  AWAITING_MAPPING
+  READY_TO_ACTIVATE
+  ACTIVATING
+  SUCCEEDED
+  CANCEL_REQUESTED
+  CANCELLED
+  REJECTED
+  FAILED
+}
+
+enum NorthDatasetImportScanStatus {
+  PENDING
+  SCANNING
+  APPROVED
+  REJECTED
+  QUARANTINED
+  UNAVAILABLE
+}
+
 model Organization {
   id                    String                      @id @default(cuid())
   name                  String
@@ -306,6 +331,7 @@ model Organization {
   northDatasetFields    NorthDatasetField[]
   northDatasetSchemas   NorthDatasetSchemaVersion[]
   northDatasetAclRules  NorthDatasetAcl[]
+  northDatasetImports   NorthDatasetImportJob[]
 
   @@index([status, createdAt])
 }
@@ -338,6 +364,7 @@ model Membership {
   northPermissionGrants NorthMembershipGrant[]
   northPanelAudiences   NorthPanelAudienceMembership[]
   northDatasetAclRules  NorthDatasetAcl[]
+  northDatasetImports   NorthDatasetImportJob[]
 
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
@@ -477,6 +504,7 @@ model NorthDataset {
   schemaVersions         NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaVersions")
   currentSchemaVersion   NorthDatasetSchemaVersion?  @relation("CurrentDatasetSchemaVersion", fields: [currentSchemaVersionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
   aclRules               NorthDatasetAcl[]
+  importJobs             NorthDatasetImportJob[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])
@@ -563,6 +591,49 @@ model NorthDatasetAcl {
   @@index([organizationId, datasetId, effect, principalType])
   @@index([organizationId, membershipId])
   @@index([organizationId, groupId])
+}
+
+model NorthDatasetImportJob {
+  id                      String                       @id @default(cuid())
+  organizationId          String
+  datasetId               String
+  requestedBy             String
+  requestedMembershipId   String
+  idempotencyOperation    String
+  idempotencyKey          String
+  requestHash             String
+  filename                String
+  declaredMime            String
+  declaredSize            BigInt
+  declaredChecksum        String
+  storageKey              String                       @unique
+  status                  NorthDatasetImportStatus     @default(AWAITING_UPLOAD)
+  scanStatus              NorthDatasetImportScanStatus @default(PENDING)
+  progress                Int                          @default(0)
+  attempts                Int                          @default(0)
+  maxAttempts             Int                          @default(3)
+  availableAt             DateTime                     @default(now())
+  claimedAt               DateTime?
+  claimExpiresAt          DateTime?
+  claimedBy               String?
+  confirmedAt             DateTime?
+  securityApprovedAt      DateTime?
+  cancellationRequestedAt DateTime?
+  cancelledAt             DateTime?
+  completedAt             DateTime?
+  lastErrorCode           String?
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  organization            Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset                 NorthDataset                 @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  requester               User                         @relation("NorthDatasetImportRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  requestedMembership     Membership                   @relation(fields: [requestedMembershipId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([organizationId, requestedMembershipId, requestedBy, idempotencyOperation, idempotencyKey])
+  @@index([organizationId, datasetId, createdAt, id])
+  @@index([status, availableAt, claimExpiresAt, id])
+  @@index([organizationId, requestedBy, createdAt, id])
 }
 
 model NorthPanelRevision {
