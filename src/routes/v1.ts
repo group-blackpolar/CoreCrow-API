@@ -35,6 +35,7 @@ import { northTemplateCreateInput, northTemplateSnapshotInput } from "../modules
 import { northSearch } from "../modules/north/search-service.js";
 import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
+import { northData } from "../modules/north/data/service.js";
 
 export async function v1Routes(app: FastifyInstance) {
   const key = z.object({
@@ -46,6 +47,123 @@ export async function v1Routes(app: FastifyInstance) {
     expiresAt: s.date,
     revokedAt: s.date.nullable(),
     createdAt: s.date,
+  });
+  const datasetParams = s.orgParams.extend({ datasetId: s.id });
+  const datasetFieldParams = datasetParams.extend({ fieldId: s.id });
+  const datasetSchemaParams = datasetParams.extend({ schemaVersionId: s.id });
+  const datasetAclParams = datasetParams.extend({ aclId: s.id });
+  const semanticType = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).nullable();
+  const datasetMetadata = z.object({
+    name: s.localizedText,
+    description: s.localizedText.nullable().optional(),
+    slug: z.string().trim().min(1).max(64),
+  }).strict();
+  const datasetUpdate = datasetMetadata.partial().extend({ status: s.northDatasetStatus.optional() })
+    .refine((value) => Object.keys(value).length > 0);
+  const fieldUpdate = z.object({
+    displayName: s.localizedText.optional(),
+    description: s.localizedText.nullable().optional(),
+    semanticType: semanticType.optional(),
+    nullable: z.boolean().optional(),
+    status: s.northDatasetFieldStatus.optional(),
+  }).strict().refine((value) => Object.keys(value).length > 0);
+  const aclInput = z.discriminatedUnion("principalType", [
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ALL_MEMBERS") }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("MEMBERSHIP"), membershipId: s.id }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("GROUP"), groupId: s.id }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ROLE"), role: s.role }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("CAPABILITY"), capability: z.string().min(1).max(128) }).strict(),
+  ]);
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
+    summary: "List up to 100 datasets authorized for the active membership", params: s.orgParams,
+    response: z.array(s.northDataset),
+    run: ({ user, params }) => northData.list(user.id, params.organizationId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
+    summary: "Create a tenant dataset with a safe initial owner ACL", params: s.orgParams,
+    body: datasetMetadata, response: s.northDataset, status: 201,
+    run: ({ user, params, body }) => northData.create(user.id, params.organizationId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+    summary: "Read one authorized tenant dataset", params: datasetParams, response: s.northDataset,
+    run: ({ user, params }) => northData.read(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+    summary: "Update authorized dataset metadata or lifecycle status", params: datasetParams,
+    body: datasetUpdate, response: s.northDataset,
+    run: ({ user, params, body }) => northData.update(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
+    summary: "List stable logical fields for an authorized dataset", params: datasetParams,
+    response: z.array(s.northDatasetField),
+    run: ({ user, params }) => northData.fields(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
+    summary: "Create a stable logical dataset field", params: datasetParams,
+    body: z.object({
+      key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+      displayName: s.localizedText,
+      description: s.localizedText.nullable().optional(),
+      canonicalType: s.northDatasetFieldType,
+      semanticType: semanticType.optional(),
+      nullable: z.boolean().optional(),
+    }).strict(),
+    response: s.northDatasetField, status: 201,
+    run: ({ user, params, body }) => northData.createField(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/datasets/:datasetId/fields/:fieldId", tag: "NORTH data",
+    summary: "Update logical field metadata without rewriting schema snapshots", params: datasetFieldParams,
+    body: fieldUpdate, response: s.northDatasetField,
+    run: ({ user, params, body }) => northData.updateField(user.id, params.organizationId, params.datasetId, params.fieldId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions", tag: "NORTH data",
+    summary: "List immutable schema snapshots for an authorized dataset", params: datasetParams,
+    response: z.array(s.northDatasetSchemaVersion),
+    run: ({ user, params }) => northData.schemaVersions(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions", tag: "NORTH data",
+    summary: "Create and activate an immutable schema snapshot", params: datasetParams,
+    body: z.object({
+      fields: z.array(z.object({ fieldId: s.id, ordinal: z.number().int().nonnegative() }).strict()).min(1).max(150),
+    }).strict(),
+    response: s.northDatasetSchemaVersion, status: 201,
+    run: ({ user, params, body }) => northData.createSchemaVersion(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions/:schemaVersionId", tag: "NORTH data",
+    summary: "Read one immutable dataset schema snapshot", params: datasetSchemaParams,
+    response: s.northDatasetSchemaVersion,
+    run: ({ user, params }) => northData.schemaVersion(user.id, params.organizationId, params.datasetId, params.schemaVersionId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/acl", tag: "NORTH data authorization",
+    summary: "List dataset ACL rules with explicit deny semantics", params: datasetParams,
+    response: z.array(s.northDatasetAcl),
+    run: ({ user, params }) => northData.acl(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/acl", tag: "NORTH data authorization",
+    summary: "Create a tenant-validated dataset ACL rule", params: datasetParams,
+    body: aclInput, response: s.northDatasetAcl, status: 201,
+    run: ({ user, params, body }) => northData.createAclRule(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/datasets/:datasetId/acl/:aclId", tag: "NORTH data authorization",
+    summary: "Delete a dataset ACL rule without locking out every owner", params: datasetAclParams,
+    response: z.null(),
+    run: async ({ user, params }) => {
+      await northData.deleteAclRule(user.id, params.organizationId, params.datasetId, params.aclId);
+      return null;
+    },
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",

@@ -13,6 +13,22 @@ import { DomainError } from "../src/shared/errors.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "../src/modules/north/asset-policy.js";
 import { FakeObjectStorage } from "../src/modules/north/object-storage.js";
 import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner.js";
+import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
+
+test("dataset ACL is default-deny and any matching explicit deny wins", () => {
+  assert.equal(resolveDatasetAcl([]), false);
+  assert.equal(resolveDatasetAcl([{ effect: "ALLOW", matches: false }]), false);
+  assert.equal(resolveDatasetAcl([{ effect: "ALLOW", matches: true }]), true);
+  assert.equal(resolveDatasetAcl([
+    { effect: "ALLOW", matches: true },
+    { effect: "DENY", matches: false },
+  ]), true);
+  assert.equal(resolveDatasetAcl([
+    { effect: "ALLOW", matches: true },
+    { effect: "DENY", matches: true },
+  ]), false);
+});
+
 test("permissions deny unknown roles and unknown actions", () => {
   for (const role of [undefined, "", "SUPERADMIN", "__proto__", "toString"])
     assert.equal(allows(role, "members.manage"), false);

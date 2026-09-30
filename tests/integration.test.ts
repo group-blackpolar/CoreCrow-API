@@ -1024,6 +1024,104 @@ test(
       },
     );
     await t.test(
+      "NORTH tenant datasets keep schema snapshots immutable and ACLs tenant-scoped",
+      async () => {
+        const invitedMembership = await prisma.membership.findUniqueOrThrow({
+          where: { organizationId_userId: { organizationId, userId: invited.id } },
+        });
+        const foreignMembership = await prisma.membership.findUniqueOrThrow({
+          where: { organizationId_userId: { organizationId: secondOrg, userId: outsider.id } },
+        });
+
+        const dataset = expect(
+          await call("POST", `/v1/organizations/${organizationId}/datasets`, owner.cookie, {
+            name: { en: "Master House" },
+            description: { en: "Tenant import dataset" },
+            slug: "master-house",
+          }),
+          201,
+        );
+        assert.equal(dataset.organizationId, organizationId);
+        assert.equal(dataset.currentSchemaVersionId, null);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 403);
+
+        expect(await call("POST", `/v1/organizations/${organizationId}/north/permission-grants`, owner.cookie, {
+          subjectType: "MEMBERSHIP",
+          membershipId: invitedMembership.id,
+          capability: "north.data.read",
+          scope: "ORGANIZATION",
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "ALLOW",
+          principalType: "MEMBERSHIP",
+          membershipId: invitedMembership.id,
+        }), 201);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 200);
+
+        const foreignPrincipal = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "ALLOW",
+          principalType: "MEMBERSHIP",
+          membershipId: foreignMembership.id,
+        });
+        assert.equal(foreignPrincipal.statusCode, 422);
+        assert.equal(foreignPrincipal.json().error.code, "ACL_PRINCIPAL_INVALID");
+
+        const invitedDeny = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "DENY",
+          principalType: "MEMBERSHIP",
+          membershipId: invitedMembership.id,
+        }), 201);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 403);
+
+        const lockout = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "DENY",
+          principalType: "ROLE",
+          role: "OWNER",
+        });
+        assert.equal(lockout.statusCode, 409);
+        assert.equal(lockout.json().error.code, "ACL_LOCKOUT_PREVENTED");
+        expect(await call("DELETE", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl/${invitedDeny.id}`, owner.cookie), 200);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 200);
+        expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, owner.cookie, { status: "ARCHIVED" }), 200);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, owner.cookie), 200);
+        expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, owner.cookie, { status: "ACTIVE" }), 200);
+
+        const arrival = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields`, owner.cookie, {
+          key: "arrival_date",
+          displayName: { en: "Arrival date" },
+          canonicalType: "DATE",
+          nullable: false,
+        }), 201);
+        const containers = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields`, owner.cookie, {
+          key: "containers",
+          displayName: { en: "Containers" },
+          canonicalType: "INTEGER",
+          nullable: true,
+        }), 201);
+        const schema = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/schema-versions`, owner.cookie, {
+          fields: [
+            { fieldId: arrival.id, ordinal: 0 },
+            { fieldId: containers.id, ordinal: 1 },
+          ],
+        }), 201);
+        assert.equal(schema.version, 1);
+        assert.deepEqual(schema.fields.map((field: { datasetFieldId: string }) => field.datasetFieldId), [arrival.id, containers.id]);
+
+        expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields/${containers.id}`, owner.cookie, {
+          nullable: false,
+          displayName: { en: "Container count" },
+        }), 200);
+        const snapshot = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/schema-versions/${schema.id}`, owner.cookie), 200);
+        assert.equal(snapshot.fields.find((field: { datasetFieldId: string }) => field.datasetFieldId === containers.id)?.nullable, true);
+        await assert.rejects(prisma.northDatasetSchemaVersion.update({
+          where: { id: schema.id },
+          data: { version: 2 },
+        }));
+      },
+    );
+    await t.test(
       "NORTH taxonomy, aliases, scoped grants, audiences, and tenant isolation",
       async () => {
         const bootstrapped = await prisma.northCategory.findMany({ where: { organizationId } });

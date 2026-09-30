@@ -85,6 +85,7 @@ export const northCategoryClass = z.enum(["SYSTEM", "TEMPLATE", "CUSTOM"]);
 export const northResourceStatus = z.enum(["ACTIVE", "ARCHIVED"]);
 export const northPanelStatus = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 export const northAudienceType = z.enum(["ALL_MEMBERS", "ROLES", "GROUPS", "PERMISSIONS", "SPECIFIC_USERS"]);
+export const northPanelAccessPolicyMode = z.enum(["LEGACY_AUDIENCE", "ACL_V1"]);
 export const northPermissionScope = z.enum(["PLATFORM", "ORGANIZATION", "CATEGORY", "SUBCATEGORY", "PANEL"]);
 export const northMetadataInput = z.object({
   name: localizedText,
@@ -108,7 +109,72 @@ export const northCategory = northMetadata.extend({
 export const northSubcategory = northMetadata.extend({ categoryId: id, status: northResourceStatus });
 export const northPanel = northMetadata.extend({
   subcategoryId: id, status: northPanelStatus, audienceType: northAudienceType,
+  accessPolicyMode: northPanelAccessPolicyMode,
   publishedRevisionId: id.nullable(), draftRevisionId: id.nullable(),
+});
+export const northDatasetStatus = z.enum(["ACTIVE", "ARCHIVED"]);
+export const northDatasetFieldType = z.enum(["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "TIME"]);
+export const northDatasetFieldStatus = z.enum(["ACTIVE", "DEPRECATED"]);
+export const northDatasetAclEffect = z.enum(["ALLOW", "DENY"]);
+export const northDatasetAclPrincipalType = z.enum(["ALL_MEMBERS", "MEMBERSHIP", "GROUP", "ROLE", "CAPABILITY"]);
+export const northDataset = z.object({
+  id,
+  organizationId: id,
+  name: localizedText,
+  description: localizedText.nullable(),
+  slug: z.string(),
+  status: northDatasetStatus,
+  currentSchemaVersionId: id.nullable(),
+  createdBy: id,
+  createdAt: date,
+  updatedAt: date,
+});
+export const northDatasetField = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  key: z.string(),
+  displayName: localizedText,
+  description: localizedText.nullable(),
+  canonicalType: northDatasetFieldType,
+  semanticType: z.string().nullable(),
+  nullable: z.boolean(),
+  status: northDatasetFieldStatus,
+  createdAt: date,
+  updatedAt: date,
+});
+export const northDatasetSchemaVersionField = z.object({
+  organizationId: id,
+  datasetId: id,
+  schemaVersionId: id,
+  datasetFieldId: id,
+  canonicalType: northDatasetFieldType,
+  semanticType: z.string().nullable(),
+  nullable: z.boolean(),
+  status: northDatasetFieldStatus,
+  ordinal: z.number().int().nonnegative(),
+});
+export const northDatasetSchemaVersion = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  version: z.number().int().min(1),
+  createdBy: id,
+  createdAt: date,
+  fields: z.array(northDatasetSchemaVersionField),
+});
+export const northDatasetAcl = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  effect: northDatasetAclEffect,
+  principalType: northDatasetAclPrincipalType,
+  membershipId: id.nullable(),
+  groupId: id.nullable(),
+  role: role.nullable(),
+  capability: z.string().nullable(),
+  createdBy: id,
+  createdAt: date,
 });
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({

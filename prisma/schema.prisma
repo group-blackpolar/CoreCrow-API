@@ -49,8 +49,11 @@ model User {
   northPlatformGrants        NorthPlatformGrant[]
   northPanelRevisions        NorthPanelRevision[]
   northAssets                NorthAsset[]
-  northTemplatesCreated      NorthTemplate[]        @relation("NorthTemplateCreator")
-  northTemplateVersionsMade  NorthTemplateVersion[] @relation("NorthTemplateVersionCreator")
+  northTemplatesCreated      NorthTemplate[]             @relation("NorthTemplateCreator")
+  northTemplateVersionsMade  NorthTemplateVersion[]      @relation("NorthTemplateVersionCreator")
+  northDatasetsCreated       NorthDataset[]              @relation("NorthDatasetCreator")
+  northDatasetSchemasCreated NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaCreator")
+  northDatasetAclRulesMade   NorthDatasetAcl[]           @relation("NorthDatasetAclCreator")
 
   @@index([status, createdAt])
   @@map("users")
@@ -237,6 +240,44 @@ enum NorthAssetStatus {
   QUARANTINED
 }
 
+enum NorthPanelAccessPolicyMode {
+  LEGACY_AUDIENCE
+  ACL_V1
+}
+
+enum NorthDatasetStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum NorthDatasetFieldType {
+  TEXT
+  INTEGER
+  DECIMAL
+  BOOLEAN
+  DATE
+  DATETIME
+  TIME
+}
+
+enum NorthDatasetFieldStatus {
+  ACTIVE
+  DEPRECATED
+}
+
+enum NorthDatasetAclEffect {
+  ALLOW
+  DENY
+}
+
+enum NorthDatasetAclPrincipalType {
+  ALL_MEMBERS
+  MEMBERSHIP
+  GROUP
+  ROLE
+  CAPABILITY
+}
+
 model Organization {
   id                    String                      @id @default(cuid())
   name                  String
@@ -261,6 +302,10 @@ model Organization {
   northGroupGrants      NorthGroupGrant[]
   northMembershipGrants NorthMembershipGrant[]
   northAssets           NorthAsset[]
+  northDatasets         NorthDataset[]
+  northDatasetFields    NorthDatasetField[]
+  northDatasetSchemas   NorthDatasetSchemaVersion[]
+  northDatasetAclRules  NorthDatasetAcl[]
 
   @@index([status, createdAt])
 }
@@ -292,6 +337,7 @@ model Membership {
   permissionGrants      MembershipPermissionGrant[]
   northPermissionGrants NorthMembershipGrant[]
   northPanelAudiences   NorthPanelAudienceMembership[]
+  northDatasetAclRules  NorthDatasetAcl[]
 
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
@@ -311,6 +357,7 @@ model OrganizationGroup {
   invitationGrants      InvitationGroupGrant[]
   northPermissionGrants NorthGroupGrant[]
   northPanelAudiences   NorthPanelAudienceGroup[]
+  northDatasetAclRules  NorthDatasetAcl[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -389,6 +436,7 @@ model NorthPanel {
   navigationHidden    Boolean                        @default(false)
   status              NorthPanelStatus               @default(DRAFT)
   audienceType        NorthAudienceType              @default(ALL_MEMBERS)
+  accessPolicyMode    NorthPanelAccessPolicyMode     @default(LEGACY_AUDIENCE)
   publishedRevisionId String?
   draftRevisionId     String?
   createdAt           DateTime                       @default(now())
@@ -410,6 +458,111 @@ model NorthPanel {
   @@unique([id, organizationId])
   @@unique([subcategoryId, slug])
   @@index([organizationId, subcategoryId, status, order, id])
+}
+
+model NorthDataset {
+  id                     String                      @id @default(cuid())
+  organizationId         String
+  name                   Json
+  description            Json?
+  slug                   String
+  status                 NorthDatasetStatus          @default(ACTIVE)
+  currentSchemaVersionId String?
+  createdBy              String
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  organization           Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  creator                User                        @relation("NorthDatasetCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  fields                 NorthDatasetField[]
+  schemaVersions         NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaVersions")
+  currentSchemaVersion   NorthDatasetSchemaVersion?  @relation("CurrentDatasetSchemaVersion", fields: [currentSchemaVersionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  aclRules               NorthDatasetAcl[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, createdAt, id])
+}
+
+model NorthDatasetField {
+  id              String                           @id @default(cuid())
+  organizationId  String
+  datasetId       String
+  key             String
+  displayName     Json
+  description     Json?
+  canonicalType   NorthDatasetFieldType
+  semanticType    String?
+  nullable        Boolean                          @default(true)
+  status          NorthDatasetFieldStatus          @default(ACTIVE)
+  createdAt       DateTime                         @default(now())
+  updatedAt       DateTime                         @updatedAt
+  organization    Organization                     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset         NorthDataset                     @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  schemaSnapshots NorthDatasetSchemaVersionField[]
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([datasetId, key])
+  @@index([organizationId, datasetId, status, id])
+}
+
+model NorthDatasetSchemaVersion {
+  id             String                           @id @default(cuid())
+  organizationId String
+  datasetId      String
+  version        Int
+  createdBy      String
+  createdAt      DateTime                         @default(now())
+  organization   Organization                     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset                     @relation("NorthDatasetSchemaVersions", fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  creator        User                             @relation("NorthDatasetSchemaCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  fields         NorthDatasetSchemaVersionField[]
+  currentFor     NorthDataset[]                   @relation("CurrentDatasetSchemaVersion")
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([datasetId, version])
+  @@index([organizationId, datasetId, createdAt])
+}
+
+model NorthDatasetSchemaVersionField {
+  organizationId  String
+  datasetId       String
+  schemaVersionId String
+  datasetFieldId  String
+  canonicalType   NorthDatasetFieldType
+  semanticType    String?
+  nullable        Boolean
+  status          NorthDatasetFieldStatus
+  ordinal         Int
+  schemaVersion   NorthDatasetSchemaVersion @relation(fields: [schemaVersionId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  datasetField    NorthDatasetField         @relation(fields: [datasetFieldId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+
+  @@id([schemaVersionId, datasetFieldId])
+  @@unique([schemaVersionId, ordinal])
+  @@index([organizationId, datasetId, schemaVersionId])
+}
+
+model NorthDatasetAcl {
+  id             String                       @id @default(cuid())
+  organizationId String
+  datasetId      String
+  effect         NorthDatasetAclEffect
+  principalType  NorthDatasetAclPrincipalType
+  membershipId   String?
+  groupId        String?
+  role           TenantRole?
+  capability     String?
+  createdBy      String
+  createdAt      DateTime                     @default(now())
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset                 @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  membership     Membership?                  @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  group          OrganizationGroup?           @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  creator        User                         @relation("NorthDatasetAclCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([id, datasetId, organizationId])
+  @@index([organizationId, datasetId, effect, principalType])
+  @@index([organizationId, membershipId])
+  @@index([organizationId, groupId])
 }
 
 model NorthPanelRevision {
