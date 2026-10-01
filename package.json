@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:dataset-import-worker": "tsx watch src/dataset-import-worker.ts",
     "build": "node scripts/build.mjs",
     "start": "node dist/server.js",
+    "start:dataset-import-worker": "node dist/dataset-import-worker.js",
     "lint": "eslint src",
     "test": "tsx --test tests/*.test.ts",
     "test:watch": "tsx --test --watch tests/*.test.ts",

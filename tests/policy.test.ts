@@ -27,6 +27,11 @@ import {
   SecureXlsxArchiveValidator,
   UnconfiguredDatasetImportArchiveValidator,
 } from "../src/modules/north/data/import-archive-validator.js";
+import {
+  createDatasetImportWorkerRuntime,
+  datasetImportWorkerRuntimeConfiguration,
+  runDatasetImportWorkerLoop,
+} from "../src/modules/north/data/import-worker-runtime.js";
 
 async function xlsxArchive(extra: Record<string, string> = {}) {
   const zip = new ZipFile();
@@ -74,6 +79,70 @@ test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigu
     new UnconfiguredDatasetImportArchiveValidator().validate({} as never),
     (error) => error instanceof DomainError && error.code === "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE",
   );
+});
+
+test("dataset import worker validates every external dependency before polling", () => {
+  const valid: NodeJS.ProcessEnv = {
+    DATABASE_URL: "postgresql://corecrow.invalid/corecrow",
+    NORTH_DATA_IMPORT_S3_BUCKET: "private-imports",
+    NORTH_DATA_IMPORT_S3_REGION: "us-east-1",
+    NORTH_DATA_IMPORT_CLAMAV_HOST: "clamav.internal",
+    NORTH_DATA_IMPORT_CLAMAV_PORT: "3310",
+  };
+  const configuration = datasetImportWorkerRuntimeConfiguration(valid);
+  assert.equal(configuration.worker.maximumBytes, 50 * 1024 * 1024);
+  assert.ok(configuration.worker.heartbeatMilliseconds < configuration.worker.leaseMilliseconds);
+  assert.throws(
+    () => createDatasetImportWorkerRuntime(configuration),
+    /disabled until every security stage reads one pinned immutable object version/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({ ...valid, NORTH_DATA_IMPORT_S3_BUCKET: "" }),
+    /NORTH_DATA_IMPORT_S3_BUCKET is required/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({
+      ...valid,
+      NORTH_DATA_IMPORT_CLAMAV_SOCKET: "/run/clamav/clamd.sock",
+    }),
+    /must use either a socket or host and port/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({
+      ...valid,
+      NORTH_DATA_IMPORT_WORKER_LEASE_MS: "5000",
+      NORTH_DATA_IMPORT_WORKER_HEARTBEAT_MS: "5000",
+    }),
+    /must be less than the lease duration/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({
+      ...valid,
+      NORTH_DATA_IMPORT_MAX_BYTES: String(50 * 1024 * 1024 + 1),
+    }),
+    /NORTH_DATA_IMPORT_MAX_BYTES must be an integer between 1 and 52428800/,
+  );
+});
+
+test("dataset import worker loop stops polling cleanly", async () => {
+  const shutdown = new AbortController();
+  let runs = 0;
+  await runDatasetImportWorkerLoop({
+    async runOnce() {
+      runs += 1;
+      shutdown.abort();
+      return "IDLE";
+    },
+  }, { pollMilliseconds: 100 }, shutdown.signal);
+  assert.equal(runs, 1);
+
+  const alreadyStopped = new AbortController();
+  alreadyStopped.abort();
+  await runDatasetImportWorkerLoop({
+    async runOnce() {
+      assert.fail("A stopped loop must not consume jobs");
+    },
+  }, { pollMilliseconds: 100 }, alreadyStopped.signal);
 });
 
 test("ClamAV INSTREAM scanner frames private bytes and maps clean and infected results", async (t) => {
