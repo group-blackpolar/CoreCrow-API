@@ -4100,6 +4100,7 @@
                           "enum": [
                             "AWAITING_UPLOAD",
                             "SECURITY_PENDING",
+                            "SECURITY_BLOCKED",
                             "SECURITY_APPROVED",
                             "ANALYZING",
                             "AWAITING_MAPPING",
@@ -4413,6 +4414,7 @@
                         "enum": [
                           "AWAITING_UPLOAD",
                           "SECURITY_PENDING",
+                          "SECURITY_BLOCKED",
                           "SECURITY_APPROVED",
                           "ANALYZING",
                           "AWAITING_MAPPING",
@@ -4697,6 +4699,7 @@
                       "enum": [
                         "AWAITING_UPLOAD",
                         "SECURITY_PENDING",
+                        "SECURITY_BLOCKED",
                         "SECURITY_APPROVED",
                         "ANALYZING",
                         "AWAITING_MAPPING",
@@ -4980,6 +4983,7 @@
                       "enum": [
                         "AWAITING_UPLOAD",
                         "SECURITY_PENDING",
+                        "SECURITY_BLOCKED",
                         "SECURITY_APPROVED",
                         "ANALYZING",
                         "AWAITING_MAPPING",
@@ -5263,6 +5267,7 @@
                       "enum": [
                         "AWAITING_UPLOAD",
                         "SECURITY_PENDING",
+                        "SECURITY_BLOCKED",
                         "SECURITY_APPROVED",
                         "ANALYZING",
                         "AWAITING_MAPPING",

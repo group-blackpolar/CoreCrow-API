@@ -2816,6 +2816,7 @@ paths:
                         enum:
                           - AWAITING_UPLOAD
                           - SECURITY_PENDING
+                          - SECURITY_BLOCKED
                           - SECURITY_APPROVED
                           - ANALYZING
                           - AWAITING_MAPPING
@@ -3048,6 +3049,7 @@ paths:
                       enum:
                         - AWAITING_UPLOAD
                         - SECURITY_PENDING
+                        - SECURITY_BLOCKED
                         - SECURITY_APPROVED
                         - ANALYZING
                         - AWAITING_MAPPING
@@ -3258,6 +3260,7 @@ paths:
                     enum:
                       - AWAITING_UPLOAD
                       - SECURITY_PENDING
+                      - SECURITY_BLOCKED
                       - SECURITY_APPROVED
                       - ANALYZING
                       - AWAITING_MAPPING
@@ -3468,6 +3471,7 @@ paths:
                     enum:
                       - AWAITING_UPLOAD
                       - SECURITY_PENDING
+                      - SECURITY_BLOCKED
                       - SECURITY_APPROVED
                       - ANALYZING
                       - AWAITING_MAPPING
@@ -3678,6 +3682,7 @@ paths:
                     enum:
                       - AWAITING_UPLOAD
                       - SECURITY_PENDING
+                      - SECURITY_BLOCKED
                       - SECURITY_APPROVED
                       - ANALYZING
                       - AWAITING_MAPPING

@@ -61,6 +61,7 @@ function ensureReplayMatches(job: ImportJob, requestHash: string) {
 const immediateCancellation = new Set<NorthDatasetImportStatus>([
   "AWAITING_UPLOAD",
   "SECURITY_PENDING",
+  "SECURITY_BLOCKED",
   "SECURITY_APPROVED",
   "AWAITING_MAPPING",
   "READY_TO_ACTIVATE",
@@ -250,6 +251,7 @@ export class NorthDatasetImportService {
         expectedStatus: current.status,
         expectedClaimedBy: current.claimedBy,
         expectedClaimExpiresAt: current.claimExpiresAt,
+        expectedClaimToken: current.claimToken,
         status,
         at: now,
       });

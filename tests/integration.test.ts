@@ -53,6 +53,10 @@ test(
     const { NorthDatasetImportService, configureNorthDatasetImportService } =
       await import("../src/modules/north/data/import-service.js");
     const { datasetImportConfiguration } = await import("../src/modules/north/data/import-config.js");
+    const { NorthDatasetImportWorker } = await import("../src/modules/north/data/import-worker.js");
+    const { UnconfiguredDatasetImportMalwareScanner } = await import("../src/modules/north/data/import-malware-scanner.js");
+    const { UnconfiguredDatasetImportArchiveValidator } = await import("../src/modules/north/data/import-archive-validator.js");
+    const { UnavailableObjectStorage } = await import("../src/infrastructure/object-storage.js");
     const assetStorage = new FakeObjectStorage();
     const importStorage = new FakeObjectStorage();
     const assetScanner = new FakeMalwareScanner();
@@ -1124,7 +1128,12 @@ test(
         const claimedAt = new Date();
         await prisma.northDatasetImportJob.update({
           where: { id: leasedPrepared.import.id },
-          data: { claimedAt, claimExpiresAt: new Date(claimedAt.getTime() + 60_000), claimedBy: "integration-worker" },
+          data: {
+            claimedAt,
+            claimExpiresAt: new Date(claimedAt.getTime() + 60_000),
+            claimedBy: "integration-worker",
+            claimToken: randomUUID(),
+          },
         });
         const cancellationRequested = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${leasedPrepared.import.id}/cancel`, owner.cookie), 200);
         assert.equal(cancellationRequested.status, "CANCEL_REQUESTED");
@@ -1143,6 +1152,192 @@ test(
         const rejectedImport = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${invalidPrepared.import.id}`, owner.cookie), 200);
         assert.equal(rejectedImport.status, "REJECTED");
         assert.equal(rejectedImport.errorCode, "IMPORT_MAGIC_INVALID");
+
+        const workerConfiguration = {
+          leaseMilliseconds: 30_000,
+          heartbeatMilliseconds: 1_000,
+          retryDelayMilliseconds: 60_000,
+          maximumBytes: 1024,
+        };
+        const unavailableArchive = new UnconfiguredDatasetImportArchiveValidator();
+        const approvedScanner = {
+          async scan(input: { openPrivateRead: () => Promise<NodeJS.ReadableStream>; signal: AbortSignal }) {
+            const stream = await input.openPrivateRead();
+            for await (const _chunk of stream) {
+              if (input.signal.aborted) throw new Error("aborted");
+            }
+            return "APPROVED" as const;
+          },
+        };
+        const prepareWorkerJob = async (suffix: string) => {
+          const preparedJob = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+            "idempotency-key": `${prefix}-${suffix}`,
+          }), 201);
+          const internal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: preparedJob.import.id } });
+          assert.equal(internal.storageKey.includes(organizationId), false);
+          assert.equal(internal.storageKey.includes(dataset.id), false);
+          importStorage.put(internal.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+          expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${preparedJob.import.id}/confirm`, owner.cookie), 202);
+          return internal;
+        };
+
+        const expiredClaimedAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: leasedPrepared.import.id },
+          data: { claimedAt: expiredClaimedAt, claimExpiresAt: new Date(expiredClaimedAt.getTime() + 30_000) },
+        });
+        const recoveryWorker = new NorthDatasetImportWorker("recovery-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await recoveryWorker.runOnce(), "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: leasedPrepared.import.id } })).status, "CANCELLED");
+
+        const storageUnavailableJob = await prepareWorkerJob("worker-storage-unavailable");
+        const storageUnavailableWorker = new NorthDatasetImportWorker("storage-unavailable-worker", {
+          storage: new UnavailableObjectStorage(), scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await storageUnavailableWorker.runOnce(), "BLOCKED");
+        const storageBlocked = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: storageUnavailableJob.id } });
+        assert.equal(storageBlocked.status, "SECURITY_BLOCKED");
+        assert.equal(storageBlocked.lastErrorCode, "OBJECT_STORAGE_UNAVAILABLE");
+        assert.equal(storageBlocked.securityApprovedAt, null);
+
+        const scannerUnavailableJob = await prepareWorkerJob("worker-scanner-unavailable");
+        const scannerUnavailableWorker = new NorthDatasetImportWorker("scanner-unavailable-worker", {
+          storage: importStorage,
+          scanner: new UnconfiguredDatasetImportMalwareScanner(),
+          archiveValidator: unavailableArchive,
+          configuration: workerConfiguration,
+        });
+        assert.equal(await scannerUnavailableWorker.runOnce(), "BLOCKED");
+        const scannerBlocked = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: scannerUnavailableJob.id } });
+        assert.equal(scannerBlocked.status, "SECURITY_BLOCKED");
+        assert.equal(scannerBlocked.scanStatus, "UNAVAILABLE");
+        assert.equal(scannerBlocked.lastErrorCode, "IMPORT_MALWARE_SCANNER_UNAVAILABLE");
+
+        const archiveUnavailableJob = await prepareWorkerJob("worker-archive-unavailable");
+        const abandonedAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: archiveUnavailableJob.id },
+          data: {
+            claimedAt: abandonedAt,
+            claimExpiresAt: new Date(abandonedAt.getTime() + 30_000),
+            claimedBy: "expired-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        const archiveUnavailableWorker = new NorthDatasetImportWorker("archive-unavailable-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await archiveUnavailableWorker.runOnce(), "BLOCKED");
+        const archiveBlocked = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: archiveUnavailableJob.id } });
+        assert.equal(archiveBlocked.status, "SECURITY_BLOCKED");
+        assert.equal(archiveBlocked.scanStatus, "APPROVED");
+        assert.equal(archiveBlocked.lastErrorCode, "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE");
+        assert.equal(archiveBlocked.securityApprovedAt, null);
+
+        const approvedJob = await prepareWorkerJob("worker-security-approved");
+        const approvedArchive = {
+          async validate(input: { openPrivateRead: () => Promise<NodeJS.ReadableStream>; signal: AbortSignal }) {
+            const stream = await input.openPrivateRead();
+            for await (const _chunk of stream) {
+              if (input.signal.aborted) throw new Error("aborted");
+            }
+            return "APPROVED" as const;
+          },
+        };
+        const approvingWorker = new NorthDatasetImportWorker("approving-worker", {
+          storage: importStorage,
+          scanner: approvedScanner,
+          archiveValidator: approvedArchive,
+          configuration: workerConfiguration,
+        });
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        const approvedAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } });
+        assert.equal(approvedAfter.status, "SECURITY_APPROVED");
+        assert.equal(approvedAfter.scanStatus, "APPROVED");
+        assert.ok(approvedAfter.securityApprovedAt);
+        assert.equal(approvedAfter.claimToken, null);
+
+        const exhaustedJob = await prepareWorkerJob("worker-retry-exhausted");
+        const exhaustedAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: exhaustedJob.id },
+          data: {
+            attempts: 3,
+            claimedAt: exhaustedAt,
+            claimExpiresAt: new Date(exhaustedAt.getTime() + 30_000),
+            claimedBy: "crashed-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        const exhaustedRecoveryWorker = new NorthDatasetImportWorker("exhausted-recovery-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await exhaustedRecoveryWorker.runOnce(), "FAILED");
+        const exhaustedAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: exhaustedJob.id } });
+        assert.equal(exhaustedAfter.status, "FAILED");
+        assert.equal(exhaustedAfter.lastErrorCode, "IMPORT_RETRY_EXHAUSTED");
+
+        const workerMismatchJob = await prepareWorkerJob("worker-stream-mismatch");
+        importStorage.put(workerMismatchJob.storageKey, {
+          bytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x05]),
+          mime: importBody.mime,
+          checksum: workbookChecksum,
+        });
+        const mismatchWorker = new NorthDatasetImportWorker("mismatch-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await mismatchWorker.runOnce(), "REJECTED");
+        const mismatchRejected = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: workerMismatchJob.id } });
+        assert.equal(mismatchRejected.status, "REJECTED");
+        assert.equal(mismatchRejected.lastErrorCode, "IMPORT_CHECKSUM_MISMATCH");
+
+        const cooperativeJob = await prepareWorkerJob("worker-cooperative-cancel");
+        let releaseCooperative!: () => void;
+        let enteredCooperative!: () => void;
+        const cooperativeEntered = new Promise<void>((resolve) => { enteredCooperative = resolve; });
+        const cooperativeScanner = {
+          scan: async () => {
+            enteredCooperative();
+            await new Promise<void>((resolve) => { releaseCooperative = resolve; });
+            return "APPROVED" as const;
+          },
+        };
+        const cooperativeWorker = new NorthDatasetImportWorker("cooperative-worker", {
+          storage: importStorage, scanner: cooperativeScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        const cooperativeRun = cooperativeWorker.runOnce();
+        await cooperativeEntered;
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cooperativeJob.id}/cancel`, owner.cookie), 200).status, "CANCEL_REQUESTED");
+        releaseCooperative();
+        assert.equal(await cooperativeRun, "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: cooperativeJob.id } })).status, "CANCELLED");
+
+        const fencedJob = await prepareWorkerJob("worker-fenced-write");
+        let releaseFenced!: () => void;
+        let enteredFenced!: () => void;
+        const fencedEntered = new Promise<void>((resolve) => { enteredFenced = resolve; });
+        const fencedScanner = {
+          scan: async () => {
+            enteredFenced();
+            await new Promise<void>((resolve) => { releaseFenced = resolve; });
+            return "APPROVED" as const;
+          },
+        };
+        const fencedWorker = new NorthDatasetImportWorker("fenced-worker", {
+          storage: importStorage, scanner: fencedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        const fencedRun = fencedWorker.runOnce();
+        await fencedEntered;
+        const stolenToken = randomUUID();
+        await prisma.northDatasetImportJob.update({ where: { id: fencedJob.id }, data: { claimToken: stolenToken } });
+        releaseFenced();
+        assert.equal(await fencedRun, "LEASE_LOST");
+        const fencedAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: fencedJob.id } });
+        assert.equal(fencedAfter.claimToken, stolenToken);
+        assert.equal(fencedAfter.status, "SECURITY_PENDING");
+        assert.equal(fencedAfter.securityApprovedAt, null);
 
         const foreignPrincipal = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
           effect: "ALLOW",

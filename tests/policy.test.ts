@@ -16,6 +16,8 @@ import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner
 import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
 import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
 import { XLSX_MIME } from "../src/modules/north/data/import-config.js";
+import { UnconfiguredDatasetImportMalwareScanner } from "../src/modules/north/data/import-malware-scanner.js";
+import { UnconfiguredDatasetImportArchiveValidator } from "../src/modules/north/data/import-archive-validator.js";
 
 test("XLSX declarations and uploaded bytes remain behind the security gate", () => {
   const checksum = "a".repeat(64);
@@ -35,6 +37,17 @@ test("XLSX declarations and uploaded bytes remain behind the security gate", () 
     filename: "unsafe.xlsm", mime: XLSX_MIME, size: 4, checksum,
   }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 }),
   (error) => error instanceof DomainError && error.code === "IMPORT_FILE_TYPE_UNSUPPORTED");
+});
+
+test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigured", async () => {
+  await assert.rejects(
+    new UnconfiguredDatasetImportMalwareScanner().scan({} as never),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  await assert.rejects(
+    new UnconfiguredDatasetImportArchiveValidator().validate({} as never),
+    (error) => error instanceof DomainError && error.code === "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE",
+  );
 });
 
 test("dataset ACL is default-deny and any matching explicit deny wins", () => {

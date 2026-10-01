@@ -179,6 +179,7 @@ export const northDatasetAcl = z.object({
 export const northDatasetImportStatus = z.enum([
   "AWAITING_UPLOAD",
   "SECURITY_PENDING",
+  "SECURITY_BLOCKED",
   "SECURITY_APPROVED",
   "ANALYZING",
   "AWAITING_MAPPING",

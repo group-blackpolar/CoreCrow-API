@@ -68,6 +68,7 @@ export const northDatasetImportRepository = {
     expectedStatus: NorthDatasetImportStatus;
     expectedClaimedBy: string | null;
     expectedClaimExpiresAt: Date | null;
+    expectedClaimToken: string | null;
     status: NorthDatasetImportStatus;
     at: Date;
   }) {
@@ -79,11 +80,20 @@ export const northDatasetImportRepository = {
         status: input.expectedStatus,
         claimedBy: input.expectedClaimedBy,
         claimExpiresAt: input.expectedClaimExpiresAt,
+        claimToken: input.expectedClaimToken,
       },
       data: {
         status: input.status,
         cancellationRequestedAt: input.at,
-        ...(input.status === "CANCELLED" ? { cancelledAt: input.at, completedAt: input.at, progress: 100 } : {}),
+        ...(input.status === "CANCELLED" ? {
+          cancelledAt: input.at,
+          completedAt: input.at,
+          progress: 100,
+          claimedAt: null,
+          claimExpiresAt: null,
+          claimedBy: null,
+          claimToken: null,
+        } : {}),
       },
     });
   },

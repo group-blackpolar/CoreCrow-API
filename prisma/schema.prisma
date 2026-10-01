@@ -282,6 +282,7 @@ enum NorthDatasetAclPrincipalType {
 enum NorthDatasetImportStatus {
   AWAITING_UPLOAD
   SECURITY_PENDING
+  SECURITY_BLOCKED
   SECURITY_APPROVED
   ANALYZING
   AWAITING_MAPPING
@@ -616,6 +617,7 @@ model NorthDatasetImportJob {
   claimedAt               DateTime?
   claimExpiresAt          DateTime?
   claimedBy               String?
+  claimToken              String?
   confirmedAt             DateTime?
   securityApprovedAt      DateTime?
   cancellationRequestedAt DateTime?
