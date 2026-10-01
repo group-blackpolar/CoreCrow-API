@@ -2,9 +2,10 @@
 
 The dataset import security worker is designed as a separate CORECROW process. It claims
 durable PostgreSQL jobs, verifies private object bytes, submits them to ClamAV,
-and applies the bounded ZIP/OOXML security gate. It stops at
-`SECURITY_APPROVED`; workbook parsing, mapping and activation are not part of
-this process yet.
+and applies the bounded ZIP/OOXML security gate. A second leased phase parses
+only the pinned, security-approved XLSX in an isolated child process and
+persists metadata-only analysis. Mapping versions are immutable; activation is
+not part of this process.
 
 **Storage release gate:** the executable verifies at startup that the import
 bucket has object versioning enabled. Upload confirmation captures an immutable
@@ -70,3 +71,14 @@ Never use readiness based only on process liveness. A deployment check should
 also prove private storage access and ClamAV reachability with a safe test
 object before enabling production imports. This implementation fails closed at
 runtime if either dependency later becomes unavailable.
+
+## XLSX parser isolation
+
+The parser child requires Node 22.13 or newer and the Node permission model. It
+receives an empty environment, has no network, child-process, worker-thread or
+native-addon permission, and gets filesystem read access only to its 0600
+temporary workbook, parser code and installed dependencies. Its stdout is
+capped at 1 MiB. This is defense in depth: deployment must independently deny
+egress and instance-metadata access to parser work, use a separate
+least-privilege identity, and never place cloud credentials in the worker
+environment.

@@ -37,6 +37,7 @@ import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
 import { northData } from "../modules/north/data/service.js";
 import { northDatasetImports } from "../modules/north/data/import-service.js";
+import { northDatasetImportAnalysis } from "../modules/north/data/import-analysis-service.js";
 
 export async function v1Routes(app: FastifyInstance) {
   const key = z.object({
@@ -54,6 +55,7 @@ export async function v1Routes(app: FastifyInstance) {
   const datasetSchemaParams = datasetParams.extend({ schemaVersionId: s.id });
   const datasetAclParams = datasetParams.extend({ aclId: s.id });
   const datasetImportParams = datasetParams.extend({ importId: s.id });
+  const datasetImportMappingParams = datasetImportParams.extend({ mappingId: s.id });
   const semanticType = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).nullable();
   const datasetMetadata = z.object({
     name: s.localizedText,
@@ -76,6 +78,11 @@ export async function v1Routes(app: FastifyInstance) {
     z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ROLE"), role: s.role }).strict(),
     z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("CAPABILITY"), capability: z.string().min(1).max(128) }).strict(),
   ]);
+  const importMappingInput = z.object({
+    sheetOrdinal: z.number().int().nonnegative().max(31),
+    headerRow: z.literal(1),
+    columns: z.array(s.northDatasetImportMappingColumn).min(1).max(150),
+  }).strict();
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
     summary: "List up to 100 datasets authorized for the active membership", params: s.orgParams,
@@ -208,6 +215,30 @@ export async function v1Routes(app: FastifyInstance) {
     summary: "Idempotently cancel a waiting import or request cancellation from a claimed worker",
     params: datasetImportParams, response: s.northDatasetImport,
     run: ({ user, params }) => northDatasetImports.cancel(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/analysis", tag: "NORTH data imports",
+    summary: "Read bounded workbook analysis after the immutable source has passed security validation", params: datasetImportParams,
+    response: s.northDatasetImportAnalysis,
+    run: ({ user, params }) => northDatasetImportAnalysis.read(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings", tag: "NORTH data imports",
+    summary: "List immutable mapping versions for an authorized analyzed import", params: datasetImportParams,
+    response: z.array(s.northDatasetImportMapping),
+    run: ({ user, params }) => northDatasetImportAnalysis.listMappings(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings", tag: "NORTH data imports",
+    summary: "Create an immutable explicit mapping version; this does not activate data", params: datasetImportParams,
+    body: importMappingInput, response: s.northDatasetImportMapping, status: 201,
+    run: ({ user, params, body }) => northDatasetImportAnalysis.createMapping(user.id, params.organizationId, params.datasetId, params.importId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings/:mappingId", tag: "NORTH data imports",
+    summary: "Read one immutable authorized mapping version", params: datasetImportMappingParams,
+    response: s.northDatasetImportMapping,
+    run: ({ user, params }) => northDatasetImportAnalysis.readMapping(user.id, params.organizationId, params.datasetId, params.importId, params.mappingId),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",

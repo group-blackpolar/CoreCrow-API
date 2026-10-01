@@ -63,6 +63,7 @@ const immediateCancellation = new Set<NorthDatasetImportStatus>([
   "SECURITY_PENDING",
   "SECURITY_BLOCKED",
   "SECURITY_APPROVED",
+  "ANALYSIS_BLOCKED",
   "AWAITING_MAPPING",
   "READY_TO_ACTIVATE",
 ]);

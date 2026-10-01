@@ -54,6 +54,7 @@ test(
       await import("../src/modules/north/data/import-service.js");
     const { datasetImportConfiguration } = await import("../src/modules/north/data/import-config.js");
     const { NorthDatasetImportWorker } = await import("../src/modules/north/data/import-worker.js");
+    const { NorthDatasetImportAnalysisWorker } = await import("../src/modules/north/data/import-analysis-worker.js");
     const { UnconfiguredDatasetImportMalwareScanner } = await import("../src/modules/north/data/import-malware-scanner.js");
     const { UnconfiguredDatasetImportArchiveValidator } = await import("../src/modules/north/data/import-archive-validator.js");
     const { UnavailableObjectStorage } = await import("../src/infrastructure/object-storage.js");
@@ -1290,6 +1291,112 @@ test(
         assert.equal(approvedAfter.scanStatus, "APPROVED");
         assert.ok(approvedAfter.securityApprovedAt);
         assert.equal(approvedAfter.claimToken, null);
+
+        const analysisWorker = new NorthDatasetImportAnalysisWorker("analysis-worker", {
+          async analyze() {
+            return {
+              parserVersion: "test-parser",
+              workbook: { sheets: [{
+                ordinal: 0, name: "Master House", rowCount: 3, columnCount: 2,
+                columns: [
+                  { ordinal: 0, header: "Duplicate", inferredType: "INTEGER", nonEmptyCount: 2, nullable: false },
+                  { ordinal: 1, header: "Duplicate", inferredType: "TEXT", nonEmptyCount: 1, nullable: true },
+                ],
+              }] },
+            };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 });
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const analysis = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/analysis`, owner.cookie), 200);
+        assert.equal(analysis.workbook.sheets[0].columns[0].header, "Duplicate");
+        assert.equal(analysis.workbook.sheets[0].columns[1].ordinal, 1);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/analysis`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/analysis`, invited.cookie), 403);
+        const mappedField = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields`, owner.cookie, {
+          key: "revenue", displayName: { en: "Revenue" }, canonicalType: "DECIMAL",
+        }), 201);
+        const duplicateCreate = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "CREATE", key: "duplicate", displayName: { en: "Duplicate one" }, canonicalType: "INTEGER" },
+            { sourceOrdinal: 1, action: "CREATE", key: "duplicate", displayName: { en: "Duplicate two" }, canonicalType: "TEXT" },
+          ],
+        });
+        assert.equal(duplicateCreate.statusCode, 422);
+        assert.equal(duplicateCreate.json().error.code, "IMPORT_MAPPING_CREATE_KEY_DUPLICATE");
+        const conflictingCreate = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "CREATE", key: "revenue", displayName: { en: "Revenue duplicate" }, canonicalType: "DECIMAL" },
+            { sourceOrdinal: 1, action: "IGNORE" },
+          ],
+        });
+        assert.equal(conflictingCreate.statusCode, 422);
+        assert.equal(conflictingCreate.json().error.code, "IMPORT_MAPPING_CREATE_KEY_CONFLICT");
+        const mapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id },
+            { sourceOrdinal: 1, action: "IGNORE" },
+          ],
+        }), 201);
+        assert.equal(mapping.version, 1);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings/${mapping.id}`, outsider.cookie), 404);
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } })).status, "AWAITING_MAPPING");
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetImportAnalysis"'));
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetImportMappingVersion"'));
+        assert.ok(await prisma.northDatasetImportAnalysis.findUnique({ where: { importId: approvedJob.id } }));
+        assert.ok(await prisma.northDatasetImportMappingVersion.findUnique({ where: { id: mapping.id } }));
+
+        const expiredAnalysisJob = await prepareWorkerJob("analysis-expired-lease");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        const expiredAnalysisAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: expiredAnalysisJob.id },
+          data: {
+            status: "ANALYZING",
+            attempts: 2,
+            claimedAt: expiredAnalysisAt,
+            claimExpiresAt: new Date(expiredAnalysisAt.getTime() + 30_000),
+            claimedBy: "crashed-analysis-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const expiredAnalysisAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: expiredAnalysisJob.id } });
+        assert.equal(expiredAnalysisAfter.status, "AWAITING_MAPPING");
+        assert.equal(expiredAnalysisAfter.attempts, 3);
+        assert.equal(expiredAnalysisAfter.claimToken, null);
+
+        const exhaustedAnalysisJob = await prepareWorkerJob("analysis-retry-exhausted");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        await prisma.northDatasetImportJob.update({
+          where: { id: exhaustedAnalysisJob.id },
+          data: { status: "ANALYSIS_BLOCKED", attempts: 3, availableAt: new Date(Date.now() - 1_000) },
+        });
+        assert.equal(await analysisWorker.runOnce(), "FAILED");
+        const exhaustedAnalysisAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: exhaustedAnalysisJob.id } });
+        assert.equal(exhaustedAnalysisAfter.status, "FAILED");
+        assert.equal(exhaustedAnalysisAfter.lastErrorCode, "IMPORT_RETRY_EXHAUSTED");
+
+        const cancelledAnalysisJob = await prepareWorkerJob("analysis-cooperative-cancel");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        let releaseAnalysis!: () => void;
+        let enteredAnalysis!: () => void;
+        const analysisEntered = new Promise<void>((resolve) => { enteredAnalysis = resolve; });
+        const cancellableAnalysisWorker = new NorthDatasetImportAnalysisWorker("cancellable-analysis-worker", {
+          async analyze() {
+            enteredAnalysis();
+            await new Promise<void>((resolve) => { releaseAnalysis = resolve; });
+            return { parserVersion: "test-parser", workbook: { sheets: [{ ordinal: 0, name: "Sheet", rowCount: 1, columnCount: 0, columns: [] }] } };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5, retryDelayMilliseconds: 60_000 });
+        const cancellableAnalysisRun = cancellableAnalysisWorker.runOnce();
+        await analysisEntered;
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelledAnalysisJob.id}/cancel`, owner.cookie), 200).status, "CANCEL_REQUESTED");
+        releaseAnalysis();
+        assert.equal(await cancellableAnalysisRun, "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: cancelledAnalysisJob.id } })).status, "CANCELLED");
 
         const exhaustedJob = await prepareWorkerJob("worker-retry-exhausted");
         const exhaustedAt = new Date(Date.now() - 120_000);

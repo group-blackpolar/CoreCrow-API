@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer, type AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { ZipFile } from "yazl";
+import * as XLSX from "xlsx";
 import {
   allows,
   canManageRole,
@@ -32,6 +33,7 @@ import {
   datasetImportWorkerRuntimeConfiguration,
   runDatasetImportWorkerLoop,
 } from "../src/modules/north/data/import-worker-runtime.js";
+import { SheetJsDatasetImportAnalyzer } from "../src/modules/north/data/import-analysis-parser.js";
 
 async function xlsxArchive(extra: Record<string, string> = {}) {
   const zip = new ZipFile();
@@ -68,6 +70,27 @@ test("XLSX declarations and uploaded bytes remain behind the security gate", () 
     filename: "unsafe.xlsm", mime: XLSX_MIME, size: 4, checksum,
   }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 }),
   (error) => error instanceof DomainError && error.code === "IMPORT_FILE_TYPE_UNSUPPORTED");
+});
+
+test("isolated XLSX analysis exposes only bounded metadata and rejects formulas", async () => {
+  const bytesFor = (formula: boolean) => {
+    const book = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([["Duplicate", "Duplicate"], [1, "a"], [2, "b"]]);
+    if (formula) sheet.B3 = { t: "n", f: "A2*2", v: 2 };
+    XLSX.utils.book_append_sheet(book, sheet, "Input");
+    return XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  };
+  const storage = (bytes: Buffer) => ({
+    async openPrivateRead() { return Readable.from(bytes); },
+  });
+  const analyzer = new SheetJsDatasetImportAnalyzer(storage(bytesFor(false)) as never, 10_000, 128);
+  const result = await analyzer.analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal });
+  assert.equal(result.parserVersion, "sheetjs-ce-0.20.3");
+  assert.deepEqual(result.workbook.sheets[0]?.columns.map((column) => [column.ordinal, column.header]), [[0, "Duplicate"], [1, "Duplicate"]]);
+  await assert.rejects(
+    new SheetJsDatasetImportAnalyzer(storage(bytesFor(true)) as never, 10_000, 128).analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal }),
+    (error) => error instanceof DomainError && error.code === "IMPORT_SOURCE_FORMULA_REJECTED",
+  );
 });
 
 test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigured", async () => {

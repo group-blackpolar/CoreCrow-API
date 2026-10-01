@@ -182,6 +182,7 @@ export const northDatasetImportStatus = z.enum([
   "SECURITY_BLOCKED",
   "SECURITY_APPROVED",
   "ANALYZING",
+  "ANALYSIS_BLOCKED",
   "AWAITING_MAPPING",
   "READY_TO_ACTIVATE",
   "ACTIVATING",
@@ -216,6 +217,40 @@ export const northDatasetImport = z.object({
   errorCode: z.string().nullable(),
   createdAt: date,
   updatedAt: date,
+});
+export const northDatasetImportColumnAnalysis = z.object({
+  ordinal: z.number().int().nonnegative(),
+  header: z.string().max(255).nullable(),
+  inferredType: z.enum(["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "TIME", "EMPTY", "MIXED"]),
+  nonEmptyCount: z.number().int().nonnegative(),
+  nullable: z.boolean(),
+});
+export const northDatasetImportAnalysis = z.object({
+  id,
+  importId: id,
+  parserVersion: z.string().min(1).max(128),
+  workbook: z.object({
+    sheets: z.array(z.object({
+      ordinal: z.number().int().nonnegative(), name: z.string().max(255), rowCount: z.number().int().nonnegative(),
+      columnCount: z.number().int().nonnegative(), columns: z.array(northDatasetImportColumnAnalysis).max(150),
+    })).max(32),
+  }),
+  createdAt: date,
+});
+export const northDatasetImportMappingColumn = z.discriminatedUnion("action", [
+  z.object({ sourceOrdinal: z.number().int().nonnegative().max(149), action: z.literal("MAP"), fieldId: id }).strict(),
+  z.object({ sourceOrdinal: z.number().int().nonnegative().max(149), action: z.literal("CREATE"), key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), displayName: localizedText, canonicalType: northDatasetFieldType, nullable: z.boolean().optional() }).strict(),
+  z.object({ sourceOrdinal: z.number().int().nonnegative().max(149), action: z.literal("IGNORE") }).strict(),
+]);
+export const northDatasetImportMapping = z.object({
+  id,
+  importId: id,
+  version: z.number().int().min(1),
+  sheetOrdinal: z.number().int().nonnegative(),
+  headerRow: z.number().int().min(1),
+  definition: z.object({ columns: z.array(northDatasetImportMappingColumn).max(150) }),
+  createdBy: id,
+  createdAt: date,
 });
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({

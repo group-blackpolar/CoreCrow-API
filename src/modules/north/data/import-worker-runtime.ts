@@ -3,6 +3,8 @@ import { NorthDatasetImportWorker, type DatasetImportWorkerConfiguration } from 
 import { SecureXlsxArchiveValidator } from "./import-archive-validator.js";
 import { datasetImportMalwareScannerFromEnvironment } from "./import-malware-scanner.js";
 import { datasetImportStorageFromEnvironment } from "./import-storage.js";
+import { NorthDatasetImportAnalysisWorker } from "./import-analysis-worker.js";
+import { SheetJsDatasetImportAnalyzer, type DatasetImportAnalyzer } from "./import-analysis-parser.js";
 import type { ObjectStorage } from "../../../infrastructure/object-storage.js";
 import type { DatasetImportMalwareScanner } from "./import-malware-scanner.js";
 import type { DatasetImportArchiveValidator } from "./import-archive-validator.js";
@@ -28,6 +30,7 @@ export type DatasetImportWorkerRuntimeDependencies = {
   storage?: ObjectStorage;
   scanner?: DatasetImportMalwareScanner;
   archiveValidator?: DatasetImportArchiveValidator;
+  analyzer?: DatasetImportAnalyzer;
 };
 
 function configurationError(name: string, reason: string): never {
@@ -133,13 +136,24 @@ export async function createDatasetImportWorkerRuntime(
 ) {
   const storage = dependencies.storage ?? datasetImportStorageFromEnvironment();
   await storage.assertImmutableVersioning();
-  return new NorthDatasetImportWorker(configuration.workerId, {
+  const security = new NorthDatasetImportWorker(configuration.workerId, {
     storage,
     scanner: dependencies.scanner
       ?? datasetImportMalwareScannerFromEnvironment({ maximumBytes: configuration.worker.maximumBytes }),
     archiveValidator: dependencies.archiveValidator ?? new SecureXlsxArchiveValidator(),
     configuration: configuration.worker,
   });
+  const analysis = new NorthDatasetImportAnalysisWorker(
+    configuration.workerId,
+    dependencies.analyzer ?? new SheetJsDatasetImportAnalyzer(storage),
+    { leaseMilliseconds: configuration.worker.leaseMilliseconds, heartbeatMilliseconds: configuration.worker.heartbeatMilliseconds, retryDelayMilliseconds: configuration.worker.retryDelayMilliseconds },
+  );
+  return {
+    async runOnce() {
+      const result = await security.runOnce();
+      return result === "IDLE" ? analysis.runOnce() : result;
+    },
+  } satisfies DatasetImportWorkerRunner;
 }
 
 function wait(milliseconds: number, signal: AbortSignal) {

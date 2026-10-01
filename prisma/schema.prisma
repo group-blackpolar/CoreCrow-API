@@ -55,6 +55,7 @@ model User {
   northDatasetSchemasCreated NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaCreator")
   northDatasetAclRulesMade   NorthDatasetAcl[]           @relation("NorthDatasetAclCreator")
   northDatasetImports        NorthDatasetImportJob[]     @relation("NorthDatasetImportRequester")
+  northDatasetMappingsMade   NorthDatasetImportMappingVersion[] @relation("NorthDatasetImportMappingCreator")
 
   @@index([status, createdAt])
   @@map("users")
@@ -285,6 +286,7 @@ enum NorthDatasetImportStatus {
   SECURITY_BLOCKED
   SECURITY_APPROVED
   ANALYZING
+  ANALYSIS_BLOCKED
   AWAITING_MAPPING
   READY_TO_ACTIVATE
   ACTIVATING
@@ -333,6 +335,8 @@ model Organization {
   northDatasetSchemas   NorthDatasetSchemaVersion[]
   northDatasetAclRules  NorthDatasetAcl[]
   northDatasetImports   NorthDatasetImportJob[]
+  northDatasetAnalyses  NorthDatasetImportAnalysis[]
+  northDatasetMappings  NorthDatasetImportMappingVersion[]
 
   @@index([status, createdAt])
 }
@@ -506,6 +510,8 @@ model NorthDataset {
   currentSchemaVersion   NorthDatasetSchemaVersion?  @relation("CurrentDatasetSchemaVersion", fields: [currentSchemaVersionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
   aclRules               NorthDatasetAcl[]
   importJobs             NorthDatasetImportJob[]
+  importAnalyses         NorthDatasetImportAnalysis[]
+  importMappings         NorthDatasetImportMappingVersion[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])
@@ -632,12 +638,52 @@ model NorthDatasetImportJob {
   dataset                 NorthDataset                 @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
   requester               User                         @relation("NorthDatasetImportRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
   requestedMembership     Membership                   @relation(fields: [requestedMembershipId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  analysis                NorthDatasetImportAnalysis?
+  mappings                NorthDatasetImportMappingVersion[]
 
   @@unique([id, datasetId, organizationId])
   @@unique([organizationId, requestedMembershipId, requestedBy, idempotencyOperation, idempotencyKey])
   @@index([organizationId, datasetId, createdAt, id])
   @@index([status, availableAt, claimExpiresAt, id])
   @@index([organizationId, requestedBy, createdAt, id])
+}
+
+model NorthDatasetImportAnalysis {
+  id             String                @id @default(cuid())
+  organizationId String
+  datasetId      String
+  importId       String                @unique
+  parserVersion  String
+  workbook       Json
+  createdAt      DateTime              @default(now())
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset          @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  import         NorthDatasetImportJob @relation(fields: [importId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+
+  @@unique([id, importId, datasetId, organizationId])
+  @@unique([importId, datasetId, organizationId])
+  @@index([organizationId, datasetId, createdAt])
+}
+
+model NorthDatasetImportMappingVersion {
+  id             String                @id @default(cuid())
+  organizationId String
+  datasetId      String
+  importId       String
+  version        Int
+  sheetOrdinal   Int
+  headerRow      Int
+  definition     Json
+  createdBy      String
+  createdAt      DateTime              @default(now())
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset          @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  import         NorthDatasetImportJob @relation(fields: [importId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  creator        User                  @relation("NorthDatasetImportMappingCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([importId, version])
+  @@unique([id, importId, datasetId, organizationId])
+  @@index([organizationId, datasetId, importId, createdAt])
 }
 
 model NorthPanelRevision {

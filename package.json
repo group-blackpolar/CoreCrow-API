@@ -36,6 +36,7 @@
     "fastify": "^5.2.0",
     "nodemailer": "^10.0.9",
     "prisma": "^6.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yauzl": "3.4.0",
     "zod": "^3.24.0",
     "zod-to-json-schema": "^3.25.2"
