@@ -14,7 +14,7 @@ import { RequestTelemetry } from "../src/modules/telemetry/service.js";
 import { validateNorthPanelDocument } from "../src/modules/north/content-schema.js";
 import { DomainError } from "../src/shared/errors.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "../src/modules/north/asset-policy.js";
-import { FakeObjectStorage } from "../src/modules/north/object-storage.js";
+import { FakeObjectStorage, S3ObjectStorage } from "../src/modules/north/object-storage.js";
 import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner.js";
 import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
 import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
@@ -81,7 +81,7 @@ test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigu
   );
 });
 
-test("dataset import worker validates every external dependency before polling", () => {
+test("dataset import worker validates every external dependency before polling", async () => {
   const valid: NodeJS.ProcessEnv = {
     DATABASE_URL: "postgresql://corecrow.invalid/corecrow",
     NORTH_DATA_IMPORT_S3_BUCKET: "private-imports",
@@ -92,9 +92,9 @@ test("dataset import worker validates every external dependency before polling",
   const configuration = datasetImportWorkerRuntimeConfiguration(valid);
   assert.equal(configuration.worker.maximumBytes, 50 * 1024 * 1024);
   assert.ok(configuration.worker.heartbeatMilliseconds < configuration.worker.leaseMilliseconds);
-  assert.throws(
-    () => createDatasetImportWorkerRuntime(configuration),
-    /disabled until every security stage reads one pinned immutable object version/,
+  await assert.rejects(
+    createDatasetImportWorkerRuntime(configuration, { storage: new FakeObjectStorage(false) }),
+    (error) => error instanceof DomainError && error.code === "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
   );
   assert.throws(
     () => datasetImportWorkerRuntimeConfiguration({ ...valid, NORTH_DATA_IMPORT_S3_BUCKET: "" }),
@@ -422,6 +422,61 @@ test("shared object storage exposes uploaded bytes through a private stream", as
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
 
   assert.deepEqual(Buffer.concat(chunks), Buffer.from(expected));
+});
+test("shared object storage keeps a pinned import version stable after overwrite", async () => {
+  const storage = new FakeObjectStorage();
+  const original = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+  const replacement = Uint8Array.from([0x50, 0x4b, 0x03, 0x05]);
+  storage.put("tenant/import.xlsx", {
+    bytes: original,
+    mime: XLSX_MIME,
+    checksum: "a".repeat(64),
+  });
+  const inspected = await storage.inspect("tenant/import.xlsx");
+  assert.ok(inspected.versionId);
+  storage.put("tenant/import.xlsx", {
+    bytes: replacement,
+    mime: XLSX_MIME,
+    checksum: "b".repeat(64),
+  });
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of await storage.openPrivateRead("tenant/import.xlsx", inspected.versionId))
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+
+  assert.deepEqual(Buffer.concat(chunks), Buffer.from(original));
+});
+test("S3 inspection pins prefix and private reads to the provider version", async () => {
+  const bytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const client = {
+    async send(command: { constructor: { name: string }; input: Record<string, unknown> }) {
+      calls.push({ name: command.constructor.name, input: command.input });
+      if (command.constructor.name === "HeadObjectCommand") return {
+        ContentLength: bytes.byteLength,
+        ContentType: XLSX_MIME,
+        ChecksumSHA256: Buffer.from("a".repeat(64), "hex").toString("base64"),
+        VersionId: "version-1",
+        ETag: '"etag-1"',
+      };
+      if (command.constructor.name === "GetObjectCommand" && command.input.Range) return {
+        Body: { transformToByteArray: async () => bytes },
+      };
+      if (command.constructor.name === "GetObjectCommand") return { Body: Readable.from([bytes]) };
+      if (command.constructor.name === "GetBucketVersioningCommand") return { Status: "Enabled" };
+      throw new Error("Unexpected command");
+    },
+  };
+  const storage = new S3ObjectStorage(client as never, "private-imports");
+
+  const inspected = await storage.inspect("opaque-key");
+  assert.equal(inspected.versionId, "version-1");
+  assert.equal(calls[1]?.name, "GetObjectCommand");
+  assert.equal(calls[1]?.input.VersionId, "version-1");
+  await storage.openPrivateRead("opaque-key", inspected.versionId);
+  assert.equal(calls[2]?.input.VersionId, "version-1");
+  await storage.assertImmutableVersioning();
+  assert.equal(calls[3]?.name, "GetBucketVersioningCommand");
 });
 test("TASK 8E unconfigured malware scanning fails closed", async () => {
   await assert.rejects(

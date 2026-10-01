@@ -608,6 +608,8 @@ model NorthDatasetImportJob {
   declaredSize            BigInt
   declaredChecksum        String
   storageKey              String                       @unique
+  storageVersionId        String?
+  storageEtag             String?
   status                  NorthDatasetImportStatus     @default(AWAITING_UPLOAD)
   scanStatus              NorthDatasetImportScanStatus @default(PENDING)
   progress                Int                          @default(0)

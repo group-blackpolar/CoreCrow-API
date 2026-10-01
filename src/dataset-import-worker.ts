@@ -11,7 +11,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, stop);
 
 try {
   const configuration = datasetImportWorkerRuntimeConfiguration();
-  const worker = createDatasetImportWorkerRuntime(configuration);
+  const worker = await createDatasetImportWorkerRuntime(configuration);
   console.info("Dataset import worker started");
   await runDatasetImportWorkerLoop(worker, configuration, shutdown.signal, {
     onResult: (result) => {

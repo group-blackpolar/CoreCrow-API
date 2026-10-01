@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import {
   DeleteObjectCommand,
+  GetBucketVersioningCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -21,13 +22,16 @@ export type ObjectInspection = {
   mime?: string;
   checksum?: string;
   prefix: Uint8Array;
+  versionId?: string;
+  etag?: string;
 };
 
 export interface ObjectStorage {
   signedPut(input: { key: string; mime: string; size: number; checksum: string; ttlSeconds: number }): Promise<SignedObjectRequest>;
   signedGet(input: { key: string; filename: string; mime: string; ttlSeconds: number }): Promise<SignedObjectRequest>;
-  inspect(key: string): Promise<ObjectInspection>;
-  openPrivateRead(key: string): Promise<Readable>;
+  inspect(key: string, versionId?: string): Promise<ObjectInspection>;
+  openPrivateRead(key: string, versionId?: string): Promise<Readable>;
+  assertImmutableVersioning(): Promise<void>;
   delete(key: string): Promise<void>;
 }
 
@@ -82,26 +86,65 @@ export class S3ObjectStorage implements ObjectStorage {
     };
   }
 
-  async inspect(key: string): Promise<ObjectInspection> {
-    const [head, prefix] = await Promise.all([
-      this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: "ENABLED" })),
-      this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: "bytes=0-63" })),
-    ]);
-    if (head.ContentLength === undefined || !Number.isSafeInteger(head.ContentLength) || !prefix.Body)
+  async inspect(key: string, versionId?: string): Promise<ObjectInspection> {
+    try {
+      const head = await this.client.send(new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ChecksumMode: "ENABLED",
+        ...(versionId ? { VersionId: versionId } : {}),
+      }));
+      const pinnedVersionId = versionId ?? head.VersionId;
+      const prefix = await this.client.send(new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Range: "bytes=0-63",
+        ...(pinnedVersionId ? { VersionId: pinnedVersionId } : {}),
+      }));
+      if (head.ContentLength === undefined || !Number.isSafeInteger(head.ContentLength) || !prefix.Body)
+        throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object metadata could not be verified");
+      return {
+        size: head.ContentLength,
+        mime: head.ContentType,
+        checksum: head.ChecksumSHA256 ? base64ToHex(head.ChecksumSHA256) : undefined,
+        prefix: await prefix.Body.transformToByteArray(),
+        versionId: head.VersionId,
+        etag: head.ETag,
+      };
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
       throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object metadata could not be verified");
-    return {
-      size: head.ContentLength,
-      mime: head.ContentType,
-      checksum: head.ChecksumSHA256 ? base64ToHex(head.ChecksumSHA256) : undefined,
-      prefix: await prefix.Body.transformToByteArray(),
-    };
+    }
   }
 
-  async openPrivateRead(key: string) {
-    const object = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
-    if (!object.Body || !(object.Body instanceof Readable))
+  async openPrivateRead(key: string, versionId?: string) {
+    try {
+      const object = await this.client.send(new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ...(versionId ? { VersionId: versionId } : {}),
+      }));
+      if (!object.Body || !(object.Body instanceof Readable))
+        throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object stream is unavailable");
+      return object.Body;
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
       throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object stream is unavailable");
-    return object.Body;
+    }
+  }
+
+  async assertImmutableVersioning() {
+    try {
+      const versioning = await this.client.send(new GetBucketVersioningCommand({ Bucket: this.bucket }));
+      if (versioning.Status === "Enabled") return;
+    } catch {
+      // Normalize provider/authentication failures to the same fail-closed gate.
+    }
+    throw new DomainError(
+      503,
+      "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
+      "Dataset import storage must have object versioning enabled",
+    );
   }
 
   async delete(key: string) {
@@ -117,6 +160,7 @@ export class UnavailableObjectStorage implements ObjectStorage {
   signedGet(): Promise<SignedObjectRequest> { return Promise.reject(this.unavailable()); }
   inspect(): Promise<ObjectInspection> { return Promise.reject(this.unavailable()); }
   openPrivateRead(): Promise<Readable> { return Promise.reject(this.unavailable()); }
+  assertImmutableVersioning(): Promise<void> { return Promise.reject(this.unavailable()); }
   delete(): Promise<void> { return Promise.reject(this.unavailable()); }
 }
 
@@ -130,8 +174,17 @@ export function createS3ObjectStorage(configuration: S3ObjectStorageConfiguratio
 
 export class FakeObjectStorage implements ObjectStorage {
   readonly objects = new Map<string, { bytes: Uint8Array; mime: string; checksum: string }>();
+  private readonly versions = new Map<string, { bytes: Uint8Array; mime: string; checksum: string }>();
+  private nextVersion = 1;
   failDelete = false;
-  put(key: string, value: { bytes: Uint8Array; mime: string; checksum: string }) { this.objects.set(key, value); }
+  constructor(public versioningEnabled = true) {}
+  put(key: string, value: { bytes: Uint8Array; mime: string; checksum: string }) {
+    this.objects.set(key, value);
+    if (!this.versioningEnabled) return;
+    const versionId = `fake-version-${this.nextVersion++}`;
+    this.versions.set(`${key}\0${versionId}`, value);
+    return versionId;
+  }
   async signedPut(input: { key: string; mime: string; size: number; checksum: string; ttlSeconds: number }) {
     return { url: `https://storage.invalid/upload/${encodeURIComponent(input.key)}`, method: "PUT" as const, headers: { "content-type": input.mime, "content-length": String(input.size), "x-content-sha256": input.checksum }, expiresAt: expiresAt(input.ttlSeconds) };
   }
@@ -139,15 +192,33 @@ export class FakeObjectStorage implements ObjectStorage {
     if (!this.objects.has(input.key)) throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object is unavailable");
     return { url: `https://storage.invalid/read/${encodeURIComponent(input.key)}`, method: "GET" as const, headers: {}, expiresAt: expiresAt(input.ttlSeconds) };
   }
-  async inspect(key: string) {
-    const object = this.objects.get(key);
+  async inspect(key: string, versionId?: string) {
+    const object = versionId ? this.versions.get(`${key}\0${versionId}`) : this.objects.get(key);
     if (!object) throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object is unavailable");
-    return { size: object.bytes.byteLength, mime: object.mime, checksum: object.checksum, prefix: object.bytes.slice(0, 64) };
+    const latestVersionId = versionId ?? (this.versioningEnabled
+      ? [...this.versions.keys()].reverse().find((candidate) => candidate.startsWith(`${key}\0`))?.slice(key.length + 1)
+      : undefined);
+    return {
+      size: object.bytes.byteLength,
+      mime: object.mime,
+      checksum: object.checksum,
+      prefix: object.bytes.slice(0, 64),
+      versionId: latestVersionId,
+      etag: object.checksum,
+    };
   }
-  async openPrivateRead(key: string) {
-    const object = this.objects.get(key);
+  async openPrivateRead(key: string, versionId?: string) {
+    const object = versionId ? this.versions.get(`${key}\0${versionId}`) : this.objects.get(key);
     if (!object) throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Object is unavailable");
     return Readable.from([object.bytes]);
+  }
+  async assertImmutableVersioning() {
+    if (!this.versioningEnabled)
+      throw new DomainError(
+        503,
+        "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
+        "Dataset import storage must have object versioning enabled",
+      );
   }
   async delete(key: string) {
     if (this.failDelete) throw new DomainError(503, "OBJECT_DELETE_PENDING", "Object is inaccessible but physical deletion is pending");

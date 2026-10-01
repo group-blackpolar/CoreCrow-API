@@ -1106,6 +1106,26 @@ test(
         const unavailableConfirmation = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie);
         assert.equal(unavailableConfirmation.statusCode, 503);
         assert.equal(unavailableConfirmation.json().error.code, "OBJECT_STORAGE_UNAVAILABLE");
+
+        const unversionedPrepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-unversioned-import`,
+        }), 201);
+        const unversionedInternal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: unversionedPrepared.import.id } });
+        importStorage.versioningEnabled = false;
+        importStorage.put(unversionedInternal.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+        const unversionedConfirmation = await call(
+          "POST",
+          `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${unversionedPrepared.import.id}/confirm`,
+          owner.cookie,
+        );
+        importStorage.versioningEnabled = true;
+        assert.equal(unversionedConfirmation.statusCode, 503);
+        assert.equal(unversionedConfirmation.json().error.code, "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE");
+        assert.equal(
+          (await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: unversionedPrepared.import.id } })).status,
+          "AWAITING_UPLOAD",
+        );
+
         const internalImport = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } });
         importStorage.put(internalImport.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
         const confirmed = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie), 202);
@@ -1113,7 +1133,19 @@ test(
         assert.equal(confirmed.scanStatus, "PENDING");
         assert.equal(confirmed.progress, 10);
         assert.equal(confirmed.securityApprovedAt, null);
+        assert.equal("storageVersionId" in confirmed, false);
+        const pinnedImport = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } });
+        assert.ok(pinnedImport.storageVersionId);
+        importStorage.put(pinnedImport.storageKey, {
+          bytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x05]),
+          mime: importBody.mime,
+          checksum: workbookChecksum,
+        });
         assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie), 202).status, "SECURITY_PENDING");
+        assert.equal(
+          (await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } })).storageVersionId,
+          pinnedImport.storageVersionId,
+        );
         assert.equal((expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie), 200) as Array<{ id: string }>).some((item) => item.id === prepared.import.id), true);
         const cancelled = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, owner.cookie), 200);
         assert.equal(cancelled.status, "CANCELLED");
@@ -1286,12 +1318,12 @@ test(
           checksum: workbookChecksum,
         });
         const mismatchWorker = new NorthDatasetImportWorker("mismatch-worker", {
-          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+          storage: importStorage, scanner: approvedScanner, archiveValidator: approvedArchive, configuration: workerConfiguration,
         });
-        assert.equal(await mismatchWorker.runOnce(), "REJECTED");
-        const mismatchRejected = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: workerMismatchJob.id } });
-        assert.equal(mismatchRejected.status, "REJECTED");
-        assert.equal(mismatchRejected.lastErrorCode, "IMPORT_CHECKSUM_MISMATCH");
+        assert.equal(await mismatchWorker.runOnce(), "SECURITY_APPROVED");
+        const mismatchApproved = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: workerMismatchJob.id } });
+        assert.equal(mismatchApproved.status, "SECURITY_APPROVED");
+        assert.equal(mismatchApproved.lastErrorCode, null);
 
         const cooperativeJob = await prepareWorkerJob("worker-cooperative-cancel");
         let releaseCooperative!: () => void;

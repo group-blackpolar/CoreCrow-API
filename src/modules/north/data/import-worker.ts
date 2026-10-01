@@ -139,8 +139,15 @@ export class NorthDatasetImportWorker {
   }
 
   private async verifyPrivateObject(job: ClaimedJob, signal: AbortSignal) {
-    const metadata = await this.dependencies.storage.inspect(job.storageKey);
-    const stream = await this.dependencies.storage.openPrivateRead(job.storageKey);
+    const versionId = this.immutableVersionId(job);
+    const metadata = await this.dependencies.storage.inspect(job.storageKey, versionId);
+    if (metadata.versionId !== versionId)
+      throw new DomainError(
+        503,
+        "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
+        "Dataset import storage did not return the pinned object version",
+      );
+    const stream = await this.dependencies.storage.openPrivateRead(job.storageKey, versionId);
     const digest = createHash("sha256");
     const prefix: number[] = [];
     let size = 0;
@@ -163,6 +170,16 @@ export class NorthDatasetImportWorker {
       checksum: digest.digest("hex"),
       prefix: Uint8Array.from(prefix),
     });
+  }
+
+  private immutableVersionId(job: ClaimedJob) {
+    if (!job.storageVersionId || job.storageVersionId === "null")
+      throw new DomainError(
+        503,
+        "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
+        "Dataset import does not have a pinned immutable object version",
+      );
+    return job.storageVersionId;
   }
 
   private async progress(job: ClaimedJob, progress: number, scanStatus?: NorthDatasetImportScanStatus) {
@@ -282,7 +299,7 @@ export class NorthDatasetImportWorker {
         mime: job.declaredMime,
         size: Number(job.declaredSize),
         checksum: job.declaredChecksum,
-        openPrivateRead: () => this.dependencies.storage.openPrivateRead(job.storageKey),
+        openPrivateRead: () => this.dependencies.storage.openPrivateRead(job.storageKey, this.immutableVersionId(job)),
         signal,
       }));
       if (verdict !== "APPROVED") {
@@ -296,7 +313,7 @@ export class NorthDatasetImportWorker {
         filename: job.filename,
         size: Number(job.declaredSize),
         checksum: job.declaredChecksum,
-        openPrivateRead: () => this.dependencies.storage.openPrivateRead(job.storageKey),
+        openPrivateRead: () => this.dependencies.storage.openPrivateRead(job.storageKey, this.immutableVersionId(job)),
         signal,
       }));
       if (!(await this.approve(job))) throw new LeaseLostError();

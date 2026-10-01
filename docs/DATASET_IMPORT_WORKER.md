@@ -6,13 +6,12 @@ and applies the bounded ZIP/OOXML security gate. It stops at
 `SECURITY_APPROVED`; workbook parsing, mapping and activation are not part of
 this process yet.
 
-**Current release gate:** the executable is deliberately disabled and exits
-fail-fast before constructing the worker. Verification, malware scanning and
-archive validation currently reopen an object key, so a replaceable key could
-produce time-of-check/time-of-use differences between security stages. The
-worker must not be enabled in any environment until uploads are promoted to an
-immutable key or all stages pin and read one provider object version. There is
-no environment variable that bypasses this gate.
+**Storage release gate:** the executable verifies at startup that the import
+bucket has object versioning enabled. Upload confirmation captures an immutable
+provider version ID, and verification, malware scanning and archive validation
+all read that exact version. Confirmation and worker startup fail closed with
+`IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE` when this guarantee is absent. Object
+keys, version IDs and ETags remain internal and are never returned to NORTH.
 
 Run the compiled process with:
 
@@ -44,15 +43,19 @@ boolean `NORTH_DATA_IMPORT_S3_FORCE_PATH_STYLE`. Optional operational tuning:
   compressed OOXML security limit)
 
 Configuration is validated before the polling loop begins. Missing or invalid
-database, storage or scanner configuration terminates the process with a
-non-zero status. Even with complete configuration, the current immutable-object
-gate terminates with a non-zero status, so this revision cannot consume jobs.
+database, storage or scanner configuration, or a bucket whose versioning status
+is not `Enabled`, terminates the process with a non-zero status.
+
+The worker principal needs the provider equivalents of `s3:GetBucketVersioning`,
+`s3:HeadObject` and `s3:GetObjectVersion` for the private import bucket. An
+S3-compatible endpoint is supported only when it returns stable non-`null`
+version IDs and honors `VersionId` on HEAD and GET; silently treating a
+versioned read as a latest-object read is incompatible and must fail closed.
 
 ## Deployment and shutdown
 
-After the immutable-object gate is implemented and reviewed, deploy the API and
-worker from the same build artifact and schema version, but as separate
-services. The worker needs private network access to PostgreSQL,
+Deploy the API and worker from the same build artifact and schema version, but
+as separate services. The worker needs private network access to PostgreSQL,
 quarantine object storage and ClamAV. It does not expose an HTTP port. Scale by
 adding worker processes; database claim tokens and leases fence concurrent
 processing.

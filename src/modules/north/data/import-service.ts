@@ -181,8 +181,19 @@ export class NorthDatasetImportService {
       return importView(job);
     }
 
+    let storageVersionId: string;
+    let storageEtag: string | undefined;
     try {
-      validateUploadedDatasetImport(job, await this.dependencies.storage.inspect(job.storageKey));
+      const inspected = await this.dependencies.storage.inspect(job.storageKey);
+      if (!inspected.versionId || inspected.versionId === "null")
+        fail(
+          503,
+          "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
+          "Dataset import storage did not provide an immutable object version",
+        );
+      validateUploadedDatasetImport(job, inspected);
+      storageVersionId = inspected.versionId;
+      storageEtag = inspected.etag;
     } catch (error) {
       if (error instanceof DomainError && error.statusCode === 422) {
         await transaction(async (tx) => {
@@ -212,7 +223,15 @@ export class NorthDatasetImportService {
           fail(409, "IMPORT_CANCELLED", "Cancelled imports cannot be confirmed");
         return importView(current);
       }
-      const result = await repo.confirm(tx, organizationId, datasetId, importId, new Date());
+      const confirmedAt = new Date();
+      const result = await repo.confirm(tx, {
+        organizationId,
+        datasetId,
+        importId,
+        confirmedAt,
+        storageVersionId,
+        storageEtag,
+      });
       if (result.count !== 1) {
         const latest = await repo.find(tx, organizationId, datasetId, importId);
         if (!latest) fail(404, "NOT_FOUND", "Dataset import not found");

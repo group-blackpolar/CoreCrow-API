@@ -49,10 +49,29 @@ export const northDatasetImportRepository = {
   find(tx: Transaction, organizationId: string, datasetId: string, importId: string) {
     return tx.northDatasetImportJob.findFirst({ where: { id: importId, organizationId, datasetId } });
   },
-  confirm(tx: Transaction, organizationId: string, datasetId: string, importId: string, confirmedAt: Date) {
+  confirm(tx: Transaction, input: {
+    organizationId: string;
+    datasetId: string;
+    importId: string;
+    confirmedAt: Date;
+    storageVersionId: string;
+    storageEtag?: string;
+  }) {
     return tx.northDatasetImportJob.updateMany({
-      where: { id: importId, organizationId, datasetId, status: "AWAITING_UPLOAD" },
-      data: { status: "SECURITY_PENDING", progress: 10, confirmedAt, availableAt: confirmedAt },
+      where: {
+        id: input.importId,
+        organizationId: input.organizationId,
+        datasetId: input.datasetId,
+        status: "AWAITING_UPLOAD",
+      },
+      data: {
+        status: "SECURITY_PENDING",
+        progress: 10,
+        confirmedAt: input.confirmedAt,
+        availableAt: input.confirmedAt,
+        storageVersionId: input.storageVersionId,
+        storageEtag: input.storageEtag,
+      },
     });
   },
   reject(tx: Transaction, organizationId: string, datasetId: string, importId: string, errorCode: string, completedAt: Date) {

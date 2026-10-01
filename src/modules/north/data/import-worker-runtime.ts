@@ -3,6 +3,9 @@ import { NorthDatasetImportWorker, type DatasetImportWorkerConfiguration } from 
 import { SecureXlsxArchiveValidator } from "./import-archive-validator.js";
 import { datasetImportMalwareScannerFromEnvironment } from "./import-malware-scanner.js";
 import { datasetImportStorageFromEnvironment } from "./import-storage.js";
+import type { ObjectStorage } from "../../../infrastructure/object-storage.js";
+import type { DatasetImportMalwareScanner } from "./import-malware-scanner.js";
+import type { DatasetImportArchiveValidator } from "./import-archive-validator.js";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -19,6 +22,12 @@ export type DatasetImportWorkerRunner = {
 export type DatasetImportWorkerLoopHooks = {
   onResult?: (result: string) => void;
   onError?: () => void;
+};
+
+export type DatasetImportWorkerRuntimeDependencies = {
+  storage?: ObjectStorage;
+  scanner?: DatasetImportMalwareScanner;
+  archiveValidator?: DatasetImportArchiveValidator;
 };
 
 function configurationError(name: string, reason: string): never {
@@ -118,20 +127,19 @@ export function datasetImportWorkerRuntimeConfiguration(
   };
 }
 
-export function createDatasetImportWorkerRuntime(configuration: DatasetImportWorkerRuntimeConfiguration) {
-  assertImmutableImportObjectReads();
+export async function createDatasetImportWorkerRuntime(
+  configuration: DatasetImportWorkerRuntimeConfiguration,
+  dependencies: DatasetImportWorkerRuntimeDependencies = {},
+) {
+  const storage = dependencies.storage ?? datasetImportStorageFromEnvironment();
+  await storage.assertImmutableVersioning();
   return new NorthDatasetImportWorker(configuration.workerId, {
-    storage: datasetImportStorageFromEnvironment(),
-    scanner: datasetImportMalwareScannerFromEnvironment({ maximumBytes: configuration.worker.maximumBytes }),
-    archiveValidator: new SecureXlsxArchiveValidator(),
+    storage,
+    scanner: dependencies.scanner
+      ?? datasetImportMalwareScannerFromEnvironment({ maximumBytes: configuration.worker.maximumBytes }),
+    archiveValidator: dependencies.archiveValidator ?? new SecureXlsxArchiveValidator(),
     configuration: configuration.worker,
   });
-}
-
-function assertImmutableImportObjectReads(): never {
-  throw new Error(
-    "Dataset import worker is disabled until every security stage reads one pinned immutable object version",
-  );
 }
 
 function wait(milliseconds: number, signal: AbortSignal) {
