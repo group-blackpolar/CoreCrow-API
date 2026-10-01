@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer, type AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { ZipFile } from "yazl";
 import {
@@ -18,7 +19,10 @@ import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner
 import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
 import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
 import { XLSX_MIME } from "../src/modules/north/data/import-config.js";
-import { UnconfiguredDatasetImportMalwareScanner } from "../src/modules/north/data/import-malware-scanner.js";
+import {
+  ClamAvDatasetImportMalwareScanner,
+  UnconfiguredDatasetImportMalwareScanner,
+} from "../src/modules/north/data/import-malware-scanner.js";
 import {
   SecureXlsxArchiveValidator,
   UnconfiguredDatasetImportArchiveValidator,
@@ -70,6 +74,83 @@ test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigu
     new UnconfiguredDatasetImportArchiveValidator().validate({} as never),
     (error) => error instanceof DomainError && error.code === "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE",
   );
+});
+
+test("ClamAV INSTREAM scanner frames private bytes and maps clean and infected results", async (t) => {
+  const expected = Buffer.from("private workbook bytes");
+  let requests = 0;
+  const received: Buffer[] = [];
+  const server = createServer((socket) => {
+    let pending = Buffer.alloc(0);
+    let commandRead = false;
+    socket.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      if (!commandRead) {
+        const end = pending.indexOf(0);
+        if (end < 0) return;
+        assert.equal(pending.subarray(0, end).toString("utf8"), "zINSTREAM");
+        pending = pending.subarray(end + 1);
+        commandRead = true;
+      }
+      while (pending.byteLength >= 4) {
+        const length = pending.readUInt32BE(0);
+        if (length === 0) {
+          requests += 1;
+          if (requests === 5) return;
+          const replies = [
+            "stream: OK\0",
+            "stream: Eicar-Test-Signature FOUND\0",
+            "stream: OK",
+            "stream: NOT OK\0",
+          ];
+          socket.end(Buffer.from(replies[requests - 1]!));
+          pending = pending.subarray(4);
+          return;
+        }
+        if (pending.byteLength < 4 + length) return;
+        received.push(pending.subarray(4, 4 + length));
+        pending = pending.subarray(4 + length);
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const address = server.address() as AddressInfo;
+  const scanner = new ClamAvDatasetImportMalwareScanner({
+    endpoint: { host: "127.0.0.1", port: address.port },
+    timeoutMilliseconds: 2_000,
+    maximumBytes: 1_024,
+    chunkBytes: 5,
+  });
+  const scanInput = () => ({
+    filename: "Master House.xlsx",
+    mime: XLSX_MIME,
+    size: expected.byteLength,
+    checksum: "a".repeat(64),
+    openPrivateRead: async () => Readable.from([expected]),
+    signal: new AbortController().signal,
+  });
+  assert.equal(await scanner.scan(scanInput()), "APPROVED");
+  assert.equal(await scanner.scan(scanInput()), "QUARANTINED");
+  await assert.rejects(
+    scanner.scan(scanInput()),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  await assert.rejects(
+    scanner.scan(scanInput()),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  const timeoutScanner = new ClamAvDatasetImportMalwareScanner({
+    endpoint: { host: "127.0.0.1", port: address.port },
+    timeoutMilliseconds: 30,
+    maximumBytes: 1_024,
+    chunkBytes: 5,
+  });
+  await assert.rejects(
+    timeoutScanner.scan(scanInput()),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  assert.deepEqual(Buffer.concat(received), Buffer.concat([expected, expected, expected, expected, expected]));
 });
 
 test("secure XLSX validation accepts passive OOXML and rejects active or unsafe XML content", async () => {
