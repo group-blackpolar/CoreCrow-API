@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
+import { ZipFile } from "yazl";
 import {
   allows,
   canManageRole,
@@ -17,7 +19,27 @@ import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
 import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
 import { XLSX_MIME } from "../src/modules/north/data/import-config.js";
 import { UnconfiguredDatasetImportMalwareScanner } from "../src/modules/north/data/import-malware-scanner.js";
-import { UnconfiguredDatasetImportArchiveValidator } from "../src/modules/north/data/import-archive-validator.js";
+import {
+  SecureXlsxArchiveValidator,
+  UnconfiguredDatasetImportArchiveValidator,
+} from "../src/modules/north/data/import-archive-validator.js";
+
+async function xlsxArchive(extra: Record<string, string> = {}) {
+  const zip = new ZipFile();
+  const parts: Record<string, string> = {
+    "[Content_Types].xml": "<Types><Override ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/></Types>",
+    "_rels/.rels": "<Relationships><Relationship Type=\"officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>",
+    "xl/workbook.xml": "<workbook><sheets><sheet name=\"Data\"/></sheets></workbook>",
+    "xl/_rels/workbook.xml.rels": "<Relationships><Relationship Type=\"worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>",
+    "xl/worksheets/sheet1.xml": "<worksheet><sheetData/></worksheet>",
+    ...extra,
+  };
+  for (const [name, value] of Object.entries(parts)) zip.addBuffer(Buffer.from(value), name);
+  zip.end();
+  const chunks: Buffer[] = [];
+  for await (const chunk of zip.outputStream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
 
 test("XLSX declarations and uploaded bytes remain behind the security gate", () => {
   const checksum = "a".repeat(64);
@@ -48,6 +70,49 @@ test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigu
     new UnconfiguredDatasetImportArchiveValidator().validate({} as never),
     (error) => error instanceof DomainError && error.code === "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE",
   );
+});
+
+test("secure XLSX validation accepts passive OOXML and rejects active or unsafe XML content", async () => {
+  const validator = new SecureXlsxArchiveValidator();
+  const valid = await xlsxArchive();
+  const input = (bytes: Buffer) => ({
+    filename: "Master House.xlsx",
+    size: bytes.byteLength,
+    checksum: "a".repeat(64),
+    openPrivateRead: async () => Readable.from([bytes]),
+    signal: new AbortController().signal,
+  });
+  assert.equal(await validator.validate(input(valid)), "APPROVED");
+
+  const active = await xlsxArchive({ "xl/vbaProject.bin": "macro" });
+  await assert.rejects(
+    validator.validate(input(active)),
+    (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+  );
+
+  const entity = await xlsxArchive({
+    "xl/worksheets/sheet1.xml": "<!DOCTYPE worksheet [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><worksheet/>",
+  });
+  await assert.rejects(
+    validator.validate(input(entity)),
+    (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+  );
+
+  const externalRelationship = await xlsxArchive({
+    "xl/worksheets/_rels/sheet1.xml.rels": "<Relationships><Relationship TargetMode=\"External\" Target=\"https://example.invalid/data\"/></Relationships>",
+  });
+  await assert.rejects(
+    validator.validate(input(externalRelationship)),
+    (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+  );
+
+  for (const part of ["xl/activeX/activeX1.bin", "xl/connections.xml", "xl/queryTables/queryTable1.xml"]) {
+    const unsafe = await xlsxArchive({ [part]: "unsafe" });
+    await assert.rejects(
+      validator.validate(input(unsafe)),
+      (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+    );
+  }
 });
 
 test("dataset ACL is default-deny and any matching explicit deny wins", () => {
