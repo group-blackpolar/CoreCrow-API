@@ -50,12 +50,26 @@ test(
     const { FakeObjectStorage } = await import("../src/modules/north/object-storage.js");
     const { FakeMalwareScanner } = await import("../src/modules/north/malware-scanner.js");
     const { assetConfiguration } = await import("../src/modules/north/asset-config.js");
+    const { NorthDatasetImportService, configureNorthDatasetImportService } =
+      await import("../src/modules/north/data/import-service.js");
+    const { datasetImportConfiguration } = await import("../src/modules/north/data/import-config.js");
+    const { NorthDatasetImportWorker } = await import("../src/modules/north/data/import-worker.js");
+    const { NorthDatasetImportAnalysisWorker } = await import("../src/modules/north/data/import-analysis-worker.js");
+    const { NorthDatasetImportMaterializationWorker } = await import("../src/modules/north/data/import-materialization-worker.js");
+    const { UnconfiguredDatasetImportMalwareScanner } = await import("../src/modules/north/data/import-malware-scanner.js");
+    const { UnconfiguredDatasetImportArchiveValidator } = await import("../src/modules/north/data/import-archive-validator.js");
+    const { UnavailableObjectStorage } = await import("../src/infrastructure/object-storage.js");
     const assetStorage = new FakeObjectStorage();
+    const importStorage = new FakeObjectStorage();
     const assetScanner = new FakeMalwareScanner();
     configureNorthAssetService(new NorthAssetService({
       storage: assetStorage,
       scanner: assetScanner,
       config: assetConfiguration(),
+    }));
+    configureNorthDatasetImportService(new NorthDatasetImportService({
+      storage: importStorage,
+      configuration: datasetImportConfiguration(),
     }));
     const app = await buildApp({ logger: false });
     await app.ready();
@@ -1021,6 +1035,691 @@ test(
             },
           }),
         );
+      },
+    );
+    await t.test(
+      "NORTH tenant datasets keep schema snapshots immutable and ACLs tenant-scoped",
+      async () => {
+        const invitedMembership = await prisma.membership.findUniqueOrThrow({
+          where: { organizationId_userId: { organizationId, userId: invited.id } },
+        });
+        const foreignMembership = await prisma.membership.findUniqueOrThrow({
+          where: { organizationId_userId: { organizationId: secondOrg, userId: outsider.id } },
+        });
+
+        const dataset = expect(
+          await call("POST", `/v1/organizations/${organizationId}/datasets`, owner.cookie, {
+            name: { en: "Master House" },
+            description: { en: "Tenant import dataset" },
+            slug: "master-house",
+          }),
+          201,
+        );
+        assert.equal(dataset.organizationId, organizationId);
+        assert.equal(dataset.currentSchemaVersionId, null);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 403);
+
+        expect(await call("POST", `/v1/organizations/${organizationId}/north/permission-grants`, owner.cookie, {
+          subjectType: "MEMBERSHIP",
+          membershipId: invitedMembership.id,
+          capability: "north.data.read",
+          scope: "ORGANIZATION",
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "ALLOW",
+          principalType: "MEMBERSHIP",
+          membershipId: invitedMembership.id,
+        }), 201);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 200);
+
+        const workbook = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+        const workbookChecksum = createHash("sha256").update(workbook).digest("hex");
+        const importBody = {
+          filename: "master-house.xlsx",
+          mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          size: workbook.byteLength,
+          checksum: workbookChecksum,
+        };
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, invited.cookie, importBody, {
+          "idempotency-key": `${prefix}-readonly-import`,
+        }), 403);
+        const prepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-master-import`,
+        }), 201);
+        assert.equal(prepared.import.status, "AWAITING_UPLOAD");
+        assert.equal(prepared.import.scanStatus, "PENDING");
+        assert.equal(prepared.import.securityApprovedAt, null);
+        assert.equal("storageKey" in prepared.import, false);
+        assert.match(prepared.upload.url, /^https:\/\/storage\.invalid\/upload\//);
+        const replay = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-master-import`,
+        }), 201);
+        assert.equal(replay.import.id, prepared.import.id);
+        const conflict = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, {
+          ...importBody, filename: "different.xlsx",
+        }, { "idempotency-key": `${prefix}-master-import` });
+        assert.equal(conflict.statusCode, 409);
+        assert.equal(conflict.json().error.code, "IDEMPOTENCY_CONFLICT");
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}`, outsider.cookie), 404);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, outsider.cookie), 404);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}`, invited.cookie), 403);
+        const unavailableConfirmation = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie);
+        assert.equal(unavailableConfirmation.statusCode, 503);
+        assert.equal(unavailableConfirmation.json().error.code, "OBJECT_STORAGE_UNAVAILABLE");
+
+        const unversionedPrepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-unversioned-import`,
+        }), 201);
+        const unversionedInternal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: unversionedPrepared.import.id } });
+        importStorage.versioningEnabled = false;
+        importStorage.put(unversionedInternal.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+        const unversionedConfirmation = await call(
+          "POST",
+          `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${unversionedPrepared.import.id}/confirm`,
+          owner.cookie,
+        );
+        importStorage.versioningEnabled = true;
+        assert.equal(unversionedConfirmation.statusCode, 503);
+        assert.equal(unversionedConfirmation.json().error.code, "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE");
+        assert.equal(
+          (await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: unversionedPrepared.import.id } })).status,
+          "AWAITING_UPLOAD",
+        );
+
+        const internalImport = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } });
+        importStorage.put(internalImport.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+        const confirmed = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie), 202);
+        assert.equal(confirmed.status, "SECURITY_PENDING");
+        assert.equal(confirmed.scanStatus, "PENDING");
+        assert.equal(confirmed.progress, 10);
+        assert.equal(confirmed.securityApprovedAt, null);
+        assert.equal("storageVersionId" in confirmed, false);
+        const pinnedImport = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } });
+        assert.ok(pinnedImport.storageVersionId);
+        importStorage.put(pinnedImport.storageKey, {
+          bytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x05]),
+          mime: importBody.mime,
+          checksum: workbookChecksum,
+        });
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/confirm`, owner.cookie), 202).status, "SECURITY_PENDING");
+        assert.equal(
+          (await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: prepared.import.id } })).storageVersionId,
+          pinnedImport.storageVersionId,
+        );
+        assert.equal((expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie), 200) as Array<{ id: string }>).some((item) => item.id === prepared.import.id), true);
+        const cancelled = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, owner.cookie), 200);
+        assert.equal(cancelled.status, "CANCELLED");
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}/cancel`, owner.cookie), 200).status, "CANCELLED");
+
+        const leasedPrepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+          "idempotency-key": `${prefix}-leased-import`,
+        }), 201);
+        const leasedInternal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: leasedPrepared.import.id } });
+        importStorage.put(leasedInternal.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${leasedPrepared.import.id}/confirm`, owner.cookie), 202);
+        const claimedAt = new Date();
+        await prisma.northDatasetImportJob.update({
+          where: { id: leasedPrepared.import.id },
+          data: {
+            claimedAt,
+            claimExpiresAt: new Date(claimedAt.getTime() + 60_000),
+            claimedBy: "integration-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        const cancellationRequested = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${leasedPrepared.import.id}/cancel`, owner.cookie), 200);
+        assert.equal(cancellationRequested.status, "CANCEL_REQUESTED");
+        assert.equal(cancellationRequested.cancelledAt, null);
+
+        const invalidWorkbook = Uint8Array.from([0x4d, 0x5a, 0x00, 0x00]);
+        const invalidChecksum = createHash("sha256").update(invalidWorkbook).digest("hex");
+        const invalidPrepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, {
+          ...importBody, filename: "invalid.xlsx", checksum: invalidChecksum,
+        }, { "idempotency-key": `${prefix}-invalid-import` }), 201);
+        const invalidInternal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: invalidPrepared.import.id } });
+        importStorage.put(invalidInternal.storageKey, { bytes: invalidWorkbook, mime: importBody.mime, checksum: invalidChecksum });
+        const invalidConfirmation = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${invalidPrepared.import.id}/confirm`, owner.cookie);
+        assert.equal(invalidConfirmation.statusCode, 422);
+        assert.equal(invalidConfirmation.json().error.code, "IMPORT_MAGIC_INVALID");
+        const rejectedImport = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${invalidPrepared.import.id}`, owner.cookie), 200);
+        assert.equal(rejectedImport.status, "REJECTED");
+        assert.equal(rejectedImport.errorCode, "IMPORT_MAGIC_INVALID");
+
+        const workerConfiguration = {
+          leaseMilliseconds: 30_000,
+          heartbeatMilliseconds: 1_000,
+          retryDelayMilliseconds: 60_000,
+          maximumBytes: 1024,
+        };
+        const unavailableArchive = new UnconfiguredDatasetImportArchiveValidator();
+        const approvedScanner = {
+          async scan(input: { openPrivateRead: () => Promise<NodeJS.ReadableStream>; signal: AbortSignal }) {
+            const stream = await input.openPrivateRead();
+            for await (const _chunk of stream) {
+              if (input.signal.aborted) throw new Error("aborted");
+            }
+            return "APPROVED" as const;
+          },
+        };
+        const prepareWorkerJob = async (suffix: string) => {
+          const preparedJob = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
+            "idempotency-key": `${prefix}-${suffix}`,
+          }), 201);
+          const internal = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: preparedJob.import.id } });
+          assert.equal(internal.storageKey.includes(organizationId), false);
+          assert.equal(internal.storageKey.includes(dataset.id), false);
+          importStorage.put(internal.storageKey, { bytes: workbook, mime: importBody.mime, checksum: workbookChecksum });
+          expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${preparedJob.import.id}/confirm`, owner.cookie), 202);
+          return internal;
+        };
+
+        const expiredClaimedAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: leasedPrepared.import.id },
+          data: { claimedAt: expiredClaimedAt, claimExpiresAt: new Date(expiredClaimedAt.getTime() + 30_000) },
+        });
+        const recoveryWorker = new NorthDatasetImportWorker("recovery-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await recoveryWorker.runOnce(), "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: leasedPrepared.import.id } })).status, "CANCELLED");
+
+        const storageUnavailableJob = await prepareWorkerJob("worker-storage-unavailable");
+        const storageUnavailableWorker = new NorthDatasetImportWorker("storage-unavailable-worker", {
+          storage: new UnavailableObjectStorage(), scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await storageUnavailableWorker.runOnce(), "BLOCKED");
+        const storageBlocked = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: storageUnavailableJob.id } });
+        assert.equal(storageBlocked.status, "SECURITY_BLOCKED");
+        assert.equal(storageBlocked.lastErrorCode, "OBJECT_STORAGE_UNAVAILABLE");
+        assert.equal(storageBlocked.securityApprovedAt, null);
+
+        const scannerUnavailableJob = await prepareWorkerJob("worker-scanner-unavailable");
+        const scannerUnavailableWorker = new NorthDatasetImportWorker("scanner-unavailable-worker", {
+          storage: importStorage,
+          scanner: new UnconfiguredDatasetImportMalwareScanner(),
+          archiveValidator: unavailableArchive,
+          configuration: workerConfiguration,
+        });
+        assert.equal(await scannerUnavailableWorker.runOnce(), "BLOCKED");
+        const scannerBlocked = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: scannerUnavailableJob.id } });
+        assert.equal(scannerBlocked.status, "SECURITY_BLOCKED");
+        assert.equal(scannerBlocked.scanStatus, "UNAVAILABLE");
+        assert.equal(scannerBlocked.lastErrorCode, "IMPORT_MALWARE_SCANNER_UNAVAILABLE");
+
+        const archiveUnavailableJob = await prepareWorkerJob("worker-archive-unavailable");
+        const abandonedAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: archiveUnavailableJob.id },
+          data: {
+            claimedAt: abandonedAt,
+            claimExpiresAt: new Date(abandonedAt.getTime() + 30_000),
+            claimedBy: "expired-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        const archiveUnavailableWorker = new NorthDatasetImportWorker("archive-unavailable-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await archiveUnavailableWorker.runOnce(), "BLOCKED");
+        const archiveBlocked = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: archiveUnavailableJob.id } });
+        assert.equal(archiveBlocked.status, "SECURITY_BLOCKED");
+        assert.equal(archiveBlocked.scanStatus, "APPROVED");
+        assert.equal(archiveBlocked.lastErrorCode, "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE");
+        assert.equal(archiveBlocked.securityApprovedAt, null);
+
+        const approvedJob = await prepareWorkerJob("worker-security-approved");
+        const approvedArchive = {
+          async validate(input: { openPrivateRead: () => Promise<NodeJS.ReadableStream>; signal: AbortSignal }) {
+            const stream = await input.openPrivateRead();
+            for await (const _chunk of stream) {
+              if (input.signal.aborted) throw new Error("aborted");
+            }
+            return "APPROVED" as const;
+          },
+        };
+        const approvingWorker = new NorthDatasetImportWorker("approving-worker", {
+          storage: importStorage,
+          scanner: approvedScanner,
+          archiveValidator: approvedArchive,
+          configuration: workerConfiguration,
+        });
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        const approvedAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } });
+        assert.equal(approvedAfter.status, "SECURITY_APPROVED");
+        assert.equal(approvedAfter.scanStatus, "APPROVED");
+        assert.ok(approvedAfter.securityApprovedAt);
+        assert.equal(approvedAfter.claimToken, null);
+
+        const analysisWorker = new NorthDatasetImportAnalysisWorker("analysis-worker", {
+          async analyze() {
+            return {
+              parserVersion: "test-parser",
+              workbook: { sheets: [{
+                ordinal: 0, name: "Master House", rowCount: 3, columnCount: 2,
+                columns: [
+                  { ordinal: 0, header: "Duplicate", inferredType: "INTEGER", nonEmptyCount: 2, nullable: false },
+                  { ordinal: 1, header: "Duplicate", inferredType: "TEXT", nonEmptyCount: 1, nullable: true },
+                ],
+              }] },
+            };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 });
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const analysis = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/analysis`, owner.cookie), 200);
+        assert.equal(analysis.workbook.sheets[0].columns[0].header, "Duplicate");
+        assert.equal(analysis.workbook.sheets[0].columns[1].ordinal, 1);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/analysis`, outsider.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/analysis`, invited.cookie), 403);
+        const mappedField = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields`, owner.cookie, {
+          key: "revenue", displayName: { en: "Revenue" }, canonicalType: "DECIMAL",
+        }), 201);
+        const duplicateCreate = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "CREATE", key: "duplicate", displayName: { en: "Duplicate one" }, canonicalType: "INTEGER" },
+            { sourceOrdinal: 1, action: "CREATE", key: "duplicate", displayName: { en: "Duplicate two" }, canonicalType: "TEXT" },
+          ],
+        });
+        assert.equal(duplicateCreate.statusCode, 422);
+        assert.equal(duplicateCreate.json().error.code, "IMPORT_MAPPING_CREATE_KEY_DUPLICATE");
+        const conflictingCreate = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "CREATE", key: "revenue", displayName: { en: "Revenue duplicate" }, canonicalType: "DECIMAL" },
+            { sourceOrdinal: 1, action: "IGNORE" },
+          ],
+        });
+        assert.equal(conflictingCreate.statusCode, 422);
+        assert.equal(conflictingCreate.json().error.code, "IMPORT_MAPPING_CREATE_KEY_CONFLICT");
+        const mapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id },
+            { sourceOrdinal: 1, action: "IGNORE" },
+          ],
+        }), 201);
+        assert.equal(mapping.version, 1);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings/${mapping.id}`, outsider.cookie), 404);
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } })).status, "AWAITING_MAPPING");
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/activate`, outsider.cookie, { mappingId: mapping.id, mode: "REPLACE_DATASET" }), 404);
+        const activation = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/activate`, owner.cookie, { mappingId: mapping.id, mode: "REPLACE_DATASET" }), 202);
+        assert.equal(activation.status, "READY_TO_ACTIVATE");
+        const materializationWorker = new NorthDatasetImportMaterializationWorker("materialization-worker", {
+          async materialize(input: { columns: Array<{ fieldId: string }>; signal: AbortSignal }) {
+            assert.equal(input.signal.aborted, false);
+            const revenueId = input.columns[0]!.fieldId;
+            return { parserVersion: "test-parser", rows: [{ [revenueId]: "10.5" }, { [revenueId]: "20" }] };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 });
+        assert.equal(await materializationWorker.runOnce(), "SUCCEEDED");
+        const activatedDataset = await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } });
+        assert.ok(activatedDataset.activeRevisionId);
+        assert.ok(activatedDataset.currentSchemaVersionId);
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } })).status, "SUCCEEDED");
+        const rowsResult = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "ROWS", fields: [mappedField.id], limit: 10,
+        }), 200);
+        assert.deepEqual(rowsResult.columns, [{ key: mappedField.id, fieldId: mappedField.id, type: "DECIMAL" }]);
+        assert.deepEqual(rowsResult.rows.map((row: Record<string, string>) => row[mappedField.id]), ["10.5", "20"]);
+        const filteredRows = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "ROWS", fields: [mappedField.id], filters: [{ fieldId: mappedField.id, operator: "GTE", value: "15" }], limit: 10,
+        }), 200);
+        assert.deepEqual(filteredRows.rows.map((row: Record<string, string>) => row[mappedField.id]), ["20"]);
+        const aggregateResult = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "AGGREGATE", measures: [{ operation: "SUM", fieldId: mappedField.id, alias: "total_revenue" }],
+        }), 200);
+        assert.equal(aggregateResult.rows[0].total_revenue, "30.5");
+        const orderedAggregate = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "AGGREGATE", groupBy: [mappedField.id], measures: [{ operation: "COUNT", alias: "records" }],
+          orderBy: [{ key: mappedField.id, direction: "DESC" }], limit: 2,
+        }), 200);
+        assert.equal(orderedAggregate.rows[0][mappedField.id], "20");
+        expect(await call("POST", `/v1/organizations/${secondOrg}/datasets/${dataset.id}/query`, joiner.cookie, { mode: "ROWS", fields: [mappedField.id] }), 404);
+        const invalidQuery = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, { mode: "ROWS", fields: [randomUUID()] });
+        assert.equal(invalidQuery.statusCode, 422);
+        assert.equal(invalidQuery.json().error.code, "DATASET_QUERY_FIELD_INVALID");
+
+        const analyticsCategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories`, owner.cookie, { name: { en: "Analytics" }, slug: "analytics-demo" }), 201);
+        const analyticsSubcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${analyticsCategory.id}/subcategories`, owner.cookie, { name: { en: "Reports" }, slug: "analytics-reports" }), 201);
+        const analyticsPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Master House" }, slug: "master-house-demo" }), 201);
+        const otherPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Other" }, slug: "other-analytics" }), 201);
+        const analyticsBinding = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, owner.cookie, {
+          name: "Filtered record count", datasetId: dataset.id,
+          query: { mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "total_records" }] },
+          allowedFilters: [{ fieldId: mappedField.id, operators: ["GTE"] }],
+        }), 201);
+        expect(await call("GET", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, outsider.cookie), 404);
+        const analyticsDocument = {
+          schemaVersion: 1, defaultLocale: "en", fallbackLocales: [],
+          sections: [{ id: "main", order: 0, layout: { variant: "grid", gap: "md" }, components: [{
+            id: "table", type: "table", schemaVersion: 1,
+            props: { columns: [{ key: "total_records", label: { en: "Records" } }], rows: [] },
+            bindings: { rows: { sourceType: "dataset", sourceId: analyticsBinding.id, datasetId: dataset.id } },
+            layout: { desktop: { x: 0, y: 0, w: 12, h: 4 }, tablet: { x: 0, y: 0, w: 12, h: 4 }, mobile: { x: 0, y: 0, w: 12, h: 4 } }, order: 0,
+          }] }],
+        };
+        const crossPanelDraft = await call("PATCH", `/v1/organizations/${organizationId}/panels/${otherPanel.id}/draft`, owner.cookie, { document: analyticsDocument });
+        assert.equal(crossPanelDraft.statusCode, 422);
+        assert.equal(crossPanelDraft.json().error.code, "BINDING_NOT_ALLOWED");
+        const analyticsDraft = expect(await call("PATCH", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/draft`, owner.cookie, { document: analyticsDocument }), 200);
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/publish`, owner.cookie, undefined, { "if-match": analyticsDraft.etag }), 200);
+        const bindingResult = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, {
+          filters: [{ fieldId: mappedField.id, operator: "GTE", value: "15" }],
+        }), 200);
+        assert.equal(bindingResult.bindingId, analyticsBinding.id);
+        assert.equal(bindingResult.rows[0].total_records, "1");
+        assert.deepEqual(bindingResult.filterDefinitions, [{
+          fieldId: mappedField.id,
+          key: mappedField.key,
+          displayName: mappedField.displayName,
+          type: mappedField.canonicalType,
+          operators: ["GTE"],
+        }]);
+        const driftDataset = expect(await call("POST", `/v1/organizations/${organizationId}/datasets`, owner.cookie, {
+          name: { en: "Binding drift guard" }, slug: "binding-drift-guard",
+        }), 201);
+        await prisma.northAnalyticsBinding.update({ where: { id: analyticsBinding.id }, data: { datasetId: driftDataset.id } });
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, { filters: [] }), 404);
+        await prisma.northAnalyticsBinding.update({ where: { id: analyticsBinding.id }, data: { datasetId: dataset.id } });
+        const disallowedBindingFilter = await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, {
+          filters: [{ fieldId: mappedField.id, operator: "LTE", value: "15" }],
+        });
+        assert.equal(disallowedBindingFilter.statusCode, 422);
+        assert.equal(disallowedBindingFilter.json().error.code, "BINDING_FILTER_NOT_ALLOWED");
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, outsider.cookie, { filters: [] }), 404);
+        await prisma.northPanel.update({ where: { id: analyticsPanel.id }, data: { accessPolicyMode: "ACL_V1" } });
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, { filters: [] }), 403);
+        await prisma.northPanel.update({ where: { id: analyticsPanel.id }, data: { accessPolicyMode: "LEGACY_AUDIENCE" } });
+
+        const retryJob = await prepareWorkerJob("materialization-retry-atomic");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const retryMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${retryJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "CREATE", key: "retry_value", displayName: { en: "Retry value" }, canonicalType: "INTEGER", nullable: false },
+            { sourceOrdinal: 1, action: "IGNORE" },
+          ],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${retryJob.id}/activate`, owner.cookie, { mappingId: retryMapping.id, mode: "REPLACE_DATASET" }), 202);
+        let materializationCalls = 0;
+        const retryWorker = new NorthDatasetImportMaterializationWorker("retry-materialization-worker", {
+          async materialize(input: { columns: Array<{ fieldId: string }> }) {
+            materializationCalls += 1;
+            if (materializationCalls === 1) throw new Error("transient parser outage");
+            return { parserVersion: "test-parser", rows: [{ [input.columns[0]!.fieldId]: 7 }] };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 1 });
+        const activeBeforeRetry = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
+        assert.equal(await retryWorker.runOnce(), "READY_TO_ACTIVATE");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: retryJob.id } }), null);
+        assert.equal(await prisma.northDatasetField.findUnique({ where: { datasetId_key: { datasetId: dataset.id, key: "retry_value" } } }), null);
+        assert.equal((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeRetry);
+        await prisma.northDatasetImportJob.update({ where: { id: retryJob.id }, data: { availableAt: new Date(Date.now() - 1_000) } });
+        assert.equal(await retryWorker.runOnce(), "SUCCEEDED");
+        assert.notEqual((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeRetry);
+        const retryField = await prisma.northDatasetField.findUniqueOrThrow({ where: { datasetId_key: { datasetId: dataset.id, key: "retry_value" } } });
+
+        const missingRequiredJob = await prepareWorkerJob("materialization-missing-required");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const missingRequiredMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${missingRequiredJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "IGNORE" }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${missingRequiredJob.id}/activate`, owner.cookie, { mappingId: missingRequiredMapping.id, mode: "REPLACE_DATASET" }), 202);
+        const activeBeforeMissingRequired = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
+        assert.equal(await materializationWorker.runOnce(), "FAILED");
+        const missingRequiredAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: missingRequiredJob.id } });
+        assert.equal(missingRequiredAfter.lastErrorCode, "IMPORT_REQUIRED_FIELD_MISSING");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: missingRequiredJob.id } }), null);
+        assert.equal((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeMissingRequired);
+
+        const cancelReadyJob = await prepareWorkerJob("materialization-cancel-ready");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const cancelMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelReadyJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "MAP", fieldId: retryField.id }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelReadyJob.id}/activate`, owner.cookie, { mappingId: cancelMapping.id, mode: "REPLACE_DATASET" }), 202);
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelReadyJob.id}/cancel`, owner.cookie), 200).status, "CANCELLED");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: cancelReadyJob.id } }), null);
+
+        const crashedCancellationJob = await prepareWorkerJob("materialization-expired-cancel");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const crashedCancellationMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${crashedCancellationJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "IGNORE" }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${crashedCancellationJob.id}/activate`, owner.cookie, { mappingId: crashedCancellationMapping.id, mode: "REPLACE_DATASET" }), 202);
+        const expiredMaterializationLease = new Date(Date.now() - 60_000);
+        await prisma.northDatasetImportJob.update({ where: { id: crashedCancellationJob.id }, data: {
+          status: "CANCEL_REQUESTED", cancellationRequestedAt: new Date(Date.now() - 120_000), claimedAt: new Date(Date.now() - 120_000),
+          claimExpiresAt: expiredMaterializationLease, claimedBy: "crashed-materializer", claimToken: randomUUID(),
+        } });
+        assert.equal(await materializationWorker.runOnce(), "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: crashedCancellationJob.id } })).status, "CANCELLED");
+
+        const expiredPublishJob = await prepareWorkerJob("materialization-expired-publish-lease");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const expiredPublishMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${expiredPublishJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "MAP", fieldId: retryField.id }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${expiredPublishJob.id}/activate`, owner.cookie, { mappingId: expiredPublishMapping.id, mode: "REPLACE_DATASET" }), 202);
+        const activeBeforeExpiredPublish = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
+        const baseLeaseTime = Date.now();
+        let clockCalls = 0;
+        const expiringClock = () => new Date(baseLeaseTime + (++clockCalls >= 4 ? 31_000 : 0));
+        const expiringWorker = new NorthDatasetImportMaterializationWorker("expiring-materialization-worker", {
+          async materialize() { return { parserVersion: "test-parser", rows: [{ [mappedField.id]: "99", [retryField.id]: 1 }] }; },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 }, expiringClock);
+        assert.equal(await expiringWorker.runOnce(), "LEASE_LOST");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: expiredPublishJob.id } }), null);
+        assert.equal((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeExpiredPublish);
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetImportAnalysis"'));
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetImportMappingVersion"'));
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetRow"'));
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetRevision"'));
+        assert.ok(await prisma.northDatasetImportAnalysis.findUnique({ where: { importId: approvedJob.id } }));
+        assert.ok(await prisma.northDatasetImportMappingVersion.findUnique({ where: { id: mapping.id } }));
+
+        const expiredAnalysisJob = await prepareWorkerJob("analysis-expired-lease");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        const expiredAnalysisAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: expiredAnalysisJob.id },
+          data: {
+            status: "ANALYZING",
+            attempts: 2,
+            claimedAt: expiredAnalysisAt,
+            claimExpiresAt: new Date(expiredAnalysisAt.getTime() + 30_000),
+            claimedBy: "crashed-analysis-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const expiredAnalysisAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: expiredAnalysisJob.id } });
+        assert.equal(expiredAnalysisAfter.status, "AWAITING_MAPPING");
+        assert.equal(expiredAnalysisAfter.attempts, 3);
+        assert.equal(expiredAnalysisAfter.claimToken, null);
+
+        const exhaustedAnalysisJob = await prepareWorkerJob("analysis-retry-exhausted");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        await prisma.northDatasetImportJob.update({
+          where: { id: exhaustedAnalysisJob.id },
+          data: { status: "ANALYSIS_BLOCKED", attempts: 3, availableAt: new Date(Date.now() - 1_000) },
+        });
+        assert.equal(await analysisWorker.runOnce(), "FAILED");
+        const exhaustedAnalysisAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: exhaustedAnalysisJob.id } });
+        assert.equal(exhaustedAnalysisAfter.status, "FAILED");
+        assert.equal(exhaustedAnalysisAfter.lastErrorCode, "IMPORT_RETRY_EXHAUSTED");
+
+        const cancelledAnalysisJob = await prepareWorkerJob("analysis-cooperative-cancel");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        let releaseAnalysis!: () => void;
+        let enteredAnalysis!: () => void;
+        const analysisEntered = new Promise<void>((resolve) => { enteredAnalysis = resolve; });
+        const cancellableAnalysisWorker = new NorthDatasetImportAnalysisWorker("cancellable-analysis-worker", {
+          async analyze() {
+            enteredAnalysis();
+            await new Promise<void>((resolve) => { releaseAnalysis = resolve; });
+            return { parserVersion: "test-parser", workbook: { sheets: [{ ordinal: 0, name: "Sheet", rowCount: 1, columnCount: 0, columns: [] }] } };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 1_000, retryDelayMilliseconds: 60_000 });
+        const cancellableAnalysisRun = cancellableAnalysisWorker.runOnce();
+        await analysisEntered;
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelledAnalysisJob.id}/cancel`, owner.cookie), 200).status, "CANCEL_REQUESTED");
+        releaseAnalysis();
+        assert.equal(await cancellableAnalysisRun, "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: cancelledAnalysisJob.id } })).status, "CANCELLED");
+
+        const exhaustedJob = await prepareWorkerJob("worker-retry-exhausted");
+        const exhaustedAt = new Date(Date.now() - 120_000);
+        await prisma.northDatasetImportJob.update({
+          where: { id: exhaustedJob.id },
+          data: {
+            attempts: 3,
+            claimedAt: exhaustedAt,
+            claimExpiresAt: new Date(exhaustedAt.getTime() + 30_000),
+            claimedBy: "crashed-worker",
+            claimToken: randomUUID(),
+          },
+        });
+        const exhaustedRecoveryWorker = new NorthDatasetImportWorker("exhausted-recovery-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await exhaustedRecoveryWorker.runOnce(), "FAILED");
+        const exhaustedAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: exhaustedJob.id } });
+        assert.equal(exhaustedAfter.status, "FAILED");
+        assert.equal(exhaustedAfter.lastErrorCode, "IMPORT_RETRY_EXHAUSTED");
+
+        const workerMismatchJob = await prepareWorkerJob("worker-stream-mismatch");
+        importStorage.put(workerMismatchJob.storageKey, {
+          bytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x05]),
+          mime: importBody.mime,
+          checksum: workbookChecksum,
+        });
+        const mismatchWorker = new NorthDatasetImportWorker("mismatch-worker", {
+          storage: importStorage, scanner: approvedScanner, archiveValidator: approvedArchive, configuration: workerConfiguration,
+        });
+        assert.equal(await mismatchWorker.runOnce(), "SECURITY_APPROVED");
+        const mismatchApproved = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: workerMismatchJob.id } });
+        assert.equal(mismatchApproved.status, "SECURITY_APPROVED");
+        assert.equal(mismatchApproved.lastErrorCode, null);
+
+        const cooperativeJob = await prepareWorkerJob("worker-cooperative-cancel");
+        let releaseCooperative!: () => void;
+        let enteredCooperative!: () => void;
+        const cooperativeEntered = new Promise<void>((resolve) => { enteredCooperative = resolve; });
+        const cooperativeScanner = {
+          scan: async () => {
+            enteredCooperative();
+            await new Promise<void>((resolve) => { releaseCooperative = resolve; });
+            return "APPROVED" as const;
+          },
+        };
+        const cooperativeWorker = new NorthDatasetImportWorker("cooperative-worker", {
+          storage: importStorage, scanner: cooperativeScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        const cooperativeRun = cooperativeWorker.runOnce();
+        await cooperativeEntered;
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cooperativeJob.id}/cancel`, owner.cookie), 200).status, "CANCEL_REQUESTED");
+        releaseCooperative();
+        assert.equal(await cooperativeRun, "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: cooperativeJob.id } })).status, "CANCELLED");
+
+        const fencedJob = await prepareWorkerJob("worker-fenced-write");
+        let releaseFenced!: () => void;
+        let enteredFenced!: () => void;
+        const fencedEntered = new Promise<void>((resolve) => { enteredFenced = resolve; });
+        const fencedScanner = {
+          scan: async () => {
+            enteredFenced();
+            await new Promise<void>((resolve) => { releaseFenced = resolve; });
+            return "APPROVED" as const;
+          },
+        };
+        const fencedWorker = new NorthDatasetImportWorker("fenced-worker", {
+          storage: importStorage, scanner: fencedScanner, archiveValidator: unavailableArchive, configuration: workerConfiguration,
+        });
+        const fencedRun = fencedWorker.runOnce();
+        await fencedEntered;
+        const stolenToken = randomUUID();
+        await prisma.northDatasetImportJob.update({ where: { id: fencedJob.id }, data: { claimToken: stolenToken } });
+        releaseFenced();
+        assert.equal(await fencedRun, "LEASE_LOST");
+        const fencedAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: fencedJob.id } });
+        assert.equal(fencedAfter.claimToken, stolenToken);
+        assert.equal(fencedAfter.status, "SECURITY_PENDING");
+        assert.equal(fencedAfter.securityApprovedAt, null);
+
+        const foreignPrincipal = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "ALLOW",
+          principalType: "MEMBERSHIP",
+          membershipId: foreignMembership.id,
+        });
+        assert.equal(foreignPrincipal.statusCode, 422);
+        assert.equal(foreignPrincipal.json().error.code, "ACL_PRINCIPAL_INVALID");
+
+        const invitedDeny = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "DENY",
+          principalType: "MEMBERSHIP",
+          membershipId: invitedMembership.id,
+        }), 201);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 403);
+
+        const lockout = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl`, owner.cookie, {
+          effect: "DENY",
+          principalType: "ROLE",
+          role: "OWNER",
+        });
+        assert.equal(lockout.statusCode, 409);
+        assert.equal(lockout.json().error.code, "ACL_LOCKOUT_PREVENTED");
+        expect(await call("DELETE", `/v1/organizations/${organizationId}/datasets/${dataset.id}/acl/${invitedDeny.id}`, owner.cookie), 200);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 200);
+        expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, owner.cookie, { status: "ARCHIVED" }), 200);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, invited.cookie), 404);
+        expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, owner.cookie), 200);
+        expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}`, owner.cookie, { status: "ACTIVE" }), 200);
+
+        const arrival = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields`, owner.cookie, {
+          key: "arrival_date",
+          displayName: { en: "Arrival date" },
+          canonicalType: "DATE",
+          nullable: false,
+        }), 201);
+        const containers = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields`, owner.cookie, {
+          key: "containers",
+          displayName: { en: "Containers" },
+          canonicalType: "INTEGER",
+          nullable: true,
+        }), 201);
+        const schema = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/schema-versions`, owner.cookie, {
+          fields: [
+            { fieldId: arrival.id, ordinal: 0 },
+            { fieldId: containers.id, ordinal: 1 },
+          ],
+        }), 201);
+        assert.equal(schema.version, 3);
+        assert.deepEqual(schema.fields.map((field: { datasetFieldId: string }) => field.datasetFieldId), [arrival.id, containers.id]);
+
+        expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields/${containers.id}`, owner.cookie, {
+          nullable: false,
+          displayName: { en: "Container count" },
+        }), 200);
+        const snapshot = expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/schema-versions/${schema.id}`, owner.cookie), 200);
+        assert.equal(snapshot.fields.find((field: { datasetFieldId: string }) => field.datasetFieldId === containers.id)?.nullable, true);
+        await assert.rejects(prisma.northDatasetSchemaVersion.update({
+          where: { id: schema.id },
+          data: { version: 2 },
+        }));
       },
     );
     await t.test(

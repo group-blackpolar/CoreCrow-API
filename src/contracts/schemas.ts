@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { datasetQuerySchema } from "../modules/north/data/query-contract.js";
 export const id = z.string().min(1).max(128);
 export const date = z.string().datetime();
 export const name = z.string().trim().min(2).max(100);
@@ -85,6 +86,7 @@ export const northCategoryClass = z.enum(["SYSTEM", "TEMPLATE", "CUSTOM"]);
 export const northResourceStatus = z.enum(["ACTIVE", "ARCHIVED"]);
 export const northPanelStatus = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 export const northAudienceType = z.enum(["ALL_MEMBERS", "ROLES", "GROUPS", "PERMISSIONS", "SPECIFIC_USERS"]);
+export const northPanelAccessPolicyMode = z.enum(["LEGACY_AUDIENCE", "ACL_V1"]);
 export const northPermissionScope = z.enum(["PLATFORM", "ORGANIZATION", "CATEGORY", "SUBCATEGORY", "PANEL"]);
 export const northMetadataInput = z.object({
   name: localizedText,
@@ -108,7 +110,190 @@ export const northCategory = northMetadata.extend({
 export const northSubcategory = northMetadata.extend({ categoryId: id, status: northResourceStatus });
 export const northPanel = northMetadata.extend({
   subcategoryId: id, status: northPanelStatus, audienceType: northAudienceType,
+  accessPolicyMode: northPanelAccessPolicyMode,
   publishedRevisionId: id.nullable(), draftRevisionId: id.nullable(),
+});
+export const northDatasetStatus = z.enum(["ACTIVE", "ARCHIVED"]);
+export const northDatasetFieldType = z.enum(["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "TIME"]);
+export const northDatasetFieldStatus = z.enum(["ACTIVE", "DEPRECATED"]);
+export const northDatasetAclEffect = z.enum(["ALLOW", "DENY"]);
+export const northDatasetAclPrincipalType = z.enum(["ALL_MEMBERS", "MEMBERSHIP", "GROUP", "ROLE", "CAPABILITY"]);
+export const northDataset = z.object({
+  id,
+  organizationId: id,
+  name: localizedText,
+  description: localizedText.nullable(),
+  slug: z.string(),
+  status: northDatasetStatus,
+  currentSchemaVersionId: id.nullable(),
+  createdBy: id,
+  createdAt: date,
+  updatedAt: date,
+});
+export const northDatasetField = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  key: z.string(),
+  displayName: localizedText,
+  description: localizedText.nullable(),
+  canonicalType: northDatasetFieldType,
+  semanticType: z.string().nullable(),
+  nullable: z.boolean(),
+  status: northDatasetFieldStatus,
+  createdAt: date,
+  updatedAt: date,
+});
+export const northDatasetSchemaVersionField = z.object({
+  organizationId: id,
+  datasetId: id,
+  schemaVersionId: id,
+  datasetFieldId: id,
+  canonicalType: northDatasetFieldType,
+  semanticType: z.string().nullable(),
+  nullable: z.boolean(),
+  status: northDatasetFieldStatus,
+  ordinal: z.number().int().nonnegative(),
+});
+export const northDatasetSchemaVersion = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  version: z.number().int().min(1),
+  createdBy: id,
+  createdAt: date,
+  fields: z.array(northDatasetSchemaVersionField),
+});
+export const northDatasetAcl = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  effect: northDatasetAclEffect,
+  principalType: northDatasetAclPrincipalType,
+  membershipId: id.nullable(),
+  groupId: id.nullable(),
+  role: role.nullable(),
+  capability: z.string().nullable(),
+  createdBy: id,
+  createdAt: date,
+});
+export const northDatasetImportStatus = z.enum([
+  "AWAITING_UPLOAD",
+  "SECURITY_PENDING",
+  "SECURITY_BLOCKED",
+  "SECURITY_APPROVED",
+  "ANALYZING",
+  "ANALYSIS_BLOCKED",
+  "AWAITING_MAPPING",
+  "READY_TO_ACTIVATE",
+  "ACTIVATING",
+  "SUCCEEDED",
+  "CANCEL_REQUESTED",
+  "CANCELLED",
+  "REJECTED",
+  "FAILED",
+]);
+export const northDatasetImportScanStatus = z.enum([
+  "PENDING", "SCANNING", "APPROVED", "REJECTED", "QUARANTINED", "UNAVAILABLE",
+]);
+export const northDatasetImport = z.object({
+  id,
+  organizationId: id,
+  datasetId: id,
+  requestedBy: id,
+  filename: z.string().min(1).max(255),
+  mime: z.string(),
+  size: z.number().int().min(1),
+  checksum: z.string().regex(/^[0-9a-f]{64}$/),
+  status: northDatasetImportStatus,
+  scanStatus: northDatasetImportScanStatus,
+  progress: z.number().int().min(0).max(100),
+  attempts: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().min(1),
+  confirmedAt: date.nullable(),
+  securityApprovedAt: date.nullable(),
+  cancellationRequestedAt: date.nullable(),
+  cancelledAt: date.nullable(),
+  completedAt: date.nullable(),
+  errorCode: z.string().nullable(),
+  createdAt: date,
+  updatedAt: date,
+});
+export const northDatasetImportColumnAnalysis = z.object({
+  ordinal: z.number().int().nonnegative(),
+  header: z.string().max(255).nullable(),
+  inferredType: z.enum(["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "TIME", "EMPTY", "MIXED"]),
+  nonEmptyCount: z.number().int().nonnegative(),
+  nullable: z.boolean(),
+});
+export const northDatasetImportAnalysis = z.object({
+  id,
+  importId: id,
+  parserVersion: z.string().min(1).max(128),
+  workbook: z.object({
+    sheets: z.array(z.object({
+      ordinal: z.number().int().nonnegative(), name: z.string().max(255), rowCount: z.number().int().nonnegative(),
+      columnCount: z.number().int().nonnegative(), columns: z.array(northDatasetImportColumnAnalysis).max(150),
+    })).max(32),
+  }),
+  createdAt: date,
+});
+export const northDatasetImportMappingColumn = z.discriminatedUnion("action", [
+  z.object({ sourceOrdinal: z.number().int().nonnegative().max(149), action: z.literal("MAP"), fieldId: id }).strict(),
+  z.object({ sourceOrdinal: z.number().int().nonnegative().max(149), action: z.literal("CREATE"), key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), displayName: localizedText, canonicalType: northDatasetFieldType, nullable: z.boolean().optional() }).strict(),
+  z.object({ sourceOrdinal: z.number().int().nonnegative().max(149), action: z.literal("IGNORE") }).strict(),
+]);
+export const northDatasetImportMapping = z.object({
+  id,
+  importId: id,
+  version: z.number().int().min(1),
+  sheetOrdinal: z.number().int().nonnegative(),
+  headerRow: z.number().int().min(1),
+  definition: z.object({ columns: z.array(northDatasetImportMappingColumn).max(150) }),
+  createdBy: id,
+  createdAt: date,
+});
+export const northDatasetQueryScalar = z.union([z.string().nullable(), z.number(), z.boolean()]);
+export const northDatasetQueryColumn = z.object({
+  key: z.string().min(1).max(128),
+  fieldId: id.optional(),
+  type: z.enum(["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "TIME"]),
+});
+export const northDatasetQueryResult = z.object({
+  mode: z.enum(["ROWS", "AGGREGATE"]),
+  datasetId: id,
+  activeRevisionId: id,
+  schemaVersionId: id,
+  columns: z.array(northDatasetQueryColumn).max(20),
+  rows: z.array(z.record(northDatasetQueryScalar)).max(200),
+  rowCount: z.number().int().nonnegative().max(200),
+  executedAt: date,
+});
+export const northAnalyticsBinding = z.object({
+  id,
+  organizationId: id,
+  panelId: id,
+  datasetId: id,
+  name: z.string().min(1).max(100),
+  query: datasetQuerySchema,
+  allowedFilters: z.array(z.object({
+    fieldId: id,
+    operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+  }).strict()).max(10),
+  createdBy: id,
+  createdAt: date,
+  updatedAt: date,
+});
+export const northAnalyticsBindingFilterDefinition = z.object({
+  fieldId: id,
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+  displayName: localizedText,
+  type: northDatasetFieldType,
+  operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+}).strict();
+export const northAnalyticsBindingResult = northDatasetQueryResult.extend({
+  bindingId: id,
+  filterDefinitions: z.array(northAnalyticsBindingFilterDefinition).max(10),
 });
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({

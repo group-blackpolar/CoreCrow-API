@@ -33,6 +33,7 @@ import { desktopAuthRoutes } from "./routes/desktop-auth.js";
 import { issueEmailVerificationCode } from "./modules/identity/email-verification-service.js";
 import { configureNorthContentReferenceResolvers } from "./modules/north/content-service.js";
 import { northAssets } from "./modules/north/asset-service.js";
+import { northAnalyticsBindings } from "./modules/north/data/binding-service.js";
 
 export async function buildApp(
   options: {
@@ -44,6 +45,8 @@ export async function buildApp(
   configureNorthContentReferenceResolvers({
     validateAssetReference: (organizationId, assetId, actorId, tx) =>
       northAssets.validateReference(actorId, organizationId, assetId, tx),
+    validateBindingReference: (organizationId, binding, actorId, tx, panelId) =>
+      northAnalyticsBindings.validateReference(organizationId, binding, actorId, tx, panelId),
   });
   const app = Fastify({
     logger:

@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer, type AddressInfo } from "node:net";
+import { Readable } from "node:stream";
+import { ZipFile } from "yazl";
+import * as XLSX from "xlsx";
 import {
   allows,
   canManageRole,
@@ -8,11 +12,330 @@ import {
 import { healthService } from "../src/modules/health/service.js";
 import { healthPage } from "../src/modules/health/page.js";
 import { RequestTelemetry } from "../src/modules/telemetry/service.js";
-import { validateNorthPanelDocument } from "../src/modules/north/content-schema.js";
+import { northComponentRegistry, validateNorthPanelDocument } from "../src/modules/north/content-schema.js";
 import { DomainError } from "../src/shared/errors.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "../src/modules/north/asset-policy.js";
-import { FakeObjectStorage } from "../src/modules/north/object-storage.js";
+import { FakeObjectStorage, S3ObjectStorage } from "../src/modules/north/object-storage.js";
 import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner.js";
+import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
+import { allowedBindingFilterSchema, datasetQuerySchema } from "../src/modules/north/data/query-contract.js";
+import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
+import { XLSX_MIME } from "../src/modules/north/data/import-config.js";
+import {
+  ClamAvDatasetImportMalwareScanner,
+  UnconfiguredDatasetImportMalwareScanner,
+} from "../src/modules/north/data/import-malware-scanner.js";
+import {
+  SecureXlsxArchiveValidator,
+  UnconfiguredDatasetImportArchiveValidator,
+} from "../src/modules/north/data/import-archive-validator.js";
+import {
+  createDatasetImportWorkerRuntime,
+  datasetImportWorkerRuntimeConfiguration,
+  runDatasetImportWorkerLoop,
+} from "../src/modules/north/data/import-worker-runtime.js";
+import { SheetJsDatasetImportAnalyzer } from "../src/modules/north/data/import-analysis-parser.js";
+import { SheetJsDatasetImportMaterializer } from "../src/modules/north/data/import-materialization-parser.js";
+
+async function xlsxArchive(extra: Record<string, string> = {}) {
+  const zip = new ZipFile();
+  const parts: Record<string, string> = {
+    "[Content_Types].xml": "<Types><Override ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/></Types>",
+    "_rels/.rels": "<Relationships><Relationship Type=\"officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>",
+    "xl/workbook.xml": "<workbook><sheets><sheet name=\"Data\"/></sheets></workbook>",
+    "xl/_rels/workbook.xml.rels": "<Relationships><Relationship Type=\"worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>",
+    "xl/worksheets/sheet1.xml": "<worksheet><sheetData/></worksheet>",
+    ...extra,
+  };
+  for (const [name, value] of Object.entries(parts)) zip.addBuffer(Buffer.from(value), name);
+  zip.end();
+  const chunks: Buffer[] = [];
+  for await (const chunk of zip.outputStream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+test("XLSX declarations and uploaded bytes remain behind the security gate", () => {
+  const checksum = "a".repeat(64);
+  const declared = validateDatasetImportDeclaration({
+    filename: " Master House.XLSX ", mime: XLSX_MIME, size: 4, checksum: checksum.toUpperCase(),
+  }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 });
+  assert.equal(declared.filename, "Master House.XLSX");
+  assert.equal(declared.checksum, checksum);
+  assert.doesNotThrow(() => validateUploadedDatasetImport({
+    declaredMime: XLSX_MIME, declaredSize: 4n, declaredChecksum: checksum,
+  }, { size: 4, mime: XLSX_MIME, checksum, prefix: Uint8Array.from([0x50, 0x4b, 0x03, 0x04]) }));
+  assert.throws(() => validateUploadedDatasetImport({
+    declaredMime: XLSX_MIME, declaredSize: 4n, declaredChecksum: checksum,
+  }, { size: 4, mime: XLSX_MIME, checksum, prefix: Uint8Array.from([0x4d, 0x5a, 0, 0]) }),
+  (error) => error instanceof DomainError && error.code === "IMPORT_MAGIC_INVALID");
+  assert.throws(() => validateDatasetImportDeclaration({
+    filename: "unsafe.xlsm", mime: XLSX_MIME, size: 4, checksum,
+  }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 }),
+  (error) => error instanceof DomainError && error.code === "IMPORT_FILE_TYPE_UNSUPPORTED");
+});
+
+test("isolated XLSX analysis exposes only bounded metadata and rejects formulas", async () => {
+  const bytesFor = (formula: boolean) => {
+    const book = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([["Duplicate", "Duplicate"], [1, "a"], [2, "b"]]);
+    if (formula) sheet.B3 = { t: "n", f: "A2*2", v: 2 };
+    XLSX.utils.book_append_sheet(book, sheet, "Input");
+    return XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  };
+  const storage = (bytes: Buffer) => ({
+    async openPrivateRead() { return Readable.from(bytes); },
+  });
+  const analyzer = new SheetJsDatasetImportAnalyzer(storage(bytesFor(false)) as never, 10_000, 128);
+  const result = await analyzer.analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal });
+  assert.equal(result.parserVersion, "sheetjs-ce-0.20.3");
+  assert.deepEqual(result.workbook.sheets[0]?.columns.map((column) => [column.ordinal, column.header]), [[0, "Duplicate"], [1, "Duplicate"]]);
+  await assert.rejects(
+    new SheetJsDatasetImportAnalyzer(storage(bytesFor(true)) as never, 10_000, 128).analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal }),
+    (error) => error instanceof DomainError && error.code === "IMPORT_SOURCE_FORMULA_REJECTED",
+  );
+});
+
+test("isolated XLSX materialization emits stable field IDs with strict coercion", async () => {
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([["Revenue", "Region"], [10.5, "North"], [20, "South"], ["12345678901234567890.123", "West"]]), "June");
+  const bytes = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  const materializer = new SheetJsDatasetImportMaterializer({ async openPrivateRead() { return Readable.from(bytes); } } as never, 10_000, 128);
+  const result = await materializer.materialize({
+    storageKey: "opaque", storageVersionId: "immutable", sheetOrdinal: 0, headerRow: 1,
+    columns: [
+      { sourceOrdinal: 0, action: "CREATE", fieldId: "field-revenue", canonicalType: "DECIMAL", nullable: false },
+      { sourceOrdinal: 1, action: "CREATE", fieldId: "field-region", canonicalType: "TEXT", nullable: false },
+    ],
+    signal: new AbortController().signal,
+  });
+  assert.deepEqual(result.rows, [
+    { "field-revenue": "10.5", "field-region": "North" },
+    { "field-revenue": "20", "field-region": "South" },
+    { "field-revenue": "12345678901234567890.123", "field-region": "West" },
+  ]);
+});
+
+test("dataset import scanner and ZIP/OOXML validation fail closed when unconfigured", async () => {
+  await assert.rejects(
+    new UnconfiguredDatasetImportMalwareScanner().scan({} as never),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  await assert.rejects(
+    new UnconfiguredDatasetImportArchiveValidator().validate({} as never),
+    (error) => error instanceof DomainError && error.code === "IMPORT_ARCHIVE_VALIDATOR_UNAVAILABLE",
+  );
+});
+
+test("dataset import worker validates every external dependency before polling", async () => {
+  const valid: NodeJS.ProcessEnv = {
+    DATABASE_URL: "postgresql://corecrow.invalid/corecrow",
+    NORTH_DATA_IMPORT_S3_BUCKET: "private-imports",
+    NORTH_DATA_IMPORT_S3_REGION: "us-east-1",
+    NORTH_DATA_IMPORT_CLAMAV_HOST: "clamav.internal",
+    NORTH_DATA_IMPORT_CLAMAV_PORT: "3310",
+  };
+  const configuration = datasetImportWorkerRuntimeConfiguration(valid);
+  assert.equal(configuration.worker.maximumBytes, 50 * 1024 * 1024);
+  assert.ok(configuration.worker.heartbeatMilliseconds < configuration.worker.leaseMilliseconds);
+  await assert.rejects(
+    createDatasetImportWorkerRuntime(configuration, { storage: new FakeObjectStorage(false) }),
+    (error) => error instanceof DomainError && error.code === "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({ ...valid, NORTH_DATA_IMPORT_S3_BUCKET: "" }),
+    /NORTH_DATA_IMPORT_S3_BUCKET is required/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({
+      ...valid,
+      NORTH_DATA_IMPORT_CLAMAV_SOCKET: "/run/clamav/clamd.sock",
+    }),
+    /must use either a socket or host and port/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({
+      ...valid,
+      NORTH_DATA_IMPORT_WORKER_LEASE_MS: "5000",
+      NORTH_DATA_IMPORT_WORKER_HEARTBEAT_MS: "5000",
+    }),
+    /must be less than the lease duration/,
+  );
+  assert.throws(
+    () => datasetImportWorkerRuntimeConfiguration({
+      ...valid,
+      NORTH_DATA_IMPORT_MAX_BYTES: String(50 * 1024 * 1024 + 1),
+    }),
+    /NORTH_DATA_IMPORT_MAX_BYTES must be an integer between 1 and 52428800/,
+  );
+});
+
+test("dataset import worker loop stops polling cleanly", async () => {
+  const shutdown = new AbortController();
+  let runs = 0;
+  await runDatasetImportWorkerLoop({
+    async runOnce() {
+      runs += 1;
+      shutdown.abort();
+      return "IDLE";
+    },
+  }, { pollMilliseconds: 100 }, shutdown.signal);
+  assert.equal(runs, 1);
+
+  const alreadyStopped = new AbortController();
+  alreadyStopped.abort();
+  await runDatasetImportWorkerLoop({
+    async runOnce() {
+      assert.fail("A stopped loop must not consume jobs");
+    },
+  }, { pollMilliseconds: 100 }, alreadyStopped.signal);
+});
+
+test("ClamAV INSTREAM scanner frames private bytes and maps clean and infected results", async (t) => {
+  const expected = Buffer.from("private workbook bytes");
+  let requests = 0;
+  const received: Buffer[] = [];
+  const server = createServer((socket) => {
+    let pending = Buffer.alloc(0);
+    let commandRead = false;
+    socket.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      if (!commandRead) {
+        const end = pending.indexOf(0);
+        if (end < 0) return;
+        assert.equal(pending.subarray(0, end).toString("utf8"), "zINSTREAM");
+        pending = pending.subarray(end + 1);
+        commandRead = true;
+      }
+      while (pending.byteLength >= 4) {
+        const length = pending.readUInt32BE(0);
+        if (length === 0) {
+          requests += 1;
+          if (requests === 5) return;
+          const replies = [
+            "stream: OK\0",
+            "stream: Eicar-Test-Signature FOUND\0",
+            "stream: OK",
+            "stream: NOT OK\0",
+          ];
+          socket.end(Buffer.from(replies[requests - 1]!));
+          pending = pending.subarray(4);
+          return;
+        }
+        if (pending.byteLength < 4 + length) return;
+        received.push(pending.subarray(4, 4 + length));
+        pending = pending.subarray(4 + length);
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const address = server.address() as AddressInfo;
+  const scanner = new ClamAvDatasetImportMalwareScanner({
+    endpoint: { host: "127.0.0.1", port: address.port },
+    timeoutMilliseconds: 2_000,
+    maximumBytes: 1_024,
+    chunkBytes: 5,
+  });
+  const scanInput = () => ({
+    filename: "Master House.xlsx",
+    mime: XLSX_MIME,
+    size: expected.byteLength,
+    checksum: "a".repeat(64),
+    openPrivateRead: async () => Readable.from([expected]),
+    signal: new AbortController().signal,
+  });
+  assert.equal(await scanner.scan(scanInput()), "APPROVED");
+  assert.equal(await scanner.scan(scanInput()), "QUARANTINED");
+  await assert.rejects(
+    scanner.scan(scanInput()),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  await assert.rejects(
+    scanner.scan(scanInput()),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  const timeoutScanner = new ClamAvDatasetImportMalwareScanner({
+    endpoint: { host: "127.0.0.1", port: address.port },
+    timeoutMilliseconds: 30,
+    maximumBytes: 1_024,
+    chunkBytes: 5,
+  });
+  await assert.rejects(
+    timeoutScanner.scan(scanInput()),
+    (error) => error instanceof DomainError && error.code === "IMPORT_MALWARE_SCANNER_UNAVAILABLE",
+  );
+  assert.deepEqual(Buffer.concat(received), Buffer.concat([expected, expected, expected, expected, expected]));
+});
+
+test("secure XLSX validation accepts passive OOXML and rejects active or unsafe XML content", async () => {
+  const validator = new SecureXlsxArchiveValidator();
+  const valid = await xlsxArchive();
+  const input = (bytes: Buffer) => ({
+    filename: "Master House.xlsx",
+    size: bytes.byteLength,
+    checksum: "a".repeat(64),
+    openPrivateRead: async () => Readable.from([bytes]),
+    signal: new AbortController().signal,
+  });
+  assert.equal(await validator.validate(input(valid)), "APPROVED");
+
+  const active = await xlsxArchive({ "xl/vbaProject.bin": "macro" });
+  await assert.rejects(
+    validator.validate(input(active)),
+    (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+  );
+
+  const entity = await xlsxArchive({
+    "xl/worksheets/sheet1.xml": "<!DOCTYPE worksheet [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><worksheet/>",
+  });
+  await assert.rejects(
+    validator.validate(input(entity)),
+    (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+  );
+
+  const externalRelationship = await xlsxArchive({
+    "xl/worksheets/_rels/sheet1.xml.rels": "<Relationships><Relationship TargetMode=\"External\" Target=\"https://example.invalid/data\"/></Relationships>",
+  });
+  await assert.rejects(
+    validator.validate(input(externalRelationship)),
+    (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+  );
+
+  for (const part of ["xl/activeX/activeX1.bin", "xl/connections.xml", "xl/queryTables/queryTable1.xml"]) {
+    const unsafe = await xlsxArchive({ [part]: "unsafe" });
+    await assert.rejects(
+      validator.validate(input(unsafe)),
+      (error) => error instanceof DomainError && error.code === "IMPORT_OOXML_ACTIVE_CONTENT",
+    );
+  }
+});
+
+test("dataset ACL is default-deny and any matching explicit deny wins", () => {
+  assert.equal(resolveDatasetAcl([]), false);
+  assert.equal(resolveDatasetAcl([{ effect: "ALLOW", matches: false }]), false);
+  assert.equal(resolveDatasetAcl([{ effect: "ALLOW", matches: true }]), true);
+  assert.equal(resolveDatasetAcl([
+    { effect: "ALLOW", matches: true },
+    { effect: "DENY", matches: false },
+  ]), true);
+  assert.equal(resolveDatasetAcl([
+    { effect: "ALLOW", matches: true },
+    { effect: "DENY", matches: true },
+  ]), false);
+});
+
+test("analytics query contracts bound identifiers, scalar text and duplicate dimensions", () => {
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a", "a"] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a"], orderBy: [{ fieldId: "a", direction: "ASC" }, { fieldId: "a", direction: "DESC" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["a", "a"], measures: [{ operation: "COUNT", alias: "count" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "count" }, { operation: "COUNT", alias: "count" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["carrier"], measures: [{ operation: "COUNT", alias: "count" }], orderBy: [{ key: "missing", direction: "DESC" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["carrier"], measures: [{ operation: "COUNT", alias: "count" }], orderBy: [{ key: "count", direction: "DESC" }, { key: "count", direction: "ASC" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a".repeat(129)] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a"], filters: [{ fieldId: "a", operator: "EQ", value: "x".repeat(4097) }] }).success, false);
+  assert.equal(allowedBindingFilterSchema.safeParse({ fieldId: "a", operators: ["EQ", "EQ"] }).success, false);
+});
+
 test("permissions deny unknown roles and unknown actions", () => {
   for (const role of [undefined, "", "SUPERADMIN", "__proto__", "toString"])
     assert.equal(allows(role, "members.manage"), false);
@@ -46,7 +369,10 @@ const componentProps: Record<string, Record<string, unknown>> = {
   table: { columns: [{ key: "value", label: text }], rows: [{ value: 1 }] },
   card: { title: text, body: text, variant: "muted" },
   list: { items: [{ id: "item-1", text }] },
-  metric: { label: text, format: "number" },
+  metric: { label: text, value: 42, fieldKey: "total_containers", format: "number" },
+  bar_chart: { title: text, categoryKey: "arrival_date", series: [{ key: "total_containers", label: text, color: "#0EA5E9" }], height: 320, horizontal: false, variant: "grouped" },
+  line_chart: { title: text, categoryKey: "arrival_date", series: [{ key: "total_containers", label: text }], height: 280, variant: "area" },
+  donut_chart: { title: text, categoryKey: "origin_country", valueKey: "total_containers", color: "#14B8A6CC", height: 260, variant: "donut" },
   divider: { variant: "solid", spacing: "md" },
   embed: { url: "https://www.youtube.com/embed/demo", title: text, aspectRatio: "16:9" },
 };
@@ -83,7 +409,23 @@ test("TASK 8 component registry validates a complete safe catalog document", asy
     validateAssetReference: async () => true,
     validateBindingReference: async () => true,
   });
-  assert.equal(result.sections[0]!.components.length, 12);
+  assert.equal(result.sections[0]!.components.length, 15);
+});
+
+test("analytics component schemas accept bounded explicit result keys and preserve static metrics", () => {
+  assert.equal(northComponentRegistry["metric@1"]!.validate({ label: text, value: "6,632" }).success, true);
+  assert.equal(northComponentRegistry["metric@1"]!.validate({ label: text, fieldKey: "row_count" }).success, true);
+  assert.equal(northComponentRegistry["bar_chart@1"]!.validate(componentProps.bar_chart).success, true);
+  assert.equal(northComponentRegistry["line_chart@1"]!.validate(componentProps.line_chart).success, true);
+  assert.equal(northComponentRegistry["donut_chart@1"]!.validate(componentProps.donut_chart).success, true);
+});
+
+test("analytics component schemas reject unsafe colors, unknown props and unbounded configuration", () => {
+  assert.equal(northComponentRegistry["bar_chart@1"]!.validate({ categoryKey: "day", series: [{ key: "total", label: text, color: "red; background:url(javascript:alert(1))" }] }).success, false);
+  assert.equal(northComponentRegistry["line_chart@1"]!.validate({ categoryKey: "day", series: [], height: 159 }).success, false);
+  assert.equal(northComponentRegistry["donut_chart@1"]!.validate({ categoryKey: "country", valueKey: "total", height: 801 }).success, false);
+  assert.equal(northComponentRegistry["donut_chart@1"]!.validate({ categoryKey: "country", valueKey: "total", query: "select *" }).success, false);
+  assert.equal(northComponentRegistry["metric@1"]!.validate({ label: text, fieldKey: "../unsafe" }).success, false);
 });
 
 test("TASK 8 content validation fails closed for schemas, executable text, grid, embed, binding and assets", async () => {
@@ -97,7 +439,7 @@ test("TASK 8 content validation fails closed for schemas, executable text, grid,
   await expectContentError(executable, "CONTENT_EXECUTABLE_NOT_ALLOWED");
   const layout = structuredClone(fullDocument); layout.sections[0]!.components[0]!.layout.desktop = { x: 10, y: 0, w: 4, h: 1 };
   await expectContentError(layout, "PANEL_DOCUMENT_INVALID");
-  const embed = structuredClone(fullDocument); embed.sections[0]!.components[11]!.props.url = "https://unknown-site.example/embed/demo";
+  const embed = structuredClone(fullDocument); embed.sections[0]!.components[14]!.props.url = "https://unknown-site.example/embed/demo";
   await expectContentError(embed, "EMBED_DOMAIN_NOT_ALLOWED");
   const binding = structuredClone(fullDocument); binding.sections[0]!.components[9]!.bindings = { value: { sourceType: "metric", sourceId: "safe", sql: "select 1" } } as never;
   await expectContentError(binding, "PANEL_DOCUMENT_INVALID");
@@ -141,6 +483,76 @@ test("TASK 8E signed URL expiry is explicit and bounded by configuration", async
   const signed = await storage.signedPut({ key: "opaque", mime: "image/png", size: 8, checksum: "a".repeat(64), ttlSeconds: 90 });
   assert.ok(signed.expiresAt.getTime() >= before + 89_000);
   assert.ok(signed.expiresAt.getTime() <= Date.now() + 91_000);
+});
+test("shared object storage exposes uploaded bytes through a private stream", async () => {
+  const storage = new FakeObjectStorage();
+  const expected = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+  storage.put("tenant/import.xlsx", {
+    bytes: expected,
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    checksum: "a".repeat(64),
+  });
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of await storage.openPrivateRead("tenant/import.xlsx"))
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+
+  assert.deepEqual(Buffer.concat(chunks), Buffer.from(expected));
+});
+test("shared object storage keeps a pinned import version stable after overwrite", async () => {
+  const storage = new FakeObjectStorage();
+  const original = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+  const replacement = Uint8Array.from([0x50, 0x4b, 0x03, 0x05]);
+  storage.put("tenant/import.xlsx", {
+    bytes: original,
+    mime: XLSX_MIME,
+    checksum: "a".repeat(64),
+  });
+  const inspected = await storage.inspect("tenant/import.xlsx");
+  assert.ok(inspected.versionId);
+  storage.put("tenant/import.xlsx", {
+    bytes: replacement,
+    mime: XLSX_MIME,
+    checksum: "b".repeat(64),
+  });
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of await storage.openPrivateRead("tenant/import.xlsx", inspected.versionId))
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+
+  assert.deepEqual(Buffer.concat(chunks), Buffer.from(original));
+});
+test("S3 inspection pins prefix and private reads to the provider version", async () => {
+  const bytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const client = {
+    async send(command: { constructor: { name: string }; input: Record<string, unknown> }) {
+      calls.push({ name: command.constructor.name, input: command.input });
+      if (command.constructor.name === "HeadObjectCommand") return {
+        ContentLength: bytes.byteLength,
+        ContentType: XLSX_MIME,
+        ChecksumSHA256: Buffer.from("a".repeat(64), "hex").toString("base64"),
+        VersionId: "version-1",
+        ETag: '"etag-1"',
+      };
+      if (command.constructor.name === "GetObjectCommand" && command.input.Range) return {
+        Body: { transformToByteArray: async () => bytes },
+      };
+      if (command.constructor.name === "GetObjectCommand") return { Body: Readable.from([bytes]) };
+      if (command.constructor.name === "GetBucketVersioningCommand") return { Status: "Enabled" };
+      throw new Error("Unexpected command");
+    },
+  };
+  const storage = new S3ObjectStorage(client as never, "private-imports");
+
+  const inspected = await storage.inspect("opaque-key");
+  assert.equal(inspected.versionId, "version-1");
+  assert.equal(calls[1]?.name, "GetObjectCommand");
+  assert.equal(calls[1]?.input.VersionId, "version-1");
+  await storage.openPrivateRead("opaque-key", inspected.versionId);
+  assert.equal(calls[2]?.input.VersionId, "version-1");
+  await storage.assertImmutableVersioning();
+  assert.equal(calls[3]?.name, "GetBucketVersioningCommand");
 });
 test("TASK 8E unconfigured malware scanning fails closed", async () => {
   await assert.rejects(

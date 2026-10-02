@@ -49,8 +49,16 @@ model User {
   northPlatformGrants        NorthPlatformGrant[]
   northPanelRevisions        NorthPanelRevision[]
   northAssets                NorthAsset[]
-  northTemplatesCreated      NorthTemplate[]        @relation("NorthTemplateCreator")
-  northTemplateVersionsMade  NorthTemplateVersion[] @relation("NorthTemplateVersionCreator")
+  northTemplatesCreated      NorthTemplate[]             @relation("NorthTemplateCreator")
+  northTemplateVersionsMade  NorthTemplateVersion[]      @relation("NorthTemplateVersionCreator")
+  northDatasetsCreated       NorthDataset[]              @relation("NorthDatasetCreator")
+  northDatasetSchemasCreated NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaCreator")
+  northDatasetAclRulesMade   NorthDatasetAcl[]           @relation("NorthDatasetAclCreator")
+  northDatasetImports        NorthDatasetImportJob[]     @relation("NorthDatasetImportRequester")
+  northDatasetMappingsMade   NorthDatasetImportMappingVersion[] @relation("NorthDatasetImportMappingCreator")
+  northDatasetActivations    NorthDatasetImportJob[]     @relation("NorthDatasetActivationRequester")
+  northDatasetRevisionsMade NorthDatasetRevision[]       @relation("NorthDatasetRevisionCreator")
+  northAnalyticsBindingsMade NorthAnalyticsBinding[]     @relation("NorthAnalyticsBindingCreator")
 
   @@index([status, createdAt])
   @@map("users")
@@ -237,6 +245,74 @@ enum NorthAssetStatus {
   QUARANTINED
 }
 
+enum NorthPanelAccessPolicyMode {
+  LEGACY_AUDIENCE
+  ACL_V1
+}
+
+enum NorthDatasetStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum NorthDatasetFieldType {
+  TEXT
+  INTEGER
+  DECIMAL
+  BOOLEAN
+  DATE
+  DATETIME
+  TIME
+}
+
+enum NorthDatasetFieldStatus {
+  ACTIVE
+  DEPRECATED
+}
+
+enum NorthDatasetAclEffect {
+  ALLOW
+  DENY
+}
+
+enum NorthDatasetAclPrincipalType {
+  ALL_MEMBERS
+  MEMBERSHIP
+  GROUP
+  ROLE
+  CAPABILITY
+}
+
+enum NorthDatasetImportStatus {
+  AWAITING_UPLOAD
+  SECURITY_PENDING
+  SECURITY_BLOCKED
+  SECURITY_APPROVED
+  ANALYZING
+  ANALYSIS_BLOCKED
+  AWAITING_MAPPING
+  READY_TO_ACTIVATE
+  ACTIVATING
+  SUCCEEDED
+  CANCEL_REQUESTED
+  CANCELLED
+  REJECTED
+  FAILED
+}
+
+enum NorthDatasetImportScanStatus {
+  PENDING
+  SCANNING
+  APPROVED
+  REJECTED
+  QUARANTINED
+  UNAVAILABLE
+}
+
+enum NorthDatasetRevisionMode {
+  REPLACE_DATASET
+}
+
 model Organization {
   id                    String                      @id @default(cuid())
   name                  String
@@ -261,6 +337,16 @@ model Organization {
   northGroupGrants      NorthGroupGrant[]
   northMembershipGrants NorthMembershipGrant[]
   northAssets           NorthAsset[]
+  northDatasets         NorthDataset[]
+  northDatasetFields    NorthDatasetField[]
+  northDatasetSchemas   NorthDatasetSchemaVersion[]
+  northDatasetAclRules  NorthDatasetAcl[]
+  northDatasetImports   NorthDatasetImportJob[]
+  northDatasetAnalyses  NorthDatasetImportAnalysis[]
+  northDatasetMappings  NorthDatasetImportMappingVersion[]
+  northDatasetBatches   NorthDatasetImportBatch[]
+  northDatasetRevisions NorthDatasetRevision[]
+  northAnalyticsBindings NorthAnalyticsBinding[]
 
   @@index([status, createdAt])
 }
@@ -292,6 +378,8 @@ model Membership {
   permissionGrants      MembershipPermissionGrant[]
   northPermissionGrants NorthMembershipGrant[]
   northPanelAudiences   NorthPanelAudienceMembership[]
+  northDatasetAclRules  NorthDatasetAcl[]
+  northDatasetImports   NorthDatasetImportJob[]
 
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
@@ -311,6 +399,7 @@ model OrganizationGroup {
   invitationGrants      InvitationGroupGrant[]
   northPermissionGrants NorthGroupGrant[]
   northPanelAudiences   NorthPanelAudienceGroup[]
+  northDatasetAclRules  NorthDatasetAcl[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -389,6 +478,7 @@ model NorthPanel {
   navigationHidden    Boolean                        @default(false)
   status              NorthPanelStatus               @default(DRAFT)
   audienceType        NorthAudienceType              @default(ALL_MEMBERS)
+  accessPolicyMode    NorthPanelAccessPolicyMode     @default(LEGACY_AUDIENCE)
   publishedRevisionId String?
   draftRevisionId     String?
   createdAt           DateTime                       @default(now())
@@ -406,10 +496,317 @@ model NorthPanel {
   revisions           NorthPanelRevision[]           @relation("PanelRevisions")
   publishedRevision   NorthPanelRevision?            @relation("PublishedRevision", fields: [publishedRevisionId, id], references: [id, panelId], onDelete: Restrict)
   draftRevision       NorthPanelRevision?            @relation("DraftRevision", fields: [draftRevisionId, id], references: [id, panelId], onDelete: Restrict)
+  analyticsBindings   NorthAnalyticsBinding[]
 
   @@unique([id, organizationId])
   @@unique([subcategoryId, slug])
   @@index([organizationId, subcategoryId, status, order, id])
+}
+
+model NorthDataset {
+  id                     String                      @id @default(cuid())
+  organizationId         String
+  name                   Json
+  description            Json?
+  slug                   String
+  status                 NorthDatasetStatus          @default(ACTIVE)
+  currentSchemaVersionId String?
+  activeRevisionId        String?
+  createdBy              String
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  organization           Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  creator                User                        @relation("NorthDatasetCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  fields                 NorthDatasetField[]
+  schemaVersions         NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaVersions")
+  currentSchemaVersion   NorthDatasetSchemaVersion?  @relation("CurrentDatasetSchemaVersion", fields: [currentSchemaVersionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  aclRules               NorthDatasetAcl[]
+  importJobs             NorthDatasetImportJob[]
+  importAnalyses         NorthDatasetImportAnalysis[]
+  importMappings         NorthDatasetImportMappingVersion[]
+  importBatches          NorthDatasetImportBatch[]
+  revisions              NorthDatasetRevision[]          @relation("NorthDatasetRevisions")
+  activeRevision         NorthDatasetRevision?           @relation("ActiveDatasetRevision", fields: [activeRevisionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  analyticsBindings      NorthAnalyticsBinding[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, createdAt, id])
+}
+
+model NorthAnalyticsBinding {
+  id             String       @id @default(cuid())
+  organizationId String
+  panelId        String
+  datasetId      String
+  name           String
+  query          Json
+  allowedFilters Json
+  createdBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  panel          NorthPanel   @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  dataset        NorthDataset @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  creator        User         @relation("NorthAnalyticsBindingCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([id, panelId, organizationId])
+  @@index([organizationId, panelId, createdAt, id])
+  @@index([organizationId, datasetId])
+}
+
+model NorthDatasetField {
+  id              String                           @id @default(cuid())
+  organizationId  String
+  datasetId       String
+  key             String
+  displayName     Json
+  description     Json?
+  canonicalType   NorthDatasetFieldType
+  semanticType    String?
+  nullable        Boolean                          @default(true)
+  status          NorthDatasetFieldStatus          @default(ACTIVE)
+  createdAt       DateTime                         @default(now())
+  updatedAt       DateTime                         @updatedAt
+  organization    Organization                     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset         NorthDataset                     @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  schemaSnapshots NorthDatasetSchemaVersionField[]
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([datasetId, key])
+  @@index([organizationId, datasetId, status, id])
+}
+
+model NorthDatasetSchemaVersion {
+  id             String                           @id @default(cuid())
+  organizationId String
+  datasetId      String
+  version        Int
+  createdBy      String
+  createdAt      DateTime                         @default(now())
+  organization   Organization                     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset                     @relation("NorthDatasetSchemaVersions", fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  creator        User                             @relation("NorthDatasetSchemaCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  fields         NorthDatasetSchemaVersionField[]
+  currentFor     NorthDataset[]                   @relation("CurrentDatasetSchemaVersion")
+  importBatches  NorthDatasetImportBatch[]
+  revisions      NorthDatasetRevision[]
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([datasetId, version])
+  @@index([organizationId, datasetId, createdAt])
+}
+
+model NorthDatasetSchemaVersionField {
+  organizationId  String
+  datasetId       String
+  schemaVersionId String
+  datasetFieldId  String
+  canonicalType   NorthDatasetFieldType
+  semanticType    String?
+  nullable        Boolean
+  status          NorthDatasetFieldStatus
+  ordinal         Int
+  schemaVersion   NorthDatasetSchemaVersion @relation(fields: [schemaVersionId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  datasetField    NorthDatasetField         @relation(fields: [datasetFieldId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+
+  @@id([schemaVersionId, datasetFieldId])
+  @@unique([schemaVersionId, ordinal])
+  @@index([organizationId, datasetId, schemaVersionId])
+}
+
+model NorthDatasetAcl {
+  id             String                       @id @default(cuid())
+  organizationId String
+  datasetId      String
+  effect         NorthDatasetAclEffect
+  principalType  NorthDatasetAclPrincipalType
+  membershipId   String?
+  groupId        String?
+  role           TenantRole?
+  capability     String?
+  createdBy      String
+  createdAt      DateTime                     @default(now())
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset                 @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  membership     Membership?                  @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  group          OrganizationGroup?           @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  creator        User                         @relation("NorthDatasetAclCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([id, datasetId, organizationId])
+  @@index([organizationId, datasetId, effect, principalType])
+  @@index([organizationId, membershipId])
+  @@index([organizationId, groupId])
+}
+
+model NorthDatasetImportJob {
+  id                      String                       @id @default(cuid())
+  organizationId          String
+  datasetId               String
+  requestedBy             String
+  requestedMembershipId   String
+  idempotencyOperation    String
+  idempotencyKey          String
+  requestHash             String
+  filename                String
+  declaredMime            String
+  declaredSize            BigInt
+  declaredChecksum        String
+  storageKey              String                       @unique
+  storageVersionId        String?
+  storageEtag             String?
+  status                  NorthDatasetImportStatus     @default(AWAITING_UPLOAD)
+  scanStatus              NorthDatasetImportScanStatus @default(PENDING)
+  progress                Int                          @default(0)
+  attempts                Int                          @default(0)
+  maxAttempts             Int                          @default(3)
+  availableAt             DateTime                     @default(now())
+  claimedAt               DateTime?
+  claimExpiresAt          DateTime?
+  claimedBy               String?
+  claimToken              String?
+  confirmedAt             DateTime?
+  securityApprovedAt      DateTime?
+  cancellationRequestedAt DateTime?
+  cancelledAt             DateTime?
+  completedAt             DateTime?
+  lastErrorCode           String?
+  activationMappingId     String?
+  activationRequestedBy   String?
+  materializationAttempts Int                          @default(0)
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  organization            Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset                 NorthDataset                 @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  requester               User                         @relation("NorthDatasetImportRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  requestedMembership     Membership                   @relation(fields: [requestedMembershipId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  analysis                NorthDatasetImportAnalysis?
+  mappings                NorthDatasetImportMappingVersion[]
+  activationMapping       NorthDatasetImportMappingVersion? @relation("SelectedImportMapping", fields: [activationMappingId, id, datasetId, organizationId], references: [id, importId, datasetId, organizationId], onDelete: Restrict)
+  activationRequester     User?                        @relation("NorthDatasetActivationRequester", fields: [activationRequestedBy], references: [id], onDelete: Restrict)
+  batch                   NorthDatasetImportBatch?
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([organizationId, requestedMembershipId, requestedBy, idempotencyOperation, idempotencyKey])
+  @@index([organizationId, datasetId, createdAt, id])
+  @@index([status, availableAt, claimExpiresAt, id])
+  @@index([organizationId, requestedBy, createdAt, id])
+}
+
+model NorthDatasetImportAnalysis {
+  id             String                @id @default(cuid())
+  organizationId String
+  datasetId      String
+  importId       String                @unique
+  parserVersion  String
+  workbook       Json
+  createdAt      DateTime              @default(now())
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset          @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  import         NorthDatasetImportJob @relation(fields: [importId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+
+  @@unique([id, importId, datasetId, organizationId])
+  @@unique([importId, datasetId, organizationId])
+  @@index([organizationId, datasetId, createdAt])
+}
+
+model NorthDatasetImportMappingVersion {
+  id             String                @id @default(cuid())
+  organizationId String
+  datasetId      String
+  importId       String
+  version        Int
+  sheetOrdinal   Int
+  headerRow      Int
+  definition     Json
+  createdBy      String
+  createdAt      DateTime              @default(now())
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset        NorthDataset          @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  import         NorthDatasetImportJob @relation(fields: [importId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  creator        User                  @relation("NorthDatasetImportMappingCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  selectedFor    NorthDatasetImportJob[] @relation("SelectedImportMapping")
+  importBatches  NorthDatasetImportBatch[]
+
+  @@unique([importId, version])
+  @@unique([id, importId, datasetId, organizationId])
+  @@index([organizationId, datasetId, importId, createdAt])
+}
+
+model NorthDatasetImportBatch {
+  id               String                    @id
+  organizationId   String
+  datasetId        String
+  importId         String                    @unique
+  schemaVersionId  String
+  mappingVersionId String
+  sheetOrdinal     Int
+  rowCount         Int
+  parserVersion    String
+  createdAt        DateTime                  @default(now())
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset          NorthDataset              @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  import           NorthDatasetImportJob     @relation(fields: [importId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  mapping          NorthDatasetImportMappingVersion @relation(fields: [mappingVersionId, importId, datasetId, organizationId], references: [id, importId, datasetId, organizationId], onDelete: Restrict)
+  schemaVersion    NorthDatasetSchemaVersion @relation(fields: [schemaVersionId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  rows             NorthDatasetRow[]
+  revisions        NorthDatasetRevisionBatch[]
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([importId, datasetId, organizationId])
+  @@index([organizationId, datasetId, createdAt])
+  @@index([schemaVersionId])
+}
+
+model NorthDatasetRow {
+  id             String                  @id
+  organizationId String
+  datasetId      String
+  batchId        String
+  ordinal        Int
+  values         Json
+  createdAt      DateTime                @default(now())
+  batch          NorthDatasetImportBatch @relation(fields: [batchId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+
+  @@unique([batchId, ordinal])
+  @@index([organizationId, datasetId, batchId, ordinal])
+}
+
+model NorthDatasetRevision {
+  id              String                    @id
+  organizationId  String
+  datasetId       String
+  schemaVersionId String
+  version         Int
+  mode            NorthDatasetRevisionMode
+  rowCount        Int
+  createdBy       String
+  createdAt       DateTime                  @default(now())
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  dataset         NorthDataset              @relation("NorthDatasetRevisions", fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  schemaVersion   NorthDatasetSchemaVersion @relation(fields: [schemaVersionId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  creator         User                      @relation("NorthDatasetRevisionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  batches         NorthDatasetRevisionBatch[]
+  activeFor       NorthDataset[]            @relation("ActiveDatasetRevision")
+
+  @@unique([id, datasetId, organizationId])
+  @@unique([datasetId, version])
+  @@index([organizationId, datasetId, createdAt])
+}
+
+model NorthDatasetRevisionBatch {
+  organizationId String
+  datasetId      String
+  revisionId     String
+  batchId        String
+  ordinal        Int
+  revision       NorthDatasetRevision    @relation(fields: [revisionId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  batch          NorthDatasetImportBatch @relation(fields: [batchId, datasetId, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+
+  @@id([revisionId, batchId])
+  @@unique([revisionId, ordinal])
+  @@index([batchId])
+  @@index([organizationId, datasetId, revisionId])
 }
 
 model NorthPanelRevision {

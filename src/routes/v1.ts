@@ -35,6 +35,13 @@ import { northTemplateCreateInput, northTemplateSnapshotInput } from "../modules
 import { northSearch } from "../modules/north/search-service.js";
 import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
+import { northData } from "../modules/north/data/service.js";
+import { northDatasetImports } from "../modules/north/data/import-service.js";
+import { northDatasetImportAnalysis } from "../modules/north/data/import-analysis-service.js";
+import { northDatasetImportActivation } from "../modules/north/data/import-activation-service.js";
+import { northDatasetQuery } from "../modules/north/data/query-service.js";
+import { northAnalyticsBindings } from "../modules/north/data/binding-service.js";
+import { allowedBindingFilterSchema, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
 
 export async function v1Routes(app: FastifyInstance) {
   const key = z.object({
@@ -46,6 +53,241 @@ export async function v1Routes(app: FastifyInstance) {
     expiresAt: s.date,
     revokedAt: s.date.nullable(),
     createdAt: s.date,
+  });
+  const datasetParams = s.orgParams.extend({ datasetId: s.id });
+  const datasetFieldParams = datasetParams.extend({ fieldId: s.id });
+  const datasetSchemaParams = datasetParams.extend({ schemaVersionId: s.id });
+  const datasetAclParams = datasetParams.extend({ aclId: s.id });
+  const datasetImportParams = datasetParams.extend({ importId: s.id });
+  const datasetImportMappingParams = datasetImportParams.extend({ mappingId: s.id });
+  const semanticType = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).nullable();
+  const datasetMetadata = z.object({
+    name: s.localizedText,
+    description: s.localizedText.nullable().optional(),
+    slug: z.string().trim().min(1).max(64),
+  }).strict();
+  const datasetUpdate = datasetMetadata.partial().extend({ status: s.northDatasetStatus.optional() })
+    .refine((value) => Object.keys(value).length > 0);
+  const fieldUpdate = z.object({
+    displayName: s.localizedText.optional(),
+    description: s.localizedText.nullable().optional(),
+    semanticType: semanticType.optional(),
+    nullable: z.boolean().optional(),
+    status: s.northDatasetFieldStatus.optional(),
+  }).strict().refine((value) => Object.keys(value).length > 0);
+  const aclInput = z.discriminatedUnion("principalType", [
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ALL_MEMBERS") }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("MEMBERSHIP"), membershipId: s.id }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("GROUP"), groupId: s.id }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ROLE"), role: s.role }).strict(),
+    z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("CAPABILITY"), capability: z.string().min(1).max(128) }).strict(),
+  ]);
+  const importMappingInput = z.object({
+    sheetOrdinal: z.number().int().nonnegative().max(31),
+    headerRow: z.literal(1),
+    columns: z.array(s.northDatasetImportMappingColumn).min(1).max(150),
+  }).strict();
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
+    summary: "List up to 100 datasets authorized for the active membership", params: s.orgParams,
+    response: z.array(s.northDataset),
+    run: ({ user, params }) => northData.list(user.id, params.organizationId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
+    summary: "Create a tenant dataset with a safe initial owner ACL", params: s.orgParams,
+    body: datasetMetadata, response: s.northDataset, status: 201,
+    run: ({ user, params, body }) => northData.create(user.id, params.organizationId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+    summary: "Read one authorized tenant dataset", params: datasetParams, response: s.northDataset,
+    run: ({ user, params }) => northData.read(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+    summary: "Update authorized dataset metadata or lifecycle status", params: datasetParams,
+    body: datasetUpdate, response: s.northDataset,
+    run: ({ user, params, body }) => northData.update(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
+    summary: "List stable logical fields for an authorized dataset", params: datasetParams,
+    response: z.array(s.northDatasetField),
+    run: ({ user, params }) => northData.fields(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
+    summary: "Create a stable logical dataset field", params: datasetParams,
+    body: z.object({
+      key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+      displayName: s.localizedText,
+      description: s.localizedText.nullable().optional(),
+      canonicalType: s.northDatasetFieldType,
+      semanticType: semanticType.optional(),
+      nullable: z.boolean().optional(),
+    }).strict(),
+    response: s.northDatasetField, status: 201,
+    run: ({ user, params, body }) => northData.createField(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/datasets/:datasetId/fields/:fieldId", tag: "NORTH data",
+    summary: "Update logical field metadata without rewriting schema snapshots", params: datasetFieldParams,
+    body: fieldUpdate, response: s.northDatasetField,
+    run: ({ user, params, body }) => northData.updateField(user.id, params.organizationId, params.datasetId, params.fieldId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions", tag: "NORTH data",
+    summary: "List immutable schema snapshots for an authorized dataset", params: datasetParams,
+    response: z.array(s.northDatasetSchemaVersion),
+    run: ({ user, params }) => northData.schemaVersions(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions", tag: "NORTH data",
+    summary: "Create and activate an immutable schema snapshot", params: datasetParams,
+    body: z.object({
+      fields: z.array(z.object({ fieldId: s.id, ordinal: z.number().int().nonnegative() }).strict()).min(1).max(150),
+    }).strict(),
+    response: s.northDatasetSchemaVersion, status: 201,
+    run: ({ user, params, body }) => northData.createSchemaVersion(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions/:schemaVersionId", tag: "NORTH data",
+    summary: "Read one immutable dataset schema snapshot", params: datasetSchemaParams,
+    response: s.northDatasetSchemaVersion,
+    run: ({ user, params }) => northData.schemaVersion(user.id, params.organizationId, params.datasetId, params.schemaVersionId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/acl", tag: "NORTH data authorization",
+    summary: "List dataset ACL rules with explicit deny semantics", params: datasetParams,
+    response: z.array(s.northDatasetAcl),
+    run: ({ user, params }) => northData.acl(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/acl", tag: "NORTH data authorization",
+    summary: "Create a tenant-validated dataset ACL rule", params: datasetParams,
+    body: aclInput, response: s.northDatasetAcl, status: 201,
+    run: ({ user, params, body }) => northData.createAclRule(user.id, params.organizationId, params.datasetId, body),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/datasets/:datasetId/acl/:aclId", tag: "NORTH data authorization",
+    summary: "Delete a dataset ACL rule without locking out every owner", params: datasetAclParams,
+    response: z.null(),
+    run: async ({ user, params }) => {
+      await northData.deleteAclRule(user.id, params.organizationId, params.datasetId, params.aclId);
+      return null;
+    },
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports", tag: "NORTH data imports",
+    summary: "Create or replay an idempotent private XLSX upload session; no parsing occurs in the request",
+    params: datasetParams, idempotency: true, rateLimit: 20,
+    body: z.object({
+      filename: z.string().trim().min(1).max(255),
+      mime: z.string().trim().min(1).max(127),
+      size: z.number().int().min(1),
+      checksum: z.string().regex(/^[0-9a-fA-F]{64}$/),
+    }).strict(),
+    response: z.object({ import: s.northDatasetImport, upload: s.northSignedObjectRequest }), status: 201,
+    run: ({ user, params, body, request }) => {
+      const key = request.headers["idempotency-key"];
+      if (typeof key !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(key))
+        fail(400, "IDEMPOTENCY_KEY_REQUIRED", "Provide a 16–128 character Idempotency-Key");
+      return northDatasetImports.prepare(user.id, params.organizationId, params.datasetId, body, key);
+    },
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports", tag: "NORTH data imports",
+    summary: "List up to 100 authorized durable import jobs without internal object identifiers",
+    params: datasetParams, response: z.array(s.northDatasetImport),
+    run: ({ user, params }) => northDatasetImports.list(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId", tag: "NORTH data imports",
+    summary: "Read sanitized progress and security-gate state for one authorized import job",
+    params: datasetImportParams, response: s.northDatasetImport,
+    run: ({ user, params }) => northDatasetImports.read(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/confirm", tag: "NORTH data imports",
+    summary: "Verify uploaded XLSX declaration and queue fail-closed security checks; never parse synchronously",
+    params: datasetImportParams, response: s.northDatasetImport, status: 202,
+    run: ({ user, params }) => northDatasetImports.confirm(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/cancel", tag: "NORTH data imports",
+    summary: "Idempotently cancel a waiting import or request cancellation from a claimed worker",
+    params: datasetImportParams, response: s.northDatasetImport,
+    run: ({ user, params }) => northDatasetImports.cancel(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/analysis", tag: "NORTH data imports",
+    summary: "Read bounded workbook analysis after the immutable source has passed security validation", params: datasetImportParams,
+    response: s.northDatasetImportAnalysis,
+    run: ({ user, params }) => northDatasetImportAnalysis.read(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings", tag: "NORTH data imports",
+    summary: "List immutable mapping versions for an authorized analyzed import", params: datasetImportParams,
+    response: z.array(s.northDatasetImportMapping),
+    run: ({ user, params }) => northDatasetImportAnalysis.listMappings(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings", tag: "NORTH data imports",
+    summary: "Create an immutable explicit mapping version; this does not activate data", params: datasetImportParams,
+    body: importMappingInput, response: s.northDatasetImportMapping, status: 201,
+    run: ({ user, params, body }) => northDatasetImportAnalysis.createMapping(user.id, params.organizationId, params.datasetId, params.importId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings/:mappingId", tag: "NORTH data imports",
+    summary: "Read one immutable authorized mapping version", params: datasetImportMappingParams,
+    response: s.northDatasetImportMapping,
+    run: ({ user, params }) => northDatasetImportAnalysis.readMapping(user.id, params.organizationId, params.datasetId, params.importId, params.mappingId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/activate", tag: "NORTH data imports",
+    summary: "Queue asynchronous immutable REPLACE_DATASET materialization and atomic activation", params: datasetImportParams,
+    body: z.object({ mappingId: s.id, mode: z.literal("REPLACE_DATASET") }).strict(), response: s.northDatasetImport, status: 202,
+    run: ({ user, params, body }) => northDatasetImportActivation.activate(user.id, params.organizationId, params.datasetId, params.importId, body.mappingId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/query", tag: "NORTH data queries",
+    summary: "Execute a bounded tenant-authorized query against the active immutable revision", params: datasetParams,
+    body: datasetQuerySchema, response: s.northDatasetQueryResult, rateLimit: 30,
+    run: ({ user, params, body }) => northDatasetQuery.execute(user.id, params.organizationId, params.datasetId, body),
+  });
+  const panelBindingParams = s.orgParams.extend({ panelId: s.id });
+  const panelBindingDetailParams = panelBindingParams.extend({ bindingId: s.id });
+  const bindingInput = z.object({
+    name: z.string().trim().min(1).max(100),
+    datasetId: s.id,
+    query: datasetQuerySchema,
+    allowedFilters: z.array(allowedBindingFilterSchema).max(10).optional(),
+  }).strict();
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings", tag: "NORTH analytics",
+    summary: "List authoritative analytics bindings owned by one authorized panel", params: panelBindingParams,
+    response: z.array(s.northAnalyticsBinding),
+    run: ({ user, params }) => northAnalyticsBindings.list(user.id, params.organizationId, params.panelId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings", tag: "NORTH analytics",
+    summary: "Create an audited panel-owned binding with a bounded declarative dataset query", params: panelBindingParams,
+    body: bindingInput, response: s.northAnalyticsBinding, status: 201,
+    run: ({ user, params, body }) => northAnalyticsBindings.create(user.id, params.organizationId, params.panelId, body),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId", tag: "NORTH analytics",
+    summary: "Replace an audited panel-owned binding after tenant and dataset authorization", params: panelBindingDetailParams,
+    body: bindingInput, response: s.northAnalyticsBinding,
+    run: ({ user, params, body }) => northAnalyticsBindings.update(user.id, params.organizationId, params.panelId, params.bindingId, body),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH analytics",
+    summary: "Resolve only a binding referenced by this exact published panel and apply allowlisted runtime filters", params: panelBindingDetailParams,
+    body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).strict(),
+    response: s.northAnalyticsBindingResult, rateLimit: 30,
+    run: ({ user, params, body }) => northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, body.filters),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",

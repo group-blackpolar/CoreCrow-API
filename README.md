@@ -66,3 +66,26 @@ See [implementation decisions](docs/decisions/006-v1-foundation.md) for session/
 ## SMTP
 
 Production mail can use Google Workspace SMTP relay without storing a mailbox password. In Google Admin, authorize only the VPS public IP, restrict allowed senders to registered Black Polar users, and require TLS. Then set `SMTP_URL=smtp://smtp-relay.gmail.com:587?requireTLS=true` and a registered `MAIL_FROM` in the root-readable backend environment. An authenticated `smtp.gmail.com` connection with a dedicated app password is the fallback; percent-encode credentials in the URL and never commit them. Restart CoreCrow and confirm `emailTransport: "available"` at `/v1/health` before testing one controlled verification email.
+
+## Tenant dataset import worker
+
+XLSX ingestion runs in the separate `dist/dataset-import-worker.js` process. It
+uses the same database as the API, a private S3-compatible bucket with immutable
+version reads, and a private ClamAV endpoint. The worker validates configuration
+and bucket versioning before polling; missing storage or scanner configuration
+fails closed.
+
+Production must provide the `NORTH_DATA_IMPORT_*` variables documented in
+`.env.example` plus AWS SDK credentials scoped to the import bucket. The bucket
+must have versioning enabled before deployment. The worker is opt-in: set
+`NORTH_DATA_IMPORT_WORKER_ENABLED=true` only after storage and ClamAV have both
+been configured and verified. With the default `false`, API releases deploy
+without the worker and the normal upload/import path continues to fail closed.
+When enabled, `scripts/deploy-vps.sh` starts a candidate worker before replacing
+the active API and keeps the previous worker available for rollback.
+
+The `seed-master-house-demo` production workflow is a bounded administrative
+exception for the presentation fixture committed in `src/fixtures`. It creates
+an isolated organization, records the seed and accepted no-scan risk in the
+audit log, and is idempotent. It does not expose an upload endpoint, does not
+start the import worker, and must not be reused for arbitrary tenant files.

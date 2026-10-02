@@ -26,12 +26,12 @@ export const northResponsiveLayout = z.object({
 
 const bindingSchema = z.object({
   sourceType: z.enum(["metric", "dataset"]),
-  sourceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),
-  datasetId: resourceId.optional(),
-  viewId: resourceId.optional(),
+  sourceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/).describe("For dataset sources, the authoritative analytics binding ID"),
+  datasetId: resourceId.optional().describe("Required for dataset sources and checked against the binding-owned dataset"),
+  viewId: resourceId.optional().describe("Deprecated compatibility field; ignored for authoritative dataset bindings"),
 }).strict().superRefine((value, context) => {
-  if (value.sourceType === "dataset" && (!value.datasetId || !value.viewId))
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Dataset bindings require datasetId and viewId" });
+  if (value.sourceType === "dataset" && !value.datasetId)
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Dataset bindings require datasetId; sourceId is the authoritative binding ID" });
   if (value.sourceType === "metric" && (value.datasetId || value.viewId))
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Metric bindings cannot carry dataset identifiers" });
 });
@@ -41,6 +41,14 @@ const commonVariant = z.enum(["default", "primary", "secondary", "muted", "succe
 const align = z.enum(["left", "center", "right"]);
 const fit = z.enum(["contain", "cover", "fill"]);
 const size = z.enum(["sm", "md", "lg"]);
+const resultKey = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+const safeChartColor = z.string().regex(/^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/);
+const chartHeight = z.number().int().min(160).max(800);
+const chartSeries = z.object({
+  key: resultKey,
+  label: localized,
+  color: safeChartColor.optional(),
+}).strict();
 
 const catalog = {
   heading: z.object({ text: localized, level: z.number().int().min(1).max(6), align: align.optional(), variant: commonVariant.optional() }).strict(),
@@ -52,7 +60,10 @@ const catalog = {
   table: z.object({ columns: z.array(z.object({ key: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/), label: localized }).strict()).min(1).max(50), rows: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))).max(1_000), striped: z.boolean().optional() }).strict(),
   card: z.object({ title: localized, body: localized.optional(), assetId: resourceId.optional(), variant: commonVariant.optional() }).strict(),
   list: z.object({ ordered: z.boolean().optional(), items: z.array(z.object({ id: resourceId, text: localized, href: safeUrl.optional() }).strict()).min(1).max(200) }).strict(),
-  metric: z.object({ label: localized, value: z.union([z.string().max(500), z.number()]).optional(), format: z.enum(["number", "currency", "percent", "duration", "text"]).optional(), variant: commonVariant.optional() }).strict(),
+  metric: z.object({ label: localized, value: z.union([z.string().max(500), z.number()]).optional(), fieldKey: resultKey.optional(), format: z.enum(["number", "currency", "percent", "duration", "text"]).optional(), variant: commonVariant.optional() }).strict(),
+  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional() }).strict(),
+  line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional() }).strict(),
+  donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional() }).strict(),
   divider: z.object({ variant: z.enum(["solid", "dashed", "dotted"]).optional(), spacing: size.optional() }).strict(),
   embed: z.object({ url: z.string().url().max(2_048), title: localized.optional(), aspectRatio: z.enum(["16:9", "4:3", "1:1"]).optional() }).strict(),
 } as const;
@@ -92,6 +103,9 @@ export type NorthAssetReferenceValidator = (
 export type NorthBindingReferenceValidator = (
   organizationId: string,
   binding: z.infer<typeof bindingSchema>,
+  actorId: string,
+  tx?: Transaction,
+  panelId?: string,
 ) => Promise<boolean>;
 
 export const northComponentRegistry = Object.freeze(
@@ -181,6 +195,7 @@ export async function validateNorthPanelDocument(
     tx?: Transaction;
     validateAssetReference?: NorthAssetReferenceValidator;
     validateBindingReference?: NorthBindingReferenceValidator;
+    panelId?: string;
   },
 ): Promise<NorthPanelDocument> {
   const parsed = northPanelDocumentInput.safeParse(value);
@@ -225,7 +240,7 @@ export async function validateNorthPanelDocument(
   if (bindingReferences.length) {
     if (!context.validateBindingReference) fail(422, "BINDING_VALIDATION_UNAVAILABLE", "Binding references cannot be validated");
     for (const reference of bindingReferences)
-      if (!(await context.validateBindingReference(context.organizationId, reference)))
+      if (!(await context.validateBindingReference(context.organizationId, reference, context.actorId, context.tx, context.panelId)))
         fail(422, "BINDING_NOT_ALLOWED", "Binding source is unavailable or unauthorized");
   }
   return document;
