@@ -24,15 +24,19 @@ async function panelForManagement(tx: Transaction, userId: string, organizationI
   return panel;
 }
 
-function validateAllowedFilters(query: DatasetQuery, allowed: AllowedBindingFilter[]) {
+async function validateAllowedFilters(tx: Transaction, organizationId: string, datasetId: string, allowed: AllowedBindingFilter[]) {
   const parsed = allowed.map((item) => allowedBindingFilterSchema.parse(item));
   if (new Set(parsed.map((item) => item.fieldId)).size !== parsed.length)
     fail(422, "BINDING_FILTER_INVALID", "Allowed filter fields must be unique");
-  const fields = new Set(query.mode === "ROWS"
-    ? [...query.fields, ...(query.filters ?? []).map((item) => item.fieldId)]
-    : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => item.fieldId ? [item.fieldId] : []), ...(query.filters ?? []).map((item) => item.fieldId)]);
-  if (parsed.some((item) => !fields.has(item.fieldId)))
-    fail(422, "BINDING_FILTER_INVALID", "Allowed filters must reference fields used by the binding query");
+  if (!parsed.length) return parsed;
+  const dataset = await tx.northDataset.findFirst({
+    where: { id: datasetId, organizationId, status: "ACTIVE" },
+    include: { activeRevision: { include: { schemaVersion: { include: { fields: true } } } } },
+  });
+  if (!dataset?.activeRevision) fail(409, "DATASET_REVISION_NOT_ACTIVE", "Dataset has no active revision");
+  const activeFields = new Set(dataset.activeRevision.schemaVersion.fields.filter((field) => field.status === "ACTIVE").map((field) => field.datasetFieldId));
+  if (parsed.some((item) => !activeFields.has(item.fieldId)))
+    fail(422, "BINDING_FILTER_INVALID", "Allowed filters must reference fields in the active dataset schema");
   return parsed;
 }
 
@@ -60,7 +64,7 @@ export const northAnalyticsBindings = {
       await panelForManagement(tx, userId, organizationId, panelId);
       await authorizeDataset(tx, userId, organizationId, input.datasetId, "north.data.query");
       const query = datasetQuerySchema.parse(input.query);
-      const allowedFilters = validateAllowedFilters(query, input.allowedFilters ?? []);
+      const allowedFilters = await validateAllowedFilters(tx, organizationId, input.datasetId, input.allowedFilters ?? []);
       await executeDatasetQuery(tx, organizationId, input.datasetId, query);
       const binding = await tx.northAnalyticsBinding.create({ data: { organizationId, panelId, datasetId: input.datasetId, name: input.name, query, allowedFilters, createdBy: userId } });
       await audit.append(tx, { actorId: userId, organizationId, action: "ANALYTICS_BINDING_CREATED", targetType: "NorthAnalyticsBinding", targetId: binding.id, metadata: { panelId, datasetId: input.datasetId } });
@@ -74,7 +78,7 @@ export const northAnalyticsBindings = {
       if (!current) fail(404, "NOT_FOUND", "Binding not found");
       await authorizeDataset(tx, userId, organizationId, input.datasetId, "north.data.query");
       const query = datasetQuerySchema.parse(input.query);
-      const allowedFilters = validateAllowedFilters(query, input.allowedFilters ?? []);
+      const allowedFilters = await validateAllowedFilters(tx, organizationId, input.datasetId, input.allowedFilters ?? []);
       await executeDatasetQuery(tx, organizationId, input.datasetId, query);
       const binding = await tx.northAnalyticsBinding.update({
         where: { id_panelId_organizationId: { id: bindingId, panelId, organizationId } },

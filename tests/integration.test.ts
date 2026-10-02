@@ -1387,8 +1387,8 @@ test(
         const analyticsPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Master House" }, slug: "master-house-demo" }), 201);
         const otherPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Other" }, slug: "other-analytics" }), 201);
         const analyticsBinding = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, owner.cookie, {
-          name: "Revenue total", datasetId: dataset.id,
-          query: { mode: "AGGREGATE", measures: [{ operation: "SUM", fieldId: mappedField.id, alias: "total_revenue" }] },
+          name: "Filtered record count", datasetId: dataset.id,
+          query: { mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "total_records" }] },
           allowedFilters: [{ fieldId: mappedField.id, operators: ["GTE"] }],
         }), 201);
         expect(await call("GET", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, outsider.cookie), 404);
@@ -1396,7 +1396,7 @@ test(
           schemaVersion: 1, defaultLocale: "en", fallbackLocales: [],
           sections: [{ id: "main", order: 0, layout: { variant: "grid", gap: "md" }, components: [{
             id: "table", type: "table", schemaVersion: 1,
-            props: { columns: [{ key: "total_revenue", label: { en: "Revenue" } }], rows: [] },
+            props: { columns: [{ key: "total_records", label: { en: "Records" } }], rows: [] },
             bindings: { rows: { sourceType: "dataset", sourceId: analyticsBinding.id, datasetId: dataset.id } },
             layout: { desktop: { x: 0, y: 0, w: 12, h: 4 }, tablet: { x: 0, y: 0, w: 12, h: 4 }, mobile: { x: 0, y: 0, w: 12, h: 4 } }, order: 0,
           }] }],
@@ -1410,7 +1410,7 @@ test(
           filters: [{ fieldId: mappedField.id, operator: "GTE", value: "15" }],
         }), 200);
         assert.equal(bindingResult.bindingId, analyticsBinding.id);
-        assert.equal(bindingResult.rows[0].total_revenue, "20");
+        assert.equal(bindingResult.rows[0].total_records, "1");
         assert.deepEqual(bindingResult.filterDefinitions, [{
           fieldId: mappedField.id,
           key: mappedField.key,
