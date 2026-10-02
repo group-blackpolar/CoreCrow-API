@@ -5,7 +5,9 @@ durable PostgreSQL jobs, verifies private object bytes, submits them to ClamAV,
 and applies the bounded ZIP/OOXML security gate. A second leased phase parses
 only the pinned, security-approved XLSX in an isolated child process and
 persists metadata-only analysis. Mapping versions are immutable; activation is
-not part of this process.
+an explicit API action that queues a third leased phase. That phase parses the
+pinned object version with the approved mapping, persists an immutable batch
+and revision, and swaps the dataset's active revision atomically.
 
 **Storage release gate:** the executable verifies at startup that the import
 bucket has object versioning enabled. Upload confirmation captures an immutable
@@ -82,3 +84,24 @@ capped at 1 MiB. This is defense in depth: deployment must independently deny
 egress and instance-metadata access to parser work, use a separate
 least-privilege identity, and never place cloud credentials in the worker
 environment.
+
+## Provisional materialization and query limits
+
+The current activation slice is deliberately bounded for the Master House
+demonstration: one mapped worksheet, at most 50,000 materialized rows and at
+most 64 MiB of materializer output. Formula cells are rejected. A failed or
+cancelled attempt cannot publish a partial batch or change the active revision;
+retryable failures keep the job durable and reuse the immutable mapping and
+object version.
+
+`REPLACE_DATASET` is the only activation mode currently accepted. Dataset
+queries read only the active immutable revision, require both the
+`north.data.query` organization permission and dataset ACL access, and apply a
+five-second PostgreSQL statement timeout. Row and aggregate requests are
+bounded and field identifiers are resolved against the active schema before
+parameterized SQL is executed.
+
+This is not the general high-volume ingestion design. Chunked staging,
+streaming materialization, published analytics bindings and panel-result
+resolution remain separate follow-up work before unbounded or public analytics
+use.

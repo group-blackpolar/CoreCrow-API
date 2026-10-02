@@ -15,7 +15,7 @@ const IDEMPOTENCY_OPERATION = "DATASET_IMPORT_PREPARE";
 type ImportJob = NonNullable<Awaited<ReturnType<typeof repo.find>>>;
 type AuditAppender = typeof auditRepository.append;
 
-function importView(job: ImportJob) {
+export function importView(job: ImportJob) {
   return {
     id: job.id,
     organizationId: job.organizationId,

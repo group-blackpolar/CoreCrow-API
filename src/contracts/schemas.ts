@@ -252,6 +252,22 @@ export const northDatasetImportMapping = z.object({
   createdBy: id,
   createdAt: date,
 });
+export const northDatasetQueryScalar = z.union([z.string().nullable(), z.number(), z.boolean()]);
+export const northDatasetQueryColumn = z.object({
+  key: z.string().min(1).max(128),
+  fieldId: id.optional(),
+  type: z.enum(["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "DATETIME", "TIME"]),
+});
+export const northDatasetQueryResult = z.object({
+  mode: z.enum(["ROWS", "AGGREGATE"]),
+  datasetId: id,
+  activeRevisionId: id,
+  schemaVersionId: id,
+  columns: z.array(northDatasetQueryColumn).max(20),
+  rows: z.array(z.record(northDatasetQueryScalar)).max(200),
+  rowCount: z.number().int().nonnegative().max(200),
+  executedAt: date,
+});
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({
   id,

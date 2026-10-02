@@ -55,6 +55,7 @@ test(
     const { datasetImportConfiguration } = await import("../src/modules/north/data/import-config.js");
     const { NorthDatasetImportWorker } = await import("../src/modules/north/data/import-worker.js");
     const { NorthDatasetImportAnalysisWorker } = await import("../src/modules/north/data/import-analysis-worker.js");
+    const { NorthDatasetImportMaterializationWorker } = await import("../src/modules/north/data/import-materialization-worker.js");
     const { UnconfiguredDatasetImportMalwareScanner } = await import("../src/modules/north/data/import-malware-scanner.js");
     const { UnconfiguredDatasetImportArchiveValidator } = await import("../src/modules/north/data/import-archive-validator.js");
     const { UnavailableObjectStorage } = await import("../src/infrastructure/object-storage.js");
@@ -1343,8 +1344,132 @@ test(
         assert.equal(mapping.version, 1);
         expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/mappings/${mapping.id}`, outsider.cookie), 404);
         assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } })).status, "AWAITING_MAPPING");
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/activate`, outsider.cookie, { mappingId: mapping.id, mode: "REPLACE_DATASET" }), 404);
+        const activation = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/activate`, owner.cookie, { mappingId: mapping.id, mode: "REPLACE_DATASET" }), 202);
+        assert.equal(activation.status, "READY_TO_ACTIVATE");
+        const materializationWorker = new NorthDatasetImportMaterializationWorker("materialization-worker", {
+          async materialize(input: { columns: Array<{ fieldId: string }>; signal: AbortSignal }) {
+            assert.equal(input.signal.aborted, false);
+            const revenueId = input.columns[0]!.fieldId;
+            return { parserVersion: "test-parser", rows: [{ [revenueId]: "10.5" }, { [revenueId]: "20" }] };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 });
+        assert.equal(await materializationWorker.runOnce(), "SUCCEEDED");
+        const activatedDataset = await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } });
+        assert.ok(activatedDataset.activeRevisionId);
+        assert.ok(activatedDataset.currentSchemaVersionId);
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: approvedJob.id } })).status, "SUCCEEDED");
+        const rowsResult = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "ROWS", fields: [mappedField.id], limit: 10,
+        }), 200);
+        assert.deepEqual(rowsResult.columns, [{ key: mappedField.id, fieldId: mappedField.id, type: "DECIMAL" }]);
+        assert.deepEqual(rowsResult.rows.map((row: Record<string, string>) => row[mappedField.id]), ["10.5", "20"]);
+        const filteredRows = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "ROWS", fields: [mappedField.id], filters: [{ fieldId: mappedField.id, operator: "GTE", value: "15" }], limit: 10,
+        }), 200);
+        assert.deepEqual(filteredRows.rows.map((row: Record<string, string>) => row[mappedField.id]), ["20"]);
+        const aggregateResult = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "AGGREGATE", measures: [{ operation: "SUM", fieldId: mappedField.id, alias: "total_revenue" }],
+        }), 200);
+        assert.equal(aggregateResult.rows[0].total_revenue, "30.5");
+        expect(await call("POST", `/v1/organizations/${secondOrg}/datasets/${dataset.id}/query`, joiner.cookie, { mode: "ROWS", fields: [mappedField.id] }), 404);
+        const invalidQuery = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, { mode: "ROWS", fields: [randomUUID()] });
+        assert.equal(invalidQuery.statusCode, 422);
+        assert.equal(invalidQuery.json().error.code, "DATASET_QUERY_FIELD_INVALID");
+
+        const retryJob = await prepareWorkerJob("materialization-retry-atomic");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const retryMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${retryJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [
+            { sourceOrdinal: 0, action: "CREATE", key: "retry_value", displayName: { en: "Retry value" }, canonicalType: "INTEGER", nullable: false },
+            { sourceOrdinal: 1, action: "IGNORE" },
+          ],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${retryJob.id}/activate`, owner.cookie, { mappingId: retryMapping.id, mode: "REPLACE_DATASET" }), 202);
+        let materializationCalls = 0;
+        const retryWorker = new NorthDatasetImportMaterializationWorker("retry-materialization-worker", {
+          async materialize(input: { columns: Array<{ fieldId: string }> }) {
+            materializationCalls += 1;
+            if (materializationCalls === 1) throw new Error("transient parser outage");
+            return { parserVersion: "test-parser", rows: [{ [input.columns[0]!.fieldId]: 7 }] };
+          },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 1 });
+        const activeBeforeRetry = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
+        assert.equal(await retryWorker.runOnce(), "READY_TO_ACTIVATE");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: retryJob.id } }), null);
+        assert.equal(await prisma.northDatasetField.findUnique({ where: { datasetId_key: { datasetId: dataset.id, key: "retry_value" } } }), null);
+        assert.equal((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeRetry);
+        await prisma.northDatasetImportJob.update({ where: { id: retryJob.id }, data: { availableAt: new Date(Date.now() - 1_000) } });
+        assert.equal(await retryWorker.runOnce(), "SUCCEEDED");
+        assert.notEqual((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeRetry);
+        const retryField = await prisma.northDatasetField.findUniqueOrThrow({ where: { datasetId_key: { datasetId: dataset.id, key: "retry_value" } } });
+
+        const missingRequiredJob = await prepareWorkerJob("materialization-missing-required");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const missingRequiredMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${missingRequiredJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "IGNORE" }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${missingRequiredJob.id}/activate`, owner.cookie, { mappingId: missingRequiredMapping.id, mode: "REPLACE_DATASET" }), 202);
+        const activeBeforeMissingRequired = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
+        assert.equal(await materializationWorker.runOnce(), "FAILED");
+        const missingRequiredAfter = await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: missingRequiredJob.id } });
+        assert.equal(missingRequiredAfter.lastErrorCode, "IMPORT_REQUIRED_FIELD_MISSING");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: missingRequiredJob.id } }), null);
+        assert.equal((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeMissingRequired);
+
+        const cancelReadyJob = await prepareWorkerJob("materialization-cancel-ready");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const cancelMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelReadyJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "MAP", fieldId: retryField.id }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelReadyJob.id}/activate`, owner.cookie, { mappingId: cancelMapping.id, mode: "REPLACE_DATASET" }), 202);
+        assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelReadyJob.id}/cancel`, owner.cookie), 200).status, "CANCELLED");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: cancelReadyJob.id } }), null);
+
+        const crashedCancellationJob = await prepareWorkerJob("materialization-expired-cancel");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const crashedCancellationMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${crashedCancellationJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "IGNORE" }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${crashedCancellationJob.id}/activate`, owner.cookie, { mappingId: crashedCancellationMapping.id, mode: "REPLACE_DATASET" }), 202);
+        const expiredMaterializationLease = new Date(Date.now() - 60_000);
+        await prisma.northDatasetImportJob.update({ where: { id: crashedCancellationJob.id }, data: {
+          status: "CANCEL_REQUESTED", cancellationRequestedAt: new Date(Date.now() - 120_000), claimedAt: new Date(Date.now() - 120_000),
+          claimExpiresAt: expiredMaterializationLease, claimedBy: "crashed-materializer", claimToken: randomUUID(),
+        } });
+        assert.equal(await materializationWorker.runOnce(), "CANCELLED");
+        assert.equal((await prisma.northDatasetImportJob.findUniqueOrThrow({ where: { id: crashedCancellationJob.id } })).status, "CANCELLED");
+
+        const expiredPublishJob = await prepareWorkerJob("materialization-expired-publish-lease");
+        assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
+        assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
+        const expiredPublishMapping = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${expiredPublishJob.id}/mappings`, owner.cookie, {
+          sheetOrdinal: 0, headerRow: 1,
+          columns: [{ sourceOrdinal: 0, action: "MAP", fieldId: mappedField.id }, { sourceOrdinal: 1, action: "MAP", fieldId: retryField.id }],
+        }), 201);
+        expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${expiredPublishJob.id}/activate`, owner.cookie, { mappingId: expiredPublishMapping.id, mode: "REPLACE_DATASET" }), 202);
+        const activeBeforeExpiredPublish = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
+        const baseLeaseTime = Date.now();
+        let clockCalls = 0;
+        const expiringClock = () => new Date(baseLeaseTime + (++clockCalls >= 4 ? 31_000 : 0));
+        const expiringWorker = new NorthDatasetImportMaterializationWorker("expiring-materialization-worker", {
+          async materialize() { return { parserVersion: "test-parser", rows: [{ [mappedField.id]: "99", [retryField.id]: 1 }] }; },
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 }, expiringClock);
+        assert.equal(await expiringWorker.runOnce(), "LEASE_LOST");
+        assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: expiredPublishJob.id } }), null);
+        assert.equal((await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId, activeBeforeExpiredPublish);
         await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetImportAnalysis"'));
         await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetImportMappingVersion"'));
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetRow"'));
+        await assert.rejects(prisma.$executeRawUnsafe('TRUNCATE TABLE "NorthDatasetRevision"'));
         assert.ok(await prisma.northDatasetImportAnalysis.findUnique({ where: { importId: approvedJob.id } }));
         assert.ok(await prisma.northDatasetImportMappingVersion.findUnique({ where: { id: mapping.id } }));
 
@@ -1525,7 +1650,7 @@ test(
             { fieldId: containers.id, ordinal: 1 },
           ],
         }), 201);
-        assert.equal(schema.version, 1);
+        assert.equal(schema.version, 3);
         assert.deepEqual(schema.fields.map((field: { datasetFieldId: string }) => field.datasetFieldId), [arrival.id, containers.id]);
 
         expect(await call("PATCH", `/v1/organizations/${organizationId}/datasets/${dataset.id}/fields/${containers.id}`, owner.cookie, {

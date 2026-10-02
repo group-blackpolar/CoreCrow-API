@@ -8,6 +8,8 @@ import { SheetJsDatasetImportAnalyzer, type DatasetImportAnalyzer } from "./impo
 import type { ObjectStorage } from "../../../infrastructure/object-storage.js";
 import type { DatasetImportMalwareScanner } from "./import-malware-scanner.js";
 import type { DatasetImportArchiveValidator } from "./import-archive-validator.js";
+import { NorthDatasetImportMaterializationWorker } from "./import-materialization-worker.js";
+import { SheetJsDatasetImportMaterializer, type DatasetImportMaterializer } from "./import-materialization-parser.js";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -31,6 +33,7 @@ export type DatasetImportWorkerRuntimeDependencies = {
   scanner?: DatasetImportMalwareScanner;
   archiveValidator?: DatasetImportArchiveValidator;
   analyzer?: DatasetImportAnalyzer;
+  materializer?: DatasetImportMaterializer;
 };
 
 function configurationError(name: string, reason: string): never {
@@ -148,10 +151,17 @@ export async function createDatasetImportWorkerRuntime(
     dependencies.analyzer ?? new SheetJsDatasetImportAnalyzer(storage),
     { leaseMilliseconds: configuration.worker.leaseMilliseconds, heartbeatMilliseconds: configuration.worker.heartbeatMilliseconds, retryDelayMilliseconds: configuration.worker.retryDelayMilliseconds },
   );
+  const materialization = new NorthDatasetImportMaterializationWorker(
+    configuration.workerId,
+    dependencies.materializer ?? new SheetJsDatasetImportMaterializer(storage),
+    { leaseMilliseconds: configuration.worker.leaseMilliseconds, heartbeatMilliseconds: configuration.worker.heartbeatMilliseconds, retryDelayMilliseconds: configuration.worker.retryDelayMilliseconds },
+  );
   return {
     async runOnce() {
       const result = await security.runOnce();
-      return result === "IDLE" ? analysis.runOnce() : result;
+      if (result !== "IDLE") return result;
+      const analysisResult = await analysis.runOnce();
+      return analysisResult === "IDLE" ? materialization.runOnce() : analysisResult;
     },
   } satisfies DatasetImportWorkerRunner;
 }

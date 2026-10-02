@@ -38,6 +38,8 @@ import { authorize } from "../modules/authorization/service.js";
 import { northData } from "../modules/north/data/service.js";
 import { northDatasetImports } from "../modules/north/data/import-service.js";
 import { northDatasetImportAnalysis } from "../modules/north/data/import-analysis-service.js";
+import { northDatasetImportActivation } from "../modules/north/data/import-activation-service.js";
+import { northDatasetQuery } from "../modules/north/data/query-service.js";
 
 export async function v1Routes(app: FastifyInstance) {
   const key = z.object({
@@ -83,6 +85,24 @@ export async function v1Routes(app: FastifyInstance) {
     headerRow: z.literal(1),
     columns: z.array(s.northDatasetImportMappingColumn).min(1).max(150),
   }).strict();
+  const datasetQueryFilter = z.object({
+    fieldId: s.id,
+    operator: z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"]),
+    value: s.northDatasetQueryScalar,
+  }).strict();
+  const datasetQuery = z.discriminatedUnion("mode", [
+    z.object({
+      mode: z.literal("ROWS"), fields: z.array(s.id).min(1).max(20),
+      filters: z.array(datasetQueryFilter).max(10).optional(),
+      orderBy: z.array(z.object({ fieldId: s.id, direction: z.enum(["ASC", "DESC"]) }).strict()).max(3).optional(),
+      limit: z.number().int().min(1).max(200).optional(), offset: z.number().int().min(0).max(1000).optional(),
+    }).strict(),
+    z.object({
+      mode: z.literal("AGGREGATE"), groupBy: z.array(s.id).max(2).optional(),
+      measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: s.id.optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(8),
+      filters: z.array(datasetQueryFilter).max(10).optional(), limit: z.number().int().min(1).max(100).optional(),
+    }).strict(),
+  ]);
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
     summary: "List up to 100 datasets authorized for the active membership", params: s.orgParams,
@@ -239,6 +259,18 @@ export async function v1Routes(app: FastifyInstance) {
     summary: "Read one immutable authorized mapping version", params: datasetImportMappingParams,
     response: s.northDatasetImportMapping,
     run: ({ user, params }) => northDatasetImportAnalysis.readMapping(user.id, params.organizationId, params.datasetId, params.importId, params.mappingId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/activate", tag: "NORTH data imports",
+    summary: "Queue asynchronous immutable REPLACE_DATASET materialization and atomic activation", params: datasetImportParams,
+    body: z.object({ mappingId: s.id, mode: z.literal("REPLACE_DATASET") }).strict(), response: s.northDatasetImport, status: 202,
+    run: ({ user, params, body }) => northDatasetImportActivation.activate(user.id, params.organizationId, params.datasetId, params.importId, body.mappingId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/query", tag: "NORTH data queries",
+    summary: "Execute a bounded tenant-authorized query against the active immutable revision", params: datasetParams,
+    body: datasetQuery, response: s.northDatasetQueryResult, rateLimit: 30,
+    run: ({ user, params, body }) => northDatasetQuery.execute(user.id, params.organizationId, params.datasetId, body),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",

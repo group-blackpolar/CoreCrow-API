@@ -4751,6 +4751,560 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/organizations/{organizationId}/datasets/{datasetId}/imports/{importId}/activate:
+    post:
+      summary: Queue asynchronous immutable REPLACE_DATASET materialization and atomic
+        activation
+      tags:
+        - NORTH data imports
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mappingId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                mode:
+                  type: string
+                  enum:
+                    - REPLACE_DATASET
+              required:
+                - mappingId
+                - mode
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: datasetId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: importId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "202":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  datasetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  requestedBy:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  filename:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                  mime:
+                    type: string
+                  size:
+                    type: integer
+                    minimum: 1
+                  checksum:
+                    type: string
+                    pattern: ^[0-9a-f]{64}$
+                  status:
+                    type: string
+                    enum:
+                      - AWAITING_UPLOAD
+                      - SECURITY_PENDING
+                      - SECURITY_BLOCKED
+                      - SECURITY_APPROVED
+                      - ANALYZING
+                      - ANALYSIS_BLOCKED
+                      - AWAITING_MAPPING
+                      - READY_TO_ACTIVATE
+                      - ACTIVATING
+                      - SUCCEEDED
+                      - CANCEL_REQUESTED
+                      - CANCELLED
+                      - REJECTED
+                      - FAILED
+                  scanStatus:
+                    type: string
+                    enum:
+                      - PENDING
+                      - SCANNING
+                      - APPROVED
+                      - REJECTED
+                      - QUARANTINED
+                      - UNAVAILABLE
+                  progress:
+                    type: integer
+                    minimum: 0
+                    maximum: 100
+                  attempts:
+                    type: integer
+                    minimum: 0
+                  maxAttempts:
+                    type: integer
+                    minimum: 1
+                  confirmedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  securityApprovedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  cancellationRequestedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  cancelledAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  completedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  errorCode:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - organizationId
+                  - datasetId
+                  - requestedBy
+                  - filename
+                  - mime
+                  - size
+                  - checksum
+                  - status
+                  - scanStatus
+                  - progress
+                  - attempts
+                  - maxAttempts
+                  - confirmedAt
+                  - securityApprovedAt
+                  - cancellationRequestedAt
+                  - cancelledAt
+                  - completedAt
+                  - errorCode
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/datasets/{datasetId}/query:
+    post:
+      summary: Execute a bounded tenant-authorized query against the active immutable
+        revision
+      tags:
+        - NORTH data queries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - type: object
+                  properties:
+                    mode:
+                      type: string
+                      enum:
+                        - ROWS
+                    fields:
+                      type: array
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      minItems: 1
+                      maxItems: 20
+                    filters:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          fieldId:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          operator:
+                            type: string
+                            enum:
+                              - EQ
+                              - NE
+                              - GT
+                              - GTE
+                              - LT
+                              - LTE
+                              - CONTAINS
+                          value:
+                            anyOf:
+                              - type: string
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                        required:
+                          - fieldId
+                          - operator
+                          - value
+                        additionalProperties: false
+                      maxItems: 10
+                    orderBy:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          fieldId:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          direction:
+                            type: string
+                            enum:
+                              - ASC
+                              - DESC
+                        required:
+                          - fieldId
+                          - direction
+                        additionalProperties: false
+                      maxItems: 3
+                    limit:
+                      type: integer
+                      minimum: 1
+                      maximum: 200
+                    offset:
+                      type: integer
+                      minimum: 0
+                      maximum: 1000
+                  required:
+                    - mode
+                    - fields
+                  additionalProperties: false
+                - type: object
+                  properties:
+                    mode:
+                      type: string
+                      enum:
+                        - AGGREGATE
+                    groupBy:
+                      type: array
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      maxItems: 2
+                    measures:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          operation:
+                            type: string
+                            enum:
+                              - COUNT
+                              - COUNT_DISTINCT
+                              - SUM
+                              - AVG
+                              - MIN
+                              - MAX
+                          fieldId:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          alias:
+                            type: string
+                            pattern: ^[a-z][a-z0-9_]{0,63}$
+                        required:
+                          - operation
+                          - alias
+                        additionalProperties: false
+                      minItems: 1
+                      maxItems: 8
+                    filters:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          fieldId:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          operator:
+                            type: string
+                            enum:
+                              - EQ
+                              - NE
+                              - GT
+                              - GTE
+                              - LT
+                              - LTE
+                              - CONTAINS
+                          value:
+                            anyOf:
+                              - type: string
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                        required:
+                          - fieldId
+                          - operator
+                          - value
+                        additionalProperties: false
+                      maxItems: 10
+                    limit:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                  required:
+                    - mode
+                    - measures
+                  additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: datasetId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - ROWS
+                      - AGGREGATE
+                  datasetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  activeRevisionId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  schemaVersionId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  columns:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        fieldId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        type:
+                          type: string
+                          enum:
+                            - TEXT
+                            - INTEGER
+                            - DECIMAL
+                            - BOOLEAN
+                            - DATE
+                            - DATETIME
+                            - TIME
+                      required:
+                        - key
+                        - type
+                      additionalProperties: false
+                    maxItems: 20
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties:
+                        anyOf:
+                          - type: string
+                            nullable: true
+                          - type: number
+                          - type: boolean
+                    maxItems: 200
+                  rowCount:
+                    type: integer
+                    minimum: 0
+                    maximum: 200
+                  executedAt:
+                    type: string
+                    format: date-time
+                required:
+                  - mode
+                  - datasetId
+                  - activeRevisionId
+                  - schemaVersionId
+                  - columns
+                  - rows
+                  - rowCount
+                  - executedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/assets/uploads:
     post:
       summary: Reserve quota and request a checksum-bound signed asset upload
