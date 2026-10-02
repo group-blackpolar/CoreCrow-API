@@ -3,6 +3,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Production operation
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - audit-dataset-infrastructure
 permissions:
   contents: read
 concurrency:
@@ -10,8 +19,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy'
     uses: ./.github/workflows/check.yml
   deploy:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy'
     needs: verify
     runs-on: ubuntu-latest
     steps:
@@ -36,3 +47,38 @@ jobs:
             cd /var/www/releases/corecrow-${{ github.sha }}
             tar -xzf corecrow-source.tar.gz
             bash scripts/deploy-vps.sh '${{ github.sha }}'
+  audit-dataset-infrastructure:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'audit-dataset-infrastructure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -eu
+            runtime=/etc/blackpolar/corecrow.env
+            sudo -n test -f "$runtime"
+            echo "cpu_count=$(nproc)"
+            free -m | awk '/^Mem:/ { print "memory_total_mib=" $2; print "memory_available_mib=" $7 }'
+            df -Pm /var/lib/docker | awk 'NR == 2 { print "docker_disk_available_mib=" $4 }'
+            for name in corecrow-v1 corecrow-db corecrow-dataset-worker corecrow-minio corecrow-clamav; do
+              if sudo -n docker container inspect "$name" >/dev/null 2>&1; then
+                state="$(sudo -n docker inspect -f '{{.State.Status}}' "$name")"
+                echo "container_${name}=${state}"
+              else
+                echo "container_${name}=missing"
+              fi
+            done
+            for key in NORTH_DATA_IMPORT_S3_BUCKET NORTH_DATA_IMPORT_S3_REGION NORTH_DATA_IMPORT_S3_ENDPOINT NORTH_DATA_IMPORT_S3_FORCE_PATH_STYLE NORTH_DATA_IMPORT_CLAMAV_SOCKET NORTH_DATA_IMPORT_CLAMAV_HOST NORTH_DATA_IMPORT_CLAMAV_PORT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+              sudo -n awk -F= -v key="$key" '
+                $1 == key {
+                  value = substr($0, index($0, "=") + 1)
+                  gsub(/^[[:space:]\047\"]+|[[:space:]\047\"]+$/, "", value)
+                  present = length(value) > 0
+                }
+                END { print "env_" key "=" (present ? "present" : "missing") }
+              ' "$runtime"
+            done
