@@ -77,7 +77,15 @@ fails closed.
 
 Production must provide the `NORTH_DATA_IMPORT_*` variables documented in
 `.env.example` plus AWS SDK credentials scoped to the import bucket. The bucket
-must have versioning enabled before deployment. `scripts/deploy-vps.sh` starts a
-candidate worker before replacing the active API and keeps the previous worker
-available for rollback. ClamAV itself is host infrastructure and must already be
-healthy on the private Docker network at the configured endpoint.
+must have versioning enabled before deployment. The worker is opt-in: set
+`NORTH_DATA_IMPORT_WORKER_ENABLED=true` only after storage and ClamAV have both
+been configured and verified. With the default `false`, API releases deploy
+without the worker and the normal upload/import path continues to fail closed.
+When enabled, `scripts/deploy-vps.sh` starts a candidate worker before replacing
+the active API and keeps the previous worker available for rollback.
+
+The `seed-master-house-demo` production workflow is a bounded administrative
+exception for the presentation fixture committed in `src/fixtures`. It creates
+an isolated organization, records the seed and accepted no-scan risk in the
+audit log, and is idempotent. It does not expose an upload endpoint, does not
+start the import worker, and must not be reused for arbitrary tenant files.

@@ -14,6 +14,8 @@
     "test:watch": "tsx --test --watch tests/*.test.ts",
     "test:unit": "tsx --test tests/policy.test.ts",
     "create-admin": "tsx scripts/create-admin.ts",
+    "seed:tenant-demo": "tsx src/seed-tenant-demo.ts",
+    "validate:tenant-demo": "tsx src/seed-tenant-demo.ts --validate-only",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",

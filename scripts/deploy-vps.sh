@@ -14,8 +14,13 @@ sudo -n sh -c 'umask 077; docker exec corecrow-db pg_dump -U blackpolar -d black
 sudo -n docker run --rm --network corecrow-api_default --env-file "$runtime" "$image" node node_modules/prisma/build/index.js migrate deploy
 candidate="corecrow-check-$version"
 worker_candidate="corecrow-dataset-worker-check-$version"
+worker_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_DATA_IMPORT_WORKER_ENABLED === "true" ? "true" : "false")')"
 sudo -n docker run -d --name "$candidate" --network corecrow-api_default --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
-trap 'sudo -n docker rm -f "$candidate" "$worker_candidate" >/dev/null 2>&1 || true' EXIT
+cleanup() {
+  sudo -n docker rm -f "$candidate" >/dev/null 2>&1 || true
+  if [[ -n "$worker_candidate" ]]; then sudo -n docker rm -f "$worker_candidate" >/dev/null 2>&1 || true; fi
+}
+trap cleanup EXIT
 ready=false
 for attempt in {1..20}; do
   if curl --fail --silent --max-time 3 http://127.0.0.1:4101/v1/live >/dev/null; then ready=true; break; fi
@@ -23,18 +28,22 @@ for attempt in {1..20}; do
 done
 "$ready" || { echo 'Candidate failed liveness; current API remains running'; exit 1; }
 curl --silent --max-time 10 http://127.0.0.1:4101/v1/health | python3 -c 'import sys,json; s=json.load(sys.stdin); assert all(m["status"]=="available" for m in s["modules"])'
-sudo -n docker run -d --name "$worker_candidate" --network corecrow-api_default --env-file "$runtime" "$image" node dist/dataset-import-worker.js >/dev/null
-worker_ready=false
-for attempt in {1..10}; do
-  if [[ "$(sudo -n docker inspect -f '{{.State.Running}}' "$worker_candidate" 2>/dev/null || true)" == "true" ]]; then
-    worker_ready=true
+if [[ "$worker_enabled" == "true" ]]; then
+  sudo -n docker run -d --name "$worker_candidate" --network corecrow-api_default --env-file "$runtime" "$image" node dist/dataset-import-worker.js >/dev/null
+  worker_ready=false
+  for attempt in {1..10}; do
+    if [[ "$(sudo -n docker inspect -f '{{.State.Running}}' "$worker_candidate" 2>/dev/null || true)" == "true" ]]; then
+      worker_ready=true
+      sleep 2
+      [[ "$(sudo -n docker inspect -f '{{.State.Running}}' "$worker_candidate" 2>/dev/null || true)" == "true" ]] && break
+      worker_ready=false
+    fi
     sleep 2
-    [[ "$(sudo -n docker inspect -f '{{.State.Running}}' "$worker_candidate" 2>/dev/null || true)" == "true" ]] && break
-    worker_ready=false
-  fi
-  sleep 2
-done
-"$worker_ready" || { sudo -n docker logs "$worker_candidate" >&2 || true; echo 'Candidate dataset worker failed; current release remains running'; exit 1; }
+  done
+  "$worker_ready" || { sudo -n docker logs "$worker_candidate" >&2 || true; echo 'Candidate dataset worker failed; current release remains running'; exit 1; }
+else
+  worker_candidate=""
+fi
 previous="corecrow-rollback-$version"
 worker_previous="corecrow-dataset-worker-rollback-$version"
 had_previous=false
@@ -47,21 +56,29 @@ fi
 if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --network corecrow-api_default --env-file "$runtime" -p 127.0.0.1:4100:4000 "$image" >/dev/null; then
   for attempt in {1..20}; do
     if curl --fail --silent --max-time 3 http://127.0.0.1:4100/v1/live >/dev/null; then
+      if [[ "$worker_enabled" == "true" ]]; then
+        if sudo -n docker container inspect corecrow-dataset-worker >/dev/null 2>&1; then
+          had_worker_previous=true
+          sudo -n docker stop corecrow-dataset-worker >/dev/null
+          sudo -n docker rename corecrow-dataset-worker "$worker_previous"
+        fi
+        sudo -n docker update --restart unless-stopped "$worker_candidate" >/dev/null
+        if sudo -n docker rename "$worker_candidate" corecrow-dataset-worker; then
+          echo "CoreCrow $version and dataset worker running; previous containers and database backup retained"
+          exit 0
+        fi
+        if "$had_worker_previous"; then
+          sudo -n docker rename "$worker_previous" corecrow-dataset-worker
+          sudo -n docker start corecrow-dataset-worker >/dev/null
+        fi
+        break
+      fi
       if sudo -n docker container inspect corecrow-dataset-worker >/dev/null 2>&1; then
-        had_worker_previous=true
         sudo -n docker stop corecrow-dataset-worker >/dev/null
         sudo -n docker rename corecrow-dataset-worker "$worker_previous"
       fi
-      sudo -n docker update --restart unless-stopped "$worker_candidate" >/dev/null
-      if sudo -n docker rename "$worker_candidate" corecrow-dataset-worker; then
-        echo "CoreCrow $version and dataset worker running; previous containers and database backup retained"
-        exit 0
-      fi
-      if "$had_worker_previous"; then
-        sudo -n docker rename "$worker_previous" corecrow-dataset-worker
-        sudo -n docker start corecrow-dataset-worker >/dev/null
-      fi
-      break
+      echo "CoreCrow $version running; dataset worker disabled; previous containers and database backup retained"
+      exit 0
     fi
     sleep 2
   done
