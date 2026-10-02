@@ -9695,6 +9695,69 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 128
+                    },
+                    "filterDefinitions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fieldId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "key": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                          },
+                          "displayName": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            }
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "INTEGER",
+                              "DECIMAL",
+                              "BOOLEAN",
+                              "DATE",
+                              "DATETIME",
+                              "TIME"
+                            ]
+                          },
+                          "operators": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "EQ",
+                                "NE",
+                                "GT",
+                                "GTE",
+                                "LT",
+                                "LTE",
+                                "CONTAINS"
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 7
+                          }
+                        },
+                        "required": [
+                          "fieldId",
+                          "key",
+                          "displayName",
+                          "type",
+                          "operators"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10
                     }
                   },
                   "required": [
@@ -9706,7 +9769,8 @@
                     "rows",
                     "rowCount",
                     "executedAt",
-                    "bindingId"
+                    "bindingId",
+                    "filterDefinitions"
                   ],
                   "additionalProperties": false
                 }

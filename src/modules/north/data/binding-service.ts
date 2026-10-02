@@ -113,7 +113,20 @@ export const northAnalyticsBindings = {
         fail(422, "BINDING_FILTER_NOT_ALLOWED", "A runtime filter is not allowed by this binding");
       const effective = { ...query, filters: [...(query.filters ?? []), ...runtimeFilters] } as DatasetQuery;
       if ((effective.filters?.length ?? 0) > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
-      return { bindingId, ...(await executeDatasetQuery(tx, organizationId, binding.datasetId, effective)) };
+      const result = await executeDatasetQuery(tx, organizationId, binding.datasetId, effective);
+      const definitions = allowed.length
+        ? await tx.northDatasetField.findMany({
+          where: { organizationId, datasetId: binding.datasetId, id: { in: allowed.map((item) => item.fieldId) } },
+          select: { id: true, key: true, displayName: true, canonicalType: true },
+        })
+        : [];
+      const byId = new Map(definitions.map((field) => [field.id, field]));
+      const filterDefinitions = allowed.map((policy) => {
+        const field = byId.get(policy.fieldId);
+        if (!field) fail(422, "BINDING_FILTER_INVALID", "An allowed filter field no longer exists");
+        return { fieldId: field.id, key: field.key, displayName: field.displayName, type: field.canonicalType, operators: policy.operators };
+      });
+      return { bindingId, filterDefinitions, ...result };
     });
   },
 };

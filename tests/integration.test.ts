@@ -1406,6 +1406,13 @@ test(
         }), 200);
         assert.equal(bindingResult.bindingId, analyticsBinding.id);
         assert.equal(bindingResult.rows[0].total_revenue, "20");
+        assert.deepEqual(bindingResult.filterDefinitions, [{
+          fieldId: mappedField.id,
+          key: mappedField.key,
+          displayName: mappedField.displayName,
+          type: mappedField.canonicalType,
+          operators: ["GTE"],
+        }]);
         const driftDataset = expect(await call("POST", `/v1/organizations/${organizationId}/datasets`, owner.cookie, {
           name: { en: "Binding drift guard" }, slug: "binding-drift-guard",
         }), 201);

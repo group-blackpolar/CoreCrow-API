@@ -284,7 +284,17 @@ export const northAnalyticsBinding = z.object({
   createdAt: date,
   updatedAt: date,
 });
-export const northAnalyticsBindingResult = northDatasetQueryResult.extend({ bindingId: id });
+export const northAnalyticsBindingFilterDefinition = z.object({
+  fieldId: id,
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+  displayName: localizedText,
+  type: northDatasetFieldType,
+  operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+}).strict();
+export const northAnalyticsBindingResult = northDatasetQueryResult.extend({
+  bindingId: id,
+  filterDefinitions: z.array(northAnalyticsBindingFilterDefinition).max(10),
+});
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({
   id,
