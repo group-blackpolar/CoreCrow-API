@@ -12,7 +12,7 @@ import {
 import { healthService } from "../src/modules/health/service.js";
 import { healthPage } from "../src/modules/health/page.js";
 import { RequestTelemetry } from "../src/modules/telemetry/service.js";
-import { validateNorthPanelDocument } from "../src/modules/north/content-schema.js";
+import { northComponentRegistry, validateNorthPanelDocument } from "../src/modules/north/content-schema.js";
 import { DomainError } from "../src/shared/errors.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "../src/modules/north/asset-policy.js";
 import { FakeObjectStorage, S3ObjectStorage } from "../src/modules/north/object-storage.js";
@@ -367,7 +367,10 @@ const componentProps: Record<string, Record<string, unknown>> = {
   table: { columns: [{ key: "value", label: text }], rows: [{ value: 1 }] },
   card: { title: text, body: text, variant: "muted" },
   list: { items: [{ id: "item-1", text }] },
-  metric: { label: text, format: "number" },
+  metric: { label: text, value: 42, fieldKey: "total_containers", format: "number" },
+  bar_chart: { title: text, categoryKey: "arrival_date", series: [{ key: "total_containers", label: text, color: "#0EA5E9" }], height: 320, horizontal: false, variant: "grouped" },
+  line_chart: { title: text, categoryKey: "arrival_date", series: [{ key: "total_containers", label: text }], height: 280, variant: "area" },
+  donut_chart: { title: text, categoryKey: "origin_country", valueKey: "total_containers", color: "#14B8A6CC", height: 260, variant: "donut" },
   divider: { variant: "solid", spacing: "md" },
   embed: { url: "https://www.youtube.com/embed/demo", title: text, aspectRatio: "16:9" },
 };
@@ -404,7 +407,23 @@ test("TASK 8 component registry validates a complete safe catalog document", asy
     validateAssetReference: async () => true,
     validateBindingReference: async () => true,
   });
-  assert.equal(result.sections[0]!.components.length, 12);
+  assert.equal(result.sections[0]!.components.length, 15);
+});
+
+test("analytics component schemas accept bounded explicit result keys and preserve static metrics", () => {
+  assert.equal(northComponentRegistry["metric@1"]!.validate({ label: text, value: "6,632" }).success, true);
+  assert.equal(northComponentRegistry["metric@1"]!.validate({ label: text, fieldKey: "row_count" }).success, true);
+  assert.equal(northComponentRegistry["bar_chart@1"]!.validate(componentProps.bar_chart).success, true);
+  assert.equal(northComponentRegistry["line_chart@1"]!.validate(componentProps.line_chart).success, true);
+  assert.equal(northComponentRegistry["donut_chart@1"]!.validate(componentProps.donut_chart).success, true);
+});
+
+test("analytics component schemas reject unsafe colors, unknown props and unbounded configuration", () => {
+  assert.equal(northComponentRegistry["bar_chart@1"]!.validate({ categoryKey: "day", series: [{ key: "total", label: text, color: "red; background:url(javascript:alert(1))" }] }).success, false);
+  assert.equal(northComponentRegistry["line_chart@1"]!.validate({ categoryKey: "day", series: [], height: 159 }).success, false);
+  assert.equal(northComponentRegistry["donut_chart@1"]!.validate({ categoryKey: "country", valueKey: "total", height: 801 }).success, false);
+  assert.equal(northComponentRegistry["donut_chart@1"]!.validate({ categoryKey: "country", valueKey: "total", query: "select *" }).success, false);
+  assert.equal(northComponentRegistry["metric@1"]!.validate({ label: text, fieldKey: "../unsafe" }).success, false);
 });
 
 test("TASK 8 content validation fails closed for schemas, executable text, grid, embed, binding and assets", async () => {
@@ -418,7 +437,7 @@ test("TASK 8 content validation fails closed for schemas, executable text, grid,
   await expectContentError(executable, "CONTENT_EXECUTABLE_NOT_ALLOWED");
   const layout = structuredClone(fullDocument); layout.sections[0]!.components[0]!.layout.desktop = { x: 10, y: 0, w: 4, h: 1 };
   await expectContentError(layout, "PANEL_DOCUMENT_INVALID");
-  const embed = structuredClone(fullDocument); embed.sections[0]!.components[11]!.props.url = "https://unknown-site.example/embed/demo";
+  const embed = structuredClone(fullDocument); embed.sections[0]!.components[14]!.props.url = "https://unknown-site.example/embed/demo";
   await expectContentError(embed, "EMBED_DOMAIN_NOT_ALLOWED");
   const binding = structuredClone(fullDocument); binding.sections[0]!.components[9]!.bindings = { value: { sourceType: "metric", sourceId: "safe", sql: "select 1" } } as never;
   await expectContentError(binding, "PANEL_DOCUMENT_INVALID");
