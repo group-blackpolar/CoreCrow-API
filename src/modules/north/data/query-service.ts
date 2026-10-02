@@ -102,6 +102,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       }
       const groups = query.groupBy ?? [];
       const groupExpressions = groups.map((id) => typed(fields.get(id)!));
+      const groupPositions = groups.map((_, index) => Prisma.raw(String(index + 1)));
       const selects: Prisma.Sql[] = groupExpressions.map((expression, index) => Prisma.sql`${expression} AS ${Prisma.raw(`"g${index}"`)}`);
       for (const [index, measure] of query.measures.entries()) {
         const alias = Prisma.raw(`"m${index}"`);
@@ -117,12 +118,18 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         }
       }
       const limit = query.limit ?? 100;
+      const outputAliases = new Map<string, string>([
+        ...groups.map((key, index) => [key, `"g${index}"`] as [string, string]),
+        ...query.measures.map((measure, index) => [measure.alias, `"m${index}"`] as [string, string]),
+      ]);
+      const ordering = (query.orderBy ?? []).map((item) => Prisma.sql`${Prisma.raw(outputAliases.get(item.key)!)} ${Prisma.raw(item.direction)}`);
       const rawRows = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
         SELECT ${Prisma.join(selects)}
         FROM "NorthDatasetRevisionBatch" rb
         JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
         WHERE ${where}
-        ${groupExpressions.length ? Prisma.sql`GROUP BY ${Prisma.join(groupExpressions)}` : Prisma.empty}
+        ${groupPositions.length ? Prisma.sql`GROUP BY ${Prisma.join(groupPositions)}` : Prisma.empty}
+        ${ordering.length ? Prisma.sql`ORDER BY ${Prisma.join(ordering)}` : Prisma.empty}
         LIMIT ${limit}`);
       const columns: ResultColumn[] = [
         ...groups.map((fieldId) => ({ key: fieldId, fieldId, type: fields.get(fieldId)!.canonicalType })),

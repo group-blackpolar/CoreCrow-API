@@ -17,7 +17,9 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(2).optional(),
     measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: queryFieldId.optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(8),
-    filters: z.array(datasetQueryFilter).max(10).optional(), limit: z.number().int().min(1).max(100).optional(),
+    filters: z.array(datasetQueryFilter).max(10).optional(),
+    orderBy: z.array(z.object({ key: queryFieldId, direction: z.enum(["ASC", "DESC"]) }).strict()).max(3).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
   }).strict(),
 ]).superRefine((value, context) => {
   if (value.mode === "ROWS") {
@@ -34,6 +36,12 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
   const aliases = value.measures.map((item) => item.alias);
   if (new Set(aliases).size !== aliases.length)
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["measures"], message: "Measure aliases must be unique" });
+  const outputKeys = new Set([...groups, ...aliases]);
+  const orderKeys = (value.orderBy ?? []).map((item) => item.key);
+  if (new Set(orderKeys).size !== orderKeys.length)
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["orderBy"], message: "Ordered output keys must be unique" });
+  if (orderKeys.some((key) => !outputKeys.has(key)))
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["orderBy"], message: "Aggregate ordering must reference a group or measure output" });
 });
 export const allowedBindingFilterSchema = z.object({
   fieldId: queryFieldId,

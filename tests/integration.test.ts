@@ -1372,6 +1372,11 @@ test(
           mode: "AGGREGATE", measures: [{ operation: "SUM", fieldId: mappedField.id, alias: "total_revenue" }],
         }), 200);
         assert.equal(aggregateResult.rows[0].total_revenue, "30.5");
+        const orderedAggregate = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, {
+          mode: "AGGREGATE", groupBy: [mappedField.id], measures: [{ operation: "COUNT", alias: "records" }],
+          orderBy: [{ key: mappedField.id, direction: "DESC" }], limit: 2,
+        }), 200);
+        assert.equal(orderedAggregate.rows[0][mappedField.id], "20");
         expect(await call("POST", `/v1/organizations/${secondOrg}/datasets/${dataset.id}/query`, joiner.cookie, { mode: "ROWS", fields: [mappedField.id] }), 404);
         const invalidQuery = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/query`, owner.cookie, { mode: "ROWS", fields: [randomUUID()] });
         assert.equal(invalidQuery.statusCode, 422);

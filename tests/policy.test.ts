@@ -329,6 +329,8 @@ test("analytics query contracts bound identifiers, scalar text and duplicate dim
   assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a"], orderBy: [{ fieldId: "a", direction: "ASC" }, { fieldId: "a", direction: "DESC" }] }).success, false);
   assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["a", "a"], measures: [{ operation: "COUNT", alias: "count" }] }).success, false);
   assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "count" }, { operation: "COUNT", alias: "count" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["carrier"], measures: [{ operation: "COUNT", alias: "count" }], orderBy: [{ key: "missing", direction: "DESC" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["carrier"], measures: [{ operation: "COUNT", alias: "count" }], orderBy: [{ key: "count", direction: "DESC" }, { key: "count", direction: "ASC" }] }).success, false);
   assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a".repeat(129)] }).success, false);
   assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a"], filters: [{ fieldId: "a", operator: "EQ", value: "x".repeat(4097) }] }).success, false);
   assert.equal(allowedBindingFilterSchema.safeParse({ fieldId: "a", operators: ["EQ", "EQ"] }).success, false);

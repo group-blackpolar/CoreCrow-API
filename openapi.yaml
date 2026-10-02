@@ -5143,6 +5143,25 @@ paths:
                           - value
                         additionalProperties: false
                       maxItems: 10
+                    orderBy:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          key:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          direction:
+                            type: string
+                            enum:
+                              - ASC
+                              - DESC
+                        required:
+                          - key
+                          - direction
+                        additionalProperties: false
+                      maxItems: 3
                     limit:
                       type: integer
                       minimum: 1
@@ -5510,6 +5529,25 @@ paths:
                                   - value
                                 additionalProperties: false
                               maxItems: 10
+                            orderBy:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 128
+                                  direction:
+                                    type: string
+                                    enum:
+                                      - ASC
+                                      - DESC
+                                required:
+                                  - key
+                                  - direction
+                                additionalProperties: false
+                              maxItems: 3
                             limit:
                               type: integer
                               minimum: 1
@@ -5797,6 +5835,25 @@ paths:
                               - value
                             additionalProperties: false
                           maxItems: 10
+                        orderBy:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              key:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              direction:
+                                type: string
+                                enum:
+                                  - ASC
+                                  - DESC
+                            required:
+                              - key
+                              - direction
+                            additionalProperties: false
+                          maxItems: 3
                         limit:
                           type: integer
                           minimum: 1
@@ -6034,6 +6091,25 @@ paths:
                                 - value
                               additionalProperties: false
                             maxItems: 10
+                          orderBy:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                direction:
+                                  type: string
+                                  enum:
+                                    - ASC
+                                    - DESC
+                              required:
+                                - key
+                                - direction
+                              additionalProperties: false
+                            maxItems: 3
                           limit:
                             type: integer
                             minimum: 1
@@ -6322,6 +6398,25 @@ paths:
                               - value
                             additionalProperties: false
                           maxItems: 10
+                        orderBy:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              key:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              direction:
+                                type: string
+                                enum:
+                                  - ASC
+                                  - DESC
+                            required:
+                              - key
+                              - direction
+                            additionalProperties: false
+                          maxItems: 3
                         limit:
                           type: integer
                           minimum: 1
@@ -6566,6 +6661,25 @@ paths:
                                 - value
                               additionalProperties: false
                             maxItems: 10
+                          orderBy:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                direction:
+                                  type: string
+                                  enum:
+                                    - ASC
+                                    - DESC
+                              required:
+                                - key
+                                - direction
+                              additionalProperties: false
+                            maxItems: 3
                           limit:
                             type: integer
                             minimum: 1
