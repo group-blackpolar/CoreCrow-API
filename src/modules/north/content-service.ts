@@ -94,7 +94,7 @@ async function createRevision(
   input: RevisionInput,
   sourceDocument?: NorthPanelDocument,
 ) {
-  const document = sourceDocument ?? await validateNorthPanelDocument(input.document, { organizationId, actorId: userId, tx, ...referenceResolvers });
+  const document = sourceDocument ?? await validateNorthPanelDocument(input.document, { organizationId, actorId: userId, tx, panelId, ...referenceResolvers });
   const maximum = await repo.nextRevisionNumber(tx, panelId);
   const revisionNumber = (maximum._max.revisionNumber ?? 0) + 1;
   const id = randomUUID();
@@ -136,6 +136,7 @@ export async function cloneNorthPanelContent(
     organizationId,
     actorId: userId,
     tx,
+    panelId: targetPanelId,
     ...referenceResolvers,
   });
   const document = cloneNorthPanelDocument(validated);
@@ -179,6 +180,7 @@ export const northContent = {
         organizationId,
         actorId: userId,
         tx,
+        panelId,
         ...referenceResolvers,
       });
       await repo.publish(tx, panelId, panel.draftRevision.id);
@@ -216,7 +218,7 @@ export const northContent = {
       assertCurrent(ifMatch, panel.draftRevision);
       const source = await repo.revision(tx, organizationId, panelId, revisionId);
       if (!source) fail(404, "NOT_FOUND", "Revision not found");
-      const document = await validateNorthPanelDocument(source.document, { organizationId, actorId: userId, tx, ...referenceResolvers });
+      const document = await validateNorthPanelDocument(source.document, { organizationId, actorId: userId, tx, panelId, ...referenceResolvers });
       const revision = await createRevision(tx, organizationId, panelId, userId, { document, message }, document);
       await audit.append(tx, {
         actorId: userId, organizationId, action: "REVISION_RESTORED", targetType: "NorthPanelRevision", targetId: revision.id,

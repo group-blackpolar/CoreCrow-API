@@ -58,6 +58,7 @@ model User {
   northDatasetMappingsMade   NorthDatasetImportMappingVersion[] @relation("NorthDatasetImportMappingCreator")
   northDatasetActivations    NorthDatasetImportJob[]     @relation("NorthDatasetActivationRequester")
   northDatasetRevisionsMade NorthDatasetRevision[]       @relation("NorthDatasetRevisionCreator")
+  northAnalyticsBindingsMade NorthAnalyticsBinding[]     @relation("NorthAnalyticsBindingCreator")
 
   @@index([status, createdAt])
   @@map("users")
@@ -345,6 +346,7 @@ model Organization {
   northDatasetMappings  NorthDatasetImportMappingVersion[]
   northDatasetBatches   NorthDatasetImportBatch[]
   northDatasetRevisions NorthDatasetRevision[]
+  northAnalyticsBindings NorthAnalyticsBinding[]
 
   @@index([status, createdAt])
 }
@@ -494,6 +496,7 @@ model NorthPanel {
   revisions           NorthPanelRevision[]           @relation("PanelRevisions")
   publishedRevision   NorthPanelRevision?            @relation("PublishedRevision", fields: [publishedRevisionId, id], references: [id, panelId], onDelete: Restrict)
   draftRevision       NorthPanelRevision?            @relation("DraftRevision", fields: [draftRevisionId, id], references: [id, panelId], onDelete: Restrict)
+  analyticsBindings   NorthAnalyticsBinding[]
 
   @@unique([id, organizationId])
   @@unique([subcategoryId, slug])
@@ -524,10 +527,32 @@ model NorthDataset {
   importBatches          NorthDatasetImportBatch[]
   revisions              NorthDatasetRevision[]          @relation("NorthDatasetRevisions")
   activeRevision         NorthDatasetRevision?           @relation("ActiveDatasetRevision", fields: [activeRevisionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
+  analyticsBindings      NorthAnalyticsBinding[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])
   @@index([organizationId, status, createdAt, id])
+}
+
+model NorthAnalyticsBinding {
+  id             String       @id @default(cuid())
+  organizationId String
+  panelId        String
+  datasetId      String
+  name           String
+  query          Json
+  allowedFilters Json
+  createdBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  panel          NorthPanel   @relation(fields: [panelId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  dataset        NorthDataset @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  creator        User         @relation("NorthAnalyticsBindingCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([id, panelId, organizationId])
+  @@index([organizationId, panelId, createdAt, id])
+  @@index([organizationId, datasetId])
 }
 
 model NorthDatasetField {

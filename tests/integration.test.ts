@@ -1377,6 +1377,51 @@ test(
         assert.equal(invalidQuery.statusCode, 422);
         assert.equal(invalidQuery.json().error.code, "DATASET_QUERY_FIELD_INVALID");
 
+        const analyticsCategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories`, owner.cookie, { name: { en: "Analytics" }, slug: "analytics-demo" }), 201);
+        const analyticsSubcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${analyticsCategory.id}/subcategories`, owner.cookie, { name: { en: "Reports" }, slug: "analytics-reports" }), 201);
+        const analyticsPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Master House" }, slug: "master-house-demo" }), 201);
+        const otherPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Other" }, slug: "other-analytics" }), 201);
+        const analyticsBinding = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, owner.cookie, {
+          name: "Revenue total", datasetId: dataset.id,
+          query: { mode: "AGGREGATE", measures: [{ operation: "SUM", fieldId: mappedField.id, alias: "total_revenue" }] },
+          allowedFilters: [{ fieldId: mappedField.id, operators: ["GTE"] }],
+        }), 201);
+        expect(await call("GET", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, outsider.cookie), 404);
+        const analyticsDocument = {
+          schemaVersion: 1, defaultLocale: "en", fallbackLocales: [],
+          sections: [{ id: "main", order: 0, layout: { variant: "grid", gap: "md" }, components: [{
+            id: "table", type: "table", schemaVersion: 1,
+            props: { columns: [{ key: "total_revenue", label: { en: "Revenue" } }], rows: [] },
+            bindings: { rows: { sourceType: "dataset", sourceId: analyticsBinding.id, datasetId: dataset.id } },
+            layout: { desktop: { x: 0, y: 0, w: 12, h: 4 }, tablet: { x: 0, y: 0, w: 12, h: 4 }, mobile: { x: 0, y: 0, w: 12, h: 4 } }, order: 0,
+          }] }],
+        };
+        const crossPanelDraft = await call("PATCH", `/v1/organizations/${organizationId}/panels/${otherPanel.id}/draft`, owner.cookie, { document: analyticsDocument });
+        assert.equal(crossPanelDraft.statusCode, 422);
+        assert.equal(crossPanelDraft.json().error.code, "BINDING_NOT_ALLOWED");
+        const analyticsDraft = expect(await call("PATCH", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/draft`, owner.cookie, { document: analyticsDocument }), 200);
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/publish`, owner.cookie, undefined, { "if-match": analyticsDraft.etag }), 200);
+        const bindingResult = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, {
+          filters: [{ fieldId: mappedField.id, operator: "GTE", value: "15" }],
+        }), 200);
+        assert.equal(bindingResult.bindingId, analyticsBinding.id);
+        assert.equal(bindingResult.rows[0].total_revenue, "20");
+        const driftDataset = expect(await call("POST", `/v1/organizations/${organizationId}/datasets`, owner.cookie, {
+          name: { en: "Binding drift guard" }, slug: "binding-drift-guard",
+        }), 201);
+        await prisma.northAnalyticsBinding.update({ where: { id: analyticsBinding.id }, data: { datasetId: driftDataset.id } });
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, { filters: [] }), 404);
+        await prisma.northAnalyticsBinding.update({ where: { id: analyticsBinding.id }, data: { datasetId: dataset.id } });
+        const disallowedBindingFilter = await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, {
+          filters: [{ fieldId: mappedField.id, operator: "LTE", value: "15" }],
+        });
+        assert.equal(disallowedBindingFilter.statusCode, 422);
+        assert.equal(disallowedBindingFilter.json().error.code, "BINDING_FILTER_NOT_ALLOWED");
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, outsider.cookie, { filters: [] }), 404);
+        await prisma.northPanel.update({ where: { id: analyticsPanel.id }, data: { accessPolicyMode: "ACL_V1" } });
+        expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings/${analyticsBinding.id}/results`, owner.cookie, { filters: [] }), 403);
+        await prisma.northPanel.update({ where: { id: analyticsPanel.id }, data: { accessPolicyMode: "LEGACY_AUDIENCE" } });
+
         const retryJob = await prepareWorkerJob("materialization-retry-atomic");
         assert.equal(await approvingWorker.runOnce(), "SECURITY_APPROVED");
         assert.equal(await analysisWorker.runOnce(), "AWAITING_MAPPING");
@@ -1515,7 +1560,7 @@ test(
             await new Promise<void>((resolve) => { releaseAnalysis = resolve; });
             return { parserVersion: "test-parser", workbook: { sheets: [{ ordinal: 0, name: "Sheet", rowCount: 1, columnCount: 0, columns: [] }] } };
           },
-        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5, retryDelayMilliseconds: 60_000 });
+        }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 1_000, retryDelayMilliseconds: 60_000 });
         const cancellableAnalysisRun = cancellableAnalysisWorker.runOnce();
         await analysisEntered;
         assert.equal(expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${cancelledAnalysisJob.id}/cancel`, owner.cookie), 200).status, "CANCEL_REQUESTED");

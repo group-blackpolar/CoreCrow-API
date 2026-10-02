@@ -7152,6 +7152,7 @@
                               "anyOf": [
                                 {
                                   "type": "string",
+                                  "maxLength": 4096,
                                   "nullable": true
                                 },
                                 {
@@ -7294,6 +7295,7 @@
                               "anyOf": [
                                 {
                                   "type": "string",
+                                  "maxLength": 4096,
                                   "nullable": true
                                 },
                                 {
@@ -7464,6 +7466,2247 @@
                     "rows",
                     "rowCount",
                     "executedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/panels/{panelId}/analytics-bindings": {
+      "get": {
+        "summary": "List authoritative analytics bindings owned by one authorized panel",
+        "tags": [
+          "NORTH analytics"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "organizationId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "panelId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "datasetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "query": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "ROWS"
+                                ]
+                              },
+                              "fields": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 20
+                              },
+                              "filters": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "fieldId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "operator": {
+                                      "type": "string",
+                                      "enum": [
+                                        "EQ",
+                                        "NE",
+                                        "GT",
+                                        "GTE",
+                                        "LT",
+                                        "LTE",
+                                        "CONTAINS"
+                                      ]
+                                    },
+                                    "value": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "maxLength": 4096,
+                                          "nullable": true
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "fieldId",
+                                    "operator",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "maxItems": 10
+                              },
+                              "orderBy": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "fieldId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "direction": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ASC",
+                                        "DESC"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "fieldId",
+                                    "direction"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "maxItems": 3
+                              },
+                              "limit": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 200
+                              },
+                              "offset": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000
+                              }
+                            },
+                            "required": [
+                              "mode",
+                              "fields"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "type": "string",
+                                "enum": [
+                                  "AGGREGATE"
+                                ]
+                              },
+                              "groupBy": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "maxItems": 2
+                              },
+                              "measures": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "operation": {
+                                      "type": "string",
+                                      "enum": [
+                                        "COUNT",
+                                        "COUNT_DISTINCT",
+                                        "SUM",
+                                        "AVG",
+                                        "MIN",
+                                        "MAX"
+                                      ]
+                                    },
+                                    "fieldId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "alias": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "operation",
+                                    "alias"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "filters": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "fieldId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "operator": {
+                                      "type": "string",
+                                      "enum": [
+                                        "EQ",
+                                        "NE",
+                                        "GT",
+                                        "GTE",
+                                        "LT",
+                                        "LTE",
+                                        "CONTAINS"
+                                      ]
+                                    },
+                                    "value": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "maxLength": 4096,
+                                          "nullable": true
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "fieldId",
+                                    "operator",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "maxItems": 10
+                              },
+                              "limit": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              }
+                            },
+                            "required": [
+                              "mode",
+                              "measures"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "allowedFilters": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "fieldId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "operators": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "EQ",
+                                  "NE",
+                                  "GT",
+                                  "GTE",
+                                  "LT",
+                                  "LTE",
+                                  "CONTAINS"
+                                ]
+                              },
+                              "minItems": 1,
+                              "maxItems": 7
+                            }
+                          },
+                          "required": [
+                            "fieldId",
+                            "operators"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 10
+                      },
+                      "createdBy": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "panelId",
+                      "datasetId",
+                      "name",
+                      "query",
+                      "allowedFilters",
+                      "createdBy",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create an audited panel-owned binding with a bounded declarative dataset query",
+        "tags": [
+          "NORTH analytics"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "datasetId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "query": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "ROWS"
+                            ]
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 20
+                          },
+                          "filters": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "operator": {
+                                  "type": "string",
+                                  "enum": [
+                                    "EQ",
+                                    "NE",
+                                    "GT",
+                                    "GTE",
+                                    "LT",
+                                    "LTE",
+                                    "CONTAINS"
+                                  ]
+                                },
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 4096,
+                                      "nullable": true
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "fieldId",
+                                "operator",
+                                "value"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 10
+                          },
+                          "orderBy": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "direction": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ASC",
+                                    "DESC"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "fieldId",
+                                "direction"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 3
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "AGGREGATE"
+                            ]
+                          },
+                          "groupBy": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "maxItems": 2
+                          },
+                          "measures": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "operation": {
+                                  "type": "string",
+                                  "enum": [
+                                    "COUNT",
+                                    "COUNT_DISTINCT",
+                                    "SUM",
+                                    "AVG",
+                                    "MIN",
+                                    "MAX"
+                                  ]
+                                },
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "alias": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                                }
+                              },
+                              "required": [
+                                "operation",
+                                "alias"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
+                          },
+                          "filters": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "operator": {
+                                  "type": "string",
+                                  "enum": [
+                                    "EQ",
+                                    "NE",
+                                    "GT",
+                                    "GTE",
+                                    "LT",
+                                    "LTE",
+                                    "CONTAINS"
+                                  ]
+                                },
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 4096,
+                                      "nullable": true
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "fieldId",
+                                "operator",
+                                "value"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 10
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "measures"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "allowedFilters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fieldId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "operators": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "EQ",
+                              "NE",
+                              "GT",
+                              "GTE",
+                              "LT",
+                              "LTE",
+                              "CONTAINS"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 7
+                        }
+                      },
+                      "required": [
+                        "fieldId",
+                        "operators"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 10
+                  }
+                },
+                "required": [
+                  "name",
+                  "datasetId",
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "panelId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "datasetId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "query": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "ROWS"
+                              ]
+                            },
+                            "fields": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "filters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "EQ",
+                                      "NE",
+                                      "GT",
+                                      "GTE",
+                                      "LT",
+                                      "LTE",
+                                      "CONTAINS"
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 4096,
+                                        "nullable": true
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "fieldId",
+                                  "operator",
+                                  "value"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "maxItems": 10
+                            },
+                            "orderBy": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "direction": {
+                                    "type": "string",
+                                    "enum": [
+                                      "ASC",
+                                      "DESC"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "fieldId",
+                                  "direction"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "maxItems": 3
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 200
+                            },
+                            "offset": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "fields"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "AGGREGATE"
+                              ]
+                            },
+                            "groupBy": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "maxItems": 2
+                            },
+                            "measures": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "operation": {
+                                    "type": "string",
+                                    "enum": [
+                                      "COUNT",
+                                      "COUNT_DISTINCT",
+                                      "SUM",
+                                      "AVG",
+                                      "MIN",
+                                      "MAX"
+                                    ]
+                                  },
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "alias": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                                  }
+                                },
+                                "required": [
+                                  "operation",
+                                  "alias"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "filters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "EQ",
+                                      "NE",
+                                      "GT",
+                                      "GTE",
+                                      "LT",
+                                      "LTE",
+                                      "CONTAINS"
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 4096,
+                                        "nullable": true
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "fieldId",
+                                  "operator",
+                                  "value"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "maxItems": 10
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "measures"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "allowedFilters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fieldId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "operators": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "EQ",
+                                "NE",
+                                "GT",
+                                "GTE",
+                                "LT",
+                                "LTE",
+                                "CONTAINS"
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 7
+                          }
+                        },
+                        "required": [
+                          "fieldId",
+                          "operators"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10
+                    },
+                    "createdBy": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "panelId",
+                    "datasetId",
+                    "name",
+                    "query",
+                    "allowedFilters",
+                    "createdBy",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/panels/{panelId}/analytics-bindings/{bindingId}": {
+      "put": {
+        "summary": "Replace an audited panel-owned binding after tenant and dataset authorization",
+        "tags": [
+          "NORTH analytics"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "datasetId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "query": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "ROWS"
+                            ]
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 20
+                          },
+                          "filters": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "operator": {
+                                  "type": "string",
+                                  "enum": [
+                                    "EQ",
+                                    "NE",
+                                    "GT",
+                                    "GTE",
+                                    "LT",
+                                    "LTE",
+                                    "CONTAINS"
+                                  ]
+                                },
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 4096,
+                                      "nullable": true
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "fieldId",
+                                "operator",
+                                "value"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 10
+                          },
+                          "orderBy": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "direction": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ASC",
+                                    "DESC"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "fieldId",
+                                "direction"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 3
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "AGGREGATE"
+                            ]
+                          },
+                          "groupBy": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "maxItems": 2
+                          },
+                          "measures": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "operation": {
+                                  "type": "string",
+                                  "enum": [
+                                    "COUNT",
+                                    "COUNT_DISTINCT",
+                                    "SUM",
+                                    "AVG",
+                                    "MIN",
+                                    "MAX"
+                                  ]
+                                },
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "alias": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                                }
+                              },
+                              "required": [
+                                "operation",
+                                "alias"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "minItems": 1,
+                            "maxItems": 8
+                          },
+                          "filters": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "operator": {
+                                  "type": "string",
+                                  "enum": [
+                                    "EQ",
+                                    "NE",
+                                    "GT",
+                                    "GTE",
+                                    "LT",
+                                    "LTE",
+                                    "CONTAINS"
+                                  ]
+                                },
+                                "value": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 4096,
+                                      "nullable": true
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "fieldId",
+                                "operator",
+                                "value"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 10
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "measures"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "allowedFilters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fieldId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "operators": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "EQ",
+                              "NE",
+                              "GT",
+                              "GTE",
+                              "LT",
+                              "LTE",
+                              "CONTAINS"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 7
+                        }
+                      },
+                      "required": [
+                        "fieldId",
+                        "operators"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 10
+                  }
+                },
+                "required": [
+                  "name",
+                  "datasetId",
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "bindingId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "panelId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "datasetId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "query": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "ROWS"
+                              ]
+                            },
+                            "fields": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "filters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "EQ",
+                                      "NE",
+                                      "GT",
+                                      "GTE",
+                                      "LT",
+                                      "LTE",
+                                      "CONTAINS"
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 4096,
+                                        "nullable": true
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "fieldId",
+                                  "operator",
+                                  "value"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "maxItems": 10
+                            },
+                            "orderBy": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "direction": {
+                                    "type": "string",
+                                    "enum": [
+                                      "ASC",
+                                      "DESC"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "fieldId",
+                                  "direction"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "maxItems": 3
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 200
+                            },
+                            "offset": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "fields"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "AGGREGATE"
+                              ]
+                            },
+                            "groupBy": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "maxItems": 2
+                            },
+                            "measures": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "operation": {
+                                    "type": "string",
+                                    "enum": [
+                                      "COUNT",
+                                      "COUNT_DISTINCT",
+                                      "SUM",
+                                      "AVG",
+                                      "MIN",
+                                      "MAX"
+                                    ]
+                                  },
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "alias": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                                  }
+                                },
+                                "required": [
+                                  "operation",
+                                  "alias"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "filters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "EQ",
+                                      "NE",
+                                      "GT",
+                                      "GTE",
+                                      "LT",
+                                      "LTE",
+                                      "CONTAINS"
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 4096,
+                                        "nullable": true
+                                      },
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "fieldId",
+                                  "operator",
+                                  "value"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "maxItems": 10
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "measures"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "allowedFilters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fieldId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "operators": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "EQ",
+                                "NE",
+                                "GT",
+                                "GTE",
+                                "LT",
+                                "LTE",
+                                "CONTAINS"
+                              ]
+                            },
+                            "minItems": 1,
+                            "maxItems": 7
+                          }
+                        },
+                        "required": [
+                          "fieldId",
+                          "operators"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10
+                    },
+                    "createdBy": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "panelId",
+                    "datasetId",
+                    "name",
+                    "query",
+                    "allowedFilters",
+                    "createdBy",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/panels/{panelId}/analytics-bindings/{bindingId}/results": {
+      "post": {
+        "summary": "Resolve only a binding referenced by this exact published panel and apply allowlisted runtime filters",
+        "tags": [
+          "NORTH analytics"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fieldId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": [
+                            "EQ",
+                            "NE",
+                            "GT",
+                            "GTE",
+                            "LT",
+                            "LTE",
+                            "CONTAINS"
+                          ]
+                        },
+                        "value": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 4096,
+                              "nullable": true
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "fieldId",
+                        "operator",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 10,
+                    "default": []
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "bindingId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "ROWS",
+                        "AGGREGATE"
+                      ]
+                    },
+                    "datasetId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "activeRevisionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "schemaVersionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "fieldId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "INTEGER",
+                              "DECIMAL",
+                              "BOOLEAN",
+                              "DATE",
+                              "DATETIME",
+                              "TIME"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 20
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ]
+                        }
+                      },
+                      "maxItems": 200
+                    },
+                    "rowCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 200
+                    },
+                    "executedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "bindingId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "datasetId",
+                    "activeRevisionId",
+                    "schemaVersionId",
+                    "columns",
+                    "rows",
+                    "rowCount",
+                    "executedAt",
+                    "bindingId"
                   ],
                   "additionalProperties": false
                 }
@@ -22457,17 +24700,20 @@
                                           },
                                           "sourceId": {
                                             "type": "string",
-                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                           },
                                           "datasetId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                           },
                                           "viewId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                           }
                                         },
                                         "required": [
@@ -22965,17 +25211,20 @@
                                           },
                                           "sourceId": {
                                             "type": "string",
-                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                           },
                                           "datasetId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                           },
                                           "viewId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                           }
                                         },
                                         "required": [
@@ -23443,17 +25692,20 @@
                                           },
                                           "sourceId": {
                                             "type": "string",
-                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                           },
                                           "datasetId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                           },
                                           "viewId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                           }
                                         },
                                         "required": [
@@ -24123,17 +26375,20 @@
                                           },
                                           "sourceId": {
                                             "type": "string",
-                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                           },
                                           "datasetId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                           },
                                           "viewId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                           }
                                         },
                                         "required": [
@@ -24628,17 +26883,20 @@
                                           },
                                           "sourceId": {
                                             "type": "string",
-                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                           },
                                           "datasetId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                           },
                                           "viewId": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "maxLength": 128
+                                            "maxLength": 128,
+                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                           }
                                         },
                                         "required": [
@@ -28559,17 +30817,20 @@
                                                           },
                                                           "sourceId": {
                                                             "type": "string",
-                                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                                           },
                                                           "datasetId": {
                                                             "type": "string",
                                                             "minLength": 1,
-                                                            "maxLength": 128
+                                                            "maxLength": 128,
+                                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                                           },
                                                           "viewId": {
                                                             "type": "string",
                                                             "minLength": 1,
-                                                            "maxLength": 128
+                                                            "maxLength": 128,
+                                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                                           }
                                                         },
                                                         "required": [
@@ -29216,17 +31477,20 @@
                                                         },
                                                         "sourceId": {
                                                           "type": "string",
-                                                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                                          "description": "For dataset sources, the authoritative analytics binding ID"
                                                         },
                                                         "datasetId": {
                                                           "type": "string",
                                                           "minLength": 1,
-                                                          "maxLength": 128
+                                                          "maxLength": 128,
+                                                          "description": "Required for dataset sources and checked against the binding-owned dataset"
                                                         },
                                                         "viewId": {
                                                           "type": "string",
                                                           "minLength": 1,
-                                                          "maxLength": 128
+                                                          "maxLength": 128,
+                                                          "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                                         }
                                                       },
                                                       "required": [
@@ -30325,17 +32589,20 @@
                                                         },
                                                         "sourceId": {
                                                           "type": "string",
-                                                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                                          "description": "For dataset sources, the authoritative analytics binding ID"
                                                         },
                                                         "datasetId": {
                                                           "type": "string",
                                                           "minLength": 1,
-                                                          "maxLength": 128
+                                                          "maxLength": 128,
+                                                          "description": "Required for dataset sources and checked against the binding-owned dataset"
                                                         },
                                                         "viewId": {
                                                           "type": "string",
                                                           "minLength": 1,
-                                                          "maxLength": 128
+                                                          "maxLength": 128,
+                                                          "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                                         }
                                                       },
                                                       "required": [
@@ -30887,17 +33154,20 @@
                                                           },
                                                           "sourceId": {
                                                             "type": "string",
-                                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                                            "description": "For dataset sources, the authoritative analytics binding ID"
                                                           },
                                                           "datasetId": {
                                                             "type": "string",
                                                             "minLength": 1,
-                                                            "maxLength": 128
+                                                            "maxLength": 128,
+                                                            "description": "Required for dataset sources and checked against the binding-owned dataset"
                                                           },
                                                           "viewId": {
                                                             "type": "string",
                                                             "minLength": 1,
-                                                            "maxLength": 128
+                                                            "maxLength": 128,
+                                                            "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                                           }
                                                         },
                                                         "required": [
@@ -32081,17 +34351,20 @@
                                               },
                                               "sourceId": {
                                                 "type": "string",
-                                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                                                "description": "For dataset sources, the authoritative analytics binding ID"
                                               },
                                               "datasetId": {
                                                 "type": "string",
                                                 "minLength": 1,
-                                                "maxLength": 128
+                                                "maxLength": 128,
+                                                "description": "Required for dataset sources and checked against the binding-owned dataset"
                                               },
                                               "viewId": {
                                                 "type": "string",
                                                 "minLength": 1,
-                                                "maxLength": 128
+                                                "maxLength": 128,
+                                                "description": "Deprecated compatibility field; ignored for authoritative dataset bindings"
                                               }
                                             },
                                             "required": [

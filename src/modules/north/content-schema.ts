@@ -26,12 +26,12 @@ export const northResponsiveLayout = z.object({
 
 const bindingSchema = z.object({
   sourceType: z.enum(["metric", "dataset"]),
-  sourceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),
-  datasetId: resourceId.optional(),
-  viewId: resourceId.optional(),
+  sourceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/).describe("For dataset sources, the authoritative analytics binding ID"),
+  datasetId: resourceId.optional().describe("Required for dataset sources and checked against the binding-owned dataset"),
+  viewId: resourceId.optional().describe("Deprecated compatibility field; ignored for authoritative dataset bindings"),
 }).strict().superRefine((value, context) => {
-  if (value.sourceType === "dataset" && (!value.datasetId || !value.viewId))
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Dataset bindings require datasetId and viewId" });
+  if (value.sourceType === "dataset" && !value.datasetId)
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Dataset bindings require datasetId; sourceId is the authoritative binding ID" });
   if (value.sourceType === "metric" && (value.datasetId || value.viewId))
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Metric bindings cannot carry dataset identifiers" });
 });
@@ -92,6 +92,9 @@ export type NorthAssetReferenceValidator = (
 export type NorthBindingReferenceValidator = (
   organizationId: string,
   binding: z.infer<typeof bindingSchema>,
+  actorId: string,
+  tx?: Transaction,
+  panelId?: string,
 ) => Promise<boolean>;
 
 export const northComponentRegistry = Object.freeze(
@@ -181,6 +184,7 @@ export async function validateNorthPanelDocument(
     tx?: Transaction;
     validateAssetReference?: NorthAssetReferenceValidator;
     validateBindingReference?: NorthBindingReferenceValidator;
+    panelId?: string;
   },
 ): Promise<NorthPanelDocument> {
   const parsed = northPanelDocumentInput.safeParse(value);
@@ -225,7 +229,7 @@ export async function validateNorthPanelDocument(
   if (bindingReferences.length) {
     if (!context.validateBindingReference) fail(422, "BINDING_VALIDATION_UNAVAILABLE", "Binding references cannot be validated");
     for (const reference of bindingReferences)
-      if (!(await context.validateBindingReference(context.organizationId, reference)))
+      if (!(await context.validateBindingReference(context.organizationId, reference, context.actorId, context.tx, context.panelId)))
         fail(422, "BINDING_NOT_ALLOWED", "Binding source is unavailable or unauthorized");
   }
   return document;

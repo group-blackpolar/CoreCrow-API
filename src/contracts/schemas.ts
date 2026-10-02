@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { datasetQuerySchema } from "../modules/north/data/query-contract.js";
 export const id = z.string().min(1).max(128);
 export const date = z.string().datetime();
 export const name = z.string().trim().min(2).max(100);
@@ -268,6 +269,22 @@ export const northDatasetQueryResult = z.object({
   rowCount: z.number().int().nonnegative().max(200),
   executedAt: date,
 });
+export const northAnalyticsBinding = z.object({
+  id,
+  organizationId: id,
+  panelId: id,
+  datasetId: id,
+  name: z.string().min(1).max(100),
+  query: datasetQuerySchema,
+  allowedFilters: z.array(z.object({
+    fieldId: id,
+    operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+  }).strict()).max(10),
+  createdBy: id,
+  createdAt: date,
+  updatedAt: date,
+});
+export const northAnalyticsBindingResult = northDatasetQueryResult.extend({ bindingId: id });
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({
   id,

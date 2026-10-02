@@ -18,6 +18,7 @@ import { validateAssetDeclaration, validateInspectedAsset } from "../src/modules
 import { FakeObjectStorage, S3ObjectStorage } from "../src/modules/north/object-storage.js";
 import { UnconfiguredMalwareScanner } from "../src/modules/north/malware-scanner.js";
 import { resolveDatasetAcl } from "../src/modules/north/data/acl-policy.js";
+import { allowedBindingFilterSchema, datasetQuerySchema } from "../src/modules/north/data/query-contract.js";
 import { validateDatasetImportDeclaration, validateUploadedDatasetImport } from "../src/modules/north/data/import-policy.js";
 import { XLSX_MIME } from "../src/modules/north/data/import-config.js";
 import {
@@ -321,6 +322,16 @@ test("dataset ACL is default-deny and any matching explicit deny wins", () => {
     { effect: "ALLOW", matches: true },
     { effect: "DENY", matches: true },
   ]), false);
+});
+
+test("analytics query contracts bound identifiers, scalar text and duplicate dimensions", () => {
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a", "a"] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a"], orderBy: [{ fieldId: "a", direction: "ASC" }, { fieldId: "a", direction: "DESC" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", groupBy: ["a", "a"], measures: [{ operation: "COUNT", alias: "count" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "count" }, { operation: "COUNT", alias: "count" }] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a".repeat(129)] }).success, false);
+  assert.equal(datasetQuerySchema.safeParse({ mode: "ROWS", fields: ["a"], filters: [{ fieldId: "a", operator: "EQ", value: "x".repeat(4097) }] }).success, false);
+  assert.equal(allowedBindingFilterSchema.safeParse({ fieldId: "a", operators: ["EQ", "EQ"] }).success, false);
 });
 
 test("permissions deny unknown roles and unknown actions", () => {

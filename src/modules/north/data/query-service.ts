@@ -2,12 +2,11 @@ import { Prisma, type NorthDatasetFieldType } from "../../../lib/database.js";
 import { fail } from "../../../shared/errors.js";
 import { transaction } from "../../../shared/transaction.js";
 import { authorizeDataset } from "./authorization.js";
+import type { Transaction } from "../../../shared/transaction.js";
+import type { DatasetQuery } from "./query-contract.js";
 
 type Scalar = string | number | boolean | null;
-type Filter = { fieldId: string; operator: "EQ" | "NE" | "GT" | "GTE" | "LT" | "LTE" | "CONTAINS"; value: Scalar };
-type RowsQuery = { mode: "ROWS"; fields: string[]; filters?: Filter[]; orderBy?: Array<{ fieldId: string; direction: "ASC" | "DESC" }>; limit?: number; offset?: number };
-type AggregateQuery = { mode: "AGGREGATE"; groupBy?: string[]; measures: Array<{ operation: "COUNT" | "COUNT_DISTINCT" | "SUM" | "AVG" | "MIN" | "MAX"; fieldId?: string; alias: string }>; filters?: Filter[]; limit?: number };
-export type DatasetQuery = RowsQuery | AggregateQuery;
+type Filter = NonNullable<DatasetQuery["filters"]>[number];
 
 type Field = { datasetFieldId: string; canonicalType: NorthDatasetFieldType };
 type ResultColumn = { key: string; fieldId?: string; type: NorthDatasetFieldType };
@@ -71,6 +70,12 @@ export const northDatasetQuery = {
   execute(userId: string, organizationId: string, datasetId: string, query: DatasetQuery) {
     return transaction(async (tx) => {
       await authorizeDataset(tx, userId, organizationId, datasetId, "north.data.query");
+      return executeDatasetQuery(tx, organizationId, datasetId, query);
+    });
+  },
+};
+
+export async function executeDatasetQuery(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery) {
       const dataset = await tx.northDataset.findFirst({ where: { id: datasetId, organizationId, status: "ACTIVE" }, include: { activeRevision: { include: { schemaVersion: { include: { fields: true } } } } } });
       if (!dataset?.activeRevision) fail(409, "DATASET_REVISION_NOT_ACTIVE", "Dataset has no active revision");
       const revision = dataset.activeRevision;
@@ -131,6 +136,4 @@ export const northDatasetQuery = {
       ];
       const rows = rawRows.map((row) => Object.fromEntries([...groups.map((id, index) => [id, jsonScalar(row[`g${index}`])]), ...query.measures.map((measure, index) => [measure.alias, jsonScalar(row[`m${index}`])])]));
       return { mode: "AGGREGATE" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows, rowCount: rows.length, executedAt: new Date() };
-    });
-  },
-};
+}
