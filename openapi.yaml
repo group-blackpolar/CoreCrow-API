@@ -481,6 +481,2816 @@ paths:
       responses:
         "204":
           description: Default Response
+  /v1/organizations/{organizationId}/document-types:
+    get:
+      summary: List active document types and the delivery channels configured for
+        this environment
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  types:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        key:
+                          type: string
+                        name:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        referencePrefix:
+                          type: string
+                        currency:
+                          type: string
+                      required:
+                        - id
+                        - key
+                        - name
+                        - referencePrefix
+                        - currency
+                      additionalProperties: false
+                  channels:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                        enum:
+                          - available
+                          - not_configured
+                      whatsapp:
+                        type: string
+                        enum:
+                          - available
+                          - not_configured
+                    required:
+                      - email
+                      - whatsapp
+                    additionalProperties: false
+                required:
+                  - types
+                  - channels
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    post:
+      summary: Create a document type with its human reference prefix
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                  pattern: ^[a-z][a-z0-9-]{1,40}$
+                name:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    minLength: 1
+                    maxLength: 120
+                referencePrefix:
+                  type: string
+                  pattern: ^[A-Z]{2,6}$
+                currency:
+                  type: string
+                  pattern: ^[A-Z]{3}$
+                  default: USD
+              required:
+                - key
+                - name
+                - referencePrefix
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  key:
+                    type: string
+                  name:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  referencePrefix:
+                    type: string
+                  currency:
+                    type: string
+                required:
+                  - id
+                  - key
+                  - name
+                  - referencePrefix
+                  - currency
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/document-clients:
+    get:
+      summary: Search the organization's reusable clients
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            maxLength: 100
+            default: ""
+          in: query
+          name: q
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    name:
+                      type: string
+                    email:
+                      type: string
+                      nullable: true
+                    phone:
+                      type: string
+                      nullable: true
+                  required:
+                    - id
+                    - name
+                    - email
+                    - phone
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents:
+    get:
+      summary: List documents with status, client, date and text filters
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - DRAFT
+              - READY
+              - SENT
+              - COMPLETED
+              - CANCELLED
+          in: query
+          name: status
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: typeId
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: clientId
+          required: false
+        - schema:
+            type: string
+            maxLength: 100
+          in: query
+          name: q
+          required: false
+        - schema:
+            type: string
+            format: date-time
+          in: query
+          name: from
+          required: false
+        - schema:
+            type: string
+            format: date-time
+          in: query
+          name: to
+          required: false
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+          in: query
+          name: limit
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: cursor
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        reference:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - DRAFT
+                            - READY
+                            - SENT
+                            - COMPLETED
+                            - CANCELLED
+                        typeKey:
+                          type: string
+                        clientName:
+                          type: string
+                        date:
+                          type: string
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        currency:
+                          type: string
+                        updatedAt:
+                          type: string
+                      required:
+                        - id
+                        - reference
+                        - status
+                        - typeKey
+                        - clientName
+                        - date
+                        - total
+                        - currency
+                        - updatedAt
+                      additionalProperties: false
+                  nextCursor:
+                    type: string
+                    nullable: true
+                required:
+                  - items
+                  - nextCursor
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    post:
+      summary: Create a draft document; the server assigns the human reference and
+        totals
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                typeId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                date:
+                  type: string
+                  format: date-time
+                client:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    name:
+                      type: string
+                      minLength: 2
+                      maxLength: 200
+                    email:
+                      type: string
+                      maxLength: 254
+                      nullable: true
+                    phone:
+                      type: string
+                      maxLength: 40
+                      nullable: true
+                  additionalProperties: false
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        minLength: 1
+                        maxLength: 200
+                      description:
+                        type: string
+                        maxLength: 2000
+                        default: ""
+                      sku:
+                        type: string
+                        maxLength: 60
+                        nullable: true
+                      unit:
+                        type: string
+                        maxLength: 20
+                        nullable: true
+                      quantity:
+                        type: string
+                        pattern: ^\d{1,4}(\.\d{1,3})?$
+                      unitPrice:
+                        type: string
+                        pattern: ^\d{1,7}(\.\d{1,2})?$
+                    required:
+                      - name
+                      - quantity
+                      - unitPrice
+                    additionalProperties: false
+                  minItems: 1
+                  maxItems: 100
+                comments:
+                  type: string
+                  maxLength: 10000
+                  default: ""
+              required:
+                - typeId
+                - client
+                - items
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  reference:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - READY
+                      - SENT
+                      - COMPLETED
+                      - CANCELLED
+                  allowedTransitions:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - DRAFT
+                        - READY
+                        - SENT
+                        - COMPLETED
+                        - CANCELLED
+                  editable:
+                    type: boolean
+                  type:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      referencePrefix:
+                        type: string
+                    required:
+                      - id
+                      - key
+                      - name
+                      - referencePrefix
+                    additionalProperties: false
+                  date:
+                    type: string
+                  client:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                    required:
+                      - id
+                      - name
+                      - email
+                      - phone
+                    additionalProperties: false
+                  comments:
+                    type: string
+                  currency:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        position:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        sku:
+                          type: string
+                          nullable: true
+                        unit:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: string
+                        unitPrice:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                      required:
+                        - id
+                        - position
+                        - name
+                        - description
+                        - sku
+                        - unit
+                        - quantity
+                        - unitPrice
+                        - total
+                      additionalProperties: false
+                  subtotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  discountTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  taxTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  total:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        filename:
+                          type: string
+                        mimeType:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+                      required:
+                        - id
+                        - filename
+                        - mimeType
+                        - size
+                        - createdAt
+                      additionalProperties: false
+                  version:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - reference
+                  - status
+                  - allowedTransitions
+                  - editable
+                  - type
+                  - date
+                  - client
+                  - comments
+                  - currency
+                  - items
+                  - subtotal
+                  - discountTotal
+                  - taxTotal
+                  - total
+                  - attachments
+                  - version
+                  - createdBy
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents/{documentId}:
+    get:
+      summary: Read one document
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  reference:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - READY
+                      - SENT
+                      - COMPLETED
+                      - CANCELLED
+                  allowedTransitions:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - DRAFT
+                        - READY
+                        - SENT
+                        - COMPLETED
+                        - CANCELLED
+                  editable:
+                    type: boolean
+                  type:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      referencePrefix:
+                        type: string
+                    required:
+                      - id
+                      - key
+                      - name
+                      - referencePrefix
+                    additionalProperties: false
+                  date:
+                    type: string
+                  client:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                    required:
+                      - id
+                      - name
+                      - email
+                      - phone
+                    additionalProperties: false
+                  comments:
+                    type: string
+                  currency:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        position:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        sku:
+                          type: string
+                          nullable: true
+                        unit:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: string
+                        unitPrice:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                      required:
+                        - id
+                        - position
+                        - name
+                        - description
+                        - sku
+                        - unit
+                        - quantity
+                        - unitPrice
+                        - total
+                      additionalProperties: false
+                  subtotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  discountTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  taxTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  total:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        filename:
+                          type: string
+                        mimeType:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+                      required:
+                        - id
+                        - filename
+                        - mimeType
+                        - size
+                        - createdAt
+                      additionalProperties: false
+                  version:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - reference
+                  - status
+                  - allowedTransitions
+                  - editable
+                  - type
+                  - date
+                  - client
+                  - comments
+                  - currency
+                  - items
+                  - subtotal
+                  - discountTotal
+                  - taxTotal
+                  - total
+                  - attachments
+                  - version
+                  - createdBy
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    put:
+      summary: Replace the content of a draft or ready document (optimistic version
+        check)
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date-time
+                client:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    name:
+                      type: string
+                      minLength: 2
+                      maxLength: 200
+                    email:
+                      type: string
+                      maxLength: 254
+                      nullable: true
+                    phone:
+                      type: string
+                      maxLength: 40
+                      nullable: true
+                  additionalProperties: false
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        minLength: 1
+                        maxLength: 200
+                      description:
+                        type: string
+                        maxLength: 2000
+                        default: ""
+                      sku:
+                        type: string
+                        maxLength: 60
+                        nullable: true
+                      unit:
+                        type: string
+                        maxLength: 20
+                        nullable: true
+                      quantity:
+                        type: string
+                        pattern: ^\d{1,4}(\.\d{1,3})?$
+                      unitPrice:
+                        type: string
+                        pattern: ^\d{1,7}(\.\d{1,2})?$
+                    required:
+                      - name
+                      - quantity
+                      - unitPrice
+                    additionalProperties: false
+                  minItems: 1
+                  maxItems: 100
+                comments:
+                  type: string
+                  maxLength: 10000
+                  default: ""
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+              required:
+                - client
+                - items
+                - expectedVersion
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  reference:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - READY
+                      - SENT
+                      - COMPLETED
+                      - CANCELLED
+                  allowedTransitions:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - DRAFT
+                        - READY
+                        - SENT
+                        - COMPLETED
+                        - CANCELLED
+                  editable:
+                    type: boolean
+                  type:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      referencePrefix:
+                        type: string
+                    required:
+                      - id
+                      - key
+                      - name
+                      - referencePrefix
+                    additionalProperties: false
+                  date:
+                    type: string
+                  client:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                    required:
+                      - id
+                      - name
+                      - email
+                      - phone
+                    additionalProperties: false
+                  comments:
+                    type: string
+                  currency:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        position:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        sku:
+                          type: string
+                          nullable: true
+                        unit:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: string
+                        unitPrice:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                      required:
+                        - id
+                        - position
+                        - name
+                        - description
+                        - sku
+                        - unit
+                        - quantity
+                        - unitPrice
+                        - total
+                      additionalProperties: false
+                  subtotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  discountTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  taxTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  total:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        filename:
+                          type: string
+                        mimeType:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+                      required:
+                        - id
+                        - filename
+                        - mimeType
+                        - size
+                        - createdAt
+                      additionalProperties: false
+                  version:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - reference
+                  - status
+                  - allowedTransitions
+                  - editable
+                  - type
+                  - date
+                  - client
+                  - comments
+                  - currency
+                  - items
+                  - subtotal
+                  - discountTotal
+                  - taxTotal
+                  - total
+                  - attachments
+                  - version
+                  - createdBy
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    delete:
+      summary: Delete a draft document
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - id
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents/{documentId}/status:
+    post:
+      summary: Move a document along its workflow
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - DRAFT
+                    - READY
+                    - SENT
+                    - COMPLETED
+                    - CANCELLED
+              required:
+                - status
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  reference:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - READY
+                      - SENT
+                      - COMPLETED
+                      - CANCELLED
+                  allowedTransitions:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - DRAFT
+                        - READY
+                        - SENT
+                        - COMPLETED
+                        - CANCELLED
+                  editable:
+                    type: boolean
+                  type:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      referencePrefix:
+                        type: string
+                    required:
+                      - id
+                      - key
+                      - name
+                      - referencePrefix
+                    additionalProperties: false
+                  date:
+                    type: string
+                  client:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                    required:
+                      - id
+                      - name
+                      - email
+                      - phone
+                    additionalProperties: false
+                  comments:
+                    type: string
+                  currency:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        position:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        sku:
+                          type: string
+                          nullable: true
+                        unit:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: string
+                        unitPrice:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                      required:
+                        - id
+                        - position
+                        - name
+                        - description
+                        - sku
+                        - unit
+                        - quantity
+                        - unitPrice
+                        - total
+                      additionalProperties: false
+                  subtotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  discountTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  taxTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  total:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        filename:
+                          type: string
+                        mimeType:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+                      required:
+                        - id
+                        - filename
+                        - mimeType
+                        - size
+                        - createdAt
+                      additionalProperties: false
+                  version:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - reference
+                  - status
+                  - allowedTransitions
+                  - editable
+                  - type
+                  - date
+                  - client
+                  - comments
+                  - currency
+                  - items
+                  - subtotal
+                  - discountTotal
+                  - taxTotal
+                  - total
+                  - attachments
+                  - version
+                  - createdBy
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents/{documentId}/events:
+    get:
+      summary: Read the document history from the audit log
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    action:
+                      type: string
+                    actorId:
+                      type: string
+                      nullable: true
+                    actorName:
+                      type: string
+                      nullable: true
+                    createdAt:
+                      type: string
+                    metadata:
+                      type: object
+                      additionalProperties: {}
+                  required:
+                    - id
+                    - action
+                    - actorId
+                    - actorName
+                    - createdAt
+                    - metadata
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents/{documentId}/attachments/{attachmentId}:
+    delete:
+      summary: Remove an attachment from a draft or ready document
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: attachmentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - id
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    get:
+      summary: Read an attachment (image bytes)
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: attachmentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+  /v1/organizations/{organizationId}/documents/{documentId}/send/email:
+    post:
+      summary: Email the PDF to the client (503 EMAIL_NOT_CONFIGURED when SMTP is not
+        configured)
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: string
+                  format: email
+                  maxLength: 254
+                message:
+                  type: string
+                  maxLength: 2000
+                language:
+                  type: string
+                  enum:
+                    - es
+                    - en
+                  default: es
+                subject:
+                  type: string
+                  maxLength: 200
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  reference:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - READY
+                      - SENT
+                      - COMPLETED
+                      - CANCELLED
+                  allowedTransitions:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - DRAFT
+                        - READY
+                        - SENT
+                        - COMPLETED
+                        - CANCELLED
+                  editable:
+                    type: boolean
+                  type:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      referencePrefix:
+                        type: string
+                    required:
+                      - id
+                      - key
+                      - name
+                      - referencePrefix
+                    additionalProperties: false
+                  date:
+                    type: string
+                  client:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                    required:
+                      - id
+                      - name
+                      - email
+                      - phone
+                    additionalProperties: false
+                  comments:
+                    type: string
+                  currency:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        position:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        sku:
+                          type: string
+                          nullable: true
+                        unit:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: string
+                        unitPrice:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                      required:
+                        - id
+                        - position
+                        - name
+                        - description
+                        - sku
+                        - unit
+                        - quantity
+                        - unitPrice
+                        - total
+                      additionalProperties: false
+                  subtotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  discountTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  taxTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  total:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        filename:
+                          type: string
+                        mimeType:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+                      required:
+                        - id
+                        - filename
+                        - mimeType
+                        - size
+                        - createdAt
+                      additionalProperties: false
+                  version:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - reference
+                  - status
+                  - allowedTransitions
+                  - editable
+                  - type
+                  - date
+                  - client
+                  - comments
+                  - currency
+                  - items
+                  - subtotal
+                  - discountTotal
+                  - taxTotal
+                  - total
+                  - attachments
+                  - version
+                  - createdBy
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents/{documentId}/send/whatsapp:
+    post:
+      summary: Send the PDF through the official WhatsApp Business Cloud API (503
+        WHATSAPP_NOT_CONFIGURED when it is not configured)
+      tags:
+        - Documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: string
+                  maxLength: 254
+                message:
+                  type: string
+                  maxLength: 2000
+                language:
+                  type: string
+                  enum:
+                    - es
+                    - en
+                  default: es
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  reference:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - READY
+                      - SENT
+                      - COMPLETED
+                      - CANCELLED
+                  allowedTransitions:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - DRAFT
+                        - READY
+                        - SENT
+                        - COMPLETED
+                        - CANCELLED
+                  editable:
+                    type: boolean
+                  type:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      referencePrefix:
+                        type: string
+                    required:
+                      - id
+                      - key
+                      - name
+                      - referencePrefix
+                    additionalProperties: false
+                  date:
+                    type: string
+                  client:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        nullable: true
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        nullable: true
+                      phone:
+                        type: string
+                        nullable: true
+                    required:
+                      - id
+                      - name
+                      - email
+                      - phone
+                    additionalProperties: false
+                  comments:
+                    type: string
+                  currency:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        position:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        sku:
+                          type: string
+                          nullable: true
+                        unit:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: string
+                        unitPrice:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                        total:
+                          type: string
+                          pattern: ^\d{1,12}(\.\d{2})$
+                      required:
+                        - id
+                        - position
+                        - name
+                        - description
+                        - sku
+                        - unit
+                        - quantity
+                        - unitPrice
+                        - total
+                      additionalProperties: false
+                  subtotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  discountTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  taxTotal:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  total:
+                    type: string
+                    pattern: ^\d{1,12}(\.\d{2})$
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        filename:
+                          type: string
+                        mimeType:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+                      required:
+                        - id
+                        - filename
+                        - mimeType
+                        - size
+                        - createdAt
+                      additionalProperties: false
+                  version:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - reference
+                  - status
+                  - allowedTransitions
+                  - editable
+                  - type
+                  - date
+                  - client
+                  - comments
+                  - currency
+                  - items
+                  - subtotal
+                  - discountTotal
+                  - taxTotal
+                  - total
+                  - attachments
+                  - version
+                  - createdBy
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/documents/{documentId}/pdf:
+    get:
+      summary: Download the document as a PDF
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - es
+              - en
+            default: es
+          in: query
+          name: lang
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+  /v1/organizations/{organizationId}/documents/{documentId}/attachments:
+    post:
+      summary: Upload one JPEG/PNG image (raw body, filename in the query); the file
+        signature decides the type
+      tags:
+        - Documents
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          in: query
+          name: filename
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: documentId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  filename:
+                    type: string
+                  mimeType:
+                    type: string
+                  size:
+                    type: integer
+                  createdAt:
+                    type: string
+                required:
+                  - id
+                  - filename
+                  - mimeType
+                  - size
+                  - createdAt
+                additionalProperties: false
   /v1/organizations/{organizationId}/datasets:
     get:
       summary: List up to 100 datasets authorized for the active membership
@@ -12736,6 +15546,13 @@ paths:
                         - commerce.read
                         - billing.read
                         - billing.manage
+                        - documents.read
+                        - documents.create
+                        - documents.update
+                        - documents.delete
+                        - documents.download
+                        - documents.send
+                        - documents.manage
                 required:
                   - role
                   - permissions
@@ -12867,6 +15684,13 @@ paths:
                           - commerce.read
                           - billing.read
                           - billing.manage
+                          - documents.read
+                          - documents.create
+                          - documents.update
+                          - documents.delete
+                          - documents.download
+                          - documents.send
+                          - documents.manage
                   required:
                     - id
                     - organizationId
@@ -13156,6 +15980,13 @@ paths:
                           - commerce.read
                           - billing.read
                           - billing.manage
+                          - documents.read
+                          - documents.create
+                          - documents.update
+                          - documents.delete
+                          - documents.download
+                          - documents.send
+                          - documents.manage
                   required:
                     - id
                     - organizationId
@@ -13286,6 +16117,13 @@ paths:
                       - commerce.read
                       - billing.read
                       - billing.manage
+                      - documents.read
+                      - documents.create
+                      - documents.update
+                      - documents.delete
+                      - documents.download
+                      - documents.send
+                      - documents.manage
                   maxItems: 50
                   default: []
               additionalProperties: false
@@ -13376,6 +16214,13 @@ paths:
                         - commerce.read
                         - billing.read
                         - billing.manage
+                        - documents.read
+                        - documents.create
+                        - documents.update
+                        - documents.delete
+                        - documents.download
+                        - documents.send
+                        - documents.manage
                   token:
                     type: string
                   delivery:
@@ -13919,6 +16764,13 @@ paths:
                     - commerce.read
                     - billing.read
                     - billing.manage
+                    - documents.read
+                    - documents.create
+                    - documents.update
+                    - documents.delete
+                    - documents.download
+                    - documents.send
+                    - documents.manage
               required:
                 - permission
               additionalProperties: false
@@ -13962,6 +16814,13 @@ paths:
                       - commerce.read
                       - billing.read
                       - billing.manage
+                      - documents.read
+                      - documents.create
+                      - documents.update
+                      - documents.delete
+                      - documents.download
+                      - documents.send
+                      - documents.manage
                 required:
                   - permission
                 additionalProperties: false
@@ -14058,6 +16917,13 @@ paths:
               - commerce.read
               - billing.read
               - billing.manage
+              - documents.read
+              - documents.create
+              - documents.update
+              - documents.delete
+              - documents.download
+              - documents.send
+              - documents.manage
           in: path
           name: permission
           required: true
@@ -14174,6 +17040,13 @@ paths:
                     - commerce.read
                     - billing.read
                     - billing.manage
+                    - documents.read
+                    - documents.create
+                    - documents.update
+                    - documents.delete
+                    - documents.download
+                    - documents.send
+                    - documents.manage
         4XX:
           description: Default Response
           content:
@@ -14258,6 +17131,13 @@ paths:
                     - commerce.read
                     - billing.read
                     - billing.manage
+                    - documents.read
+                    - documents.create
+                    - documents.update
+                    - documents.delete
+                    - documents.download
+                    - documents.send
+                    - documents.manage
               required:
                 - permission
               additionalProperties: false
@@ -14301,6 +17181,13 @@ paths:
                       - commerce.read
                       - billing.read
                       - billing.manage
+                      - documents.read
+                      - documents.create
+                      - documents.update
+                      - documents.delete
+                      - documents.download
+                      - documents.send
+                      - documents.manage
                 required:
                   - permission
                 additionalProperties: false
@@ -14397,6 +17284,13 @@ paths:
               - commerce.read
               - billing.read
               - billing.manage
+              - documents.read
+              - documents.create
+              - documents.update
+              - documents.delete
+              - documents.download
+              - documents.send
+              - documents.manage
           in: path
           name: permission
           required: true
@@ -14685,6 +17579,13 @@ paths:
                         - commerce.read
                         - billing.read
                         - billing.manage
+                        - documents.read
+                        - documents.create
+                        - documents.update
+                        - documents.delete
+                        - documents.download
+                        - documents.send
+                        - documents.manage
                   token:
                     type: string
                   delivery:

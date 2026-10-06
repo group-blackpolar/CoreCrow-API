@@ -13,9 +13,25 @@ on:
           - deploy
           - audit-dataset-infrastructure
           - seed-master-house-demo
+          - provision-documents-organization
       demo_account_email:
         description: Existing verified account that will own the isolated demo organization
         required: false
+        type: string
+      documents_organization_name:
+        description: Organization name for provision-documents-organization
+        required: false
+        default: Seminsa
+        type: string
+      documents_organization_slug:
+        description: Organization slug for provision-documents-organization
+        required: false
+        default: seminsa
+        type: string
+      documents_prefix:
+        description: Human reference prefix (2-6 capital letters) for provision-documents-organization
+        required: false
+        default: SEM
         type: string
       viewer_emails:
         description: Optional comma-separated existing verified accounts to add as read-only VIEWER members of the demo organization
@@ -115,3 +131,29 @@ jobs:
               --organization-name "SHARK" \
               --public-showcase=true \
               ${VIEWER_EMAILS:+--viewer-emails "$VIEWER_EMAILS"}
+
+  provision-documents-organization:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'provision-documents-organization'
+    runs-on: ubuntu-latest
+    env:
+      OWNER_EMAIL: ${{ inputs.demo_account_email }}
+      ORGANIZATION_NAME: ${{ inputs.documents_organization_name }}
+      ORGANIZATION_SLUG: ${{ inputs.documents_organization_slug }}
+      DOCUMENT_PREFIX: ${{ inputs.documents_prefix }}
+    steps:
+      - name: Provision the document workspace (idempotent)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
+          envs: OWNER_EMAIL,ORGANIZATION_NAME,ORGANIZATION_SLUG,DOCUMENT_PREFIX
+          script: |
+            set -eu
+            test -n "$OWNER_EMAIL"
+            sudo -n docker exec corecrow-v1 node dist/provision-documents.js \
+              --email "$OWNER_EMAIL" \
+              --organization-slug "$ORGANIZATION_SLUG" \
+              --organization-name "$ORGANIZATION_NAME" \
+              --prefix "$DOCUMENT_PREFIX"

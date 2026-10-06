@@ -337,6 +337,9 @@ model Organization {
   storageLimitBytes     BigInt                      @default(10737418240)
   storageUsedBytes      BigInt                      @default(0)
   storageReservedBytes  BigInt                      @default(0)
+  documentTypes         DocumentType[]
+  documentClients       DocumentClient[]
+  documents             Document[]
   northCategories       NorthCategory[]
   northSubcategories    NorthSubcategory[]
   northPanels           NorthPanel[]
@@ -1196,4 +1199,168 @@ model UptimeCheck {
   ok             Boolean
 
   @@index([checkedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Documents: tenant-scoped, workflow-driven records (forms, quotes, work orders).
+// A DocumentType is configuration; a Document is an instance. Audit history lives
+// in AuditLog (targetType "Document"); nothing here duplicates it.
+// ---------------------------------------------------------------------------
+
+enum DocumentStatus {
+  DRAFT
+  READY
+  SENT
+  COMPLETED
+  CANCELLED
+}
+
+enum DocumentTypeStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum DocumentAttachmentStorage {
+  DATABASE
+}
+
+model DocumentType {
+  id              String             @id @default(cuid())
+  organizationId  String
+  /// Stable machine key (for example "forma"); never shown to users.
+  key             String
+  name            Json
+  /// Human reference prefix: SEM -> SEM-000001.
+  referencePrefix String
+  currency        String             @default("USD")
+  /// Future: custom statuses, fields and templates. Not interpreted yet.
+  config          Json               @default("{}")
+  status          DocumentTypeStatus @default(ACTIVE)
+  createdBy       String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  documents       Document[]
+  sequence        DocumentSequence?
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, key])
+  @@unique([organizationId, referencePrefix])
+}
+
+/// Gap-free per-type counter, incremented inside the creating transaction.
+model DocumentSequence {
+  typeId         String
+  organizationId String
+  lastValue      Int          @default(0)
+  type           DocumentType @relation(fields: [typeId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([typeId])
+  @@unique([typeId, organizationId])
+}
+
+model DocumentClient {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  email          String?
+  /// Lower-cased email, unique per organization when present.
+  emailKey       String?
+  phone          String?
+  createdBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  documents      Document[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, emailKey])
+  @@index([organizationId, name])
+}
+
+model Document {
+  id              String               @id @default(cuid())
+  organizationId  String
+  typeId          String
+  sequence        Int
+  reference       String
+  status          DocumentStatus       @default(DRAFT)
+  documentDate    DateTime             @default(now())
+  clientId        String?
+  /// Frozen snapshot: a later client edit never rewrites an issued document.
+  clientName      String
+  clientEmail     String?
+  clientPhone     String?
+  comments        String               @default("")
+  currency        String
+  subtotal        Decimal              @db.Decimal(14, 2)
+  discountTotal   Decimal              @default(0) @db.Decimal(14, 2)
+  taxTotal        Decimal              @default(0) @db.Decimal(14, 2)
+  total           Decimal              @db.Decimal(14, 2)
+  /// Future type-specific fields.
+  data            Json                 @default("{}")
+  version         Int                  @default(1)
+  createdBy       String
+  updatedBy       String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  statusChangedAt DateTime             @default(now())
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  type            DocumentType         @relation(fields: [typeId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  client          DocumentClient?      @relation(fields: [clientId, organizationId], references: [id, organizationId], onDelete: SetNull)
+  items           DocumentItem[]
+  attachments     DocumentAttachment[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, reference])
+  @@unique([typeId, sequence])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, clientId])
+  @@index([organizationId, documentDate])
+}
+
+model DocumentItem {
+  id             String   @id @default(cuid())
+  organizationId String
+  documentId     String
+  position       Int
+  name           String
+  description    String   @default("")
+  sku            String?
+  unit           String?
+  quantity       Decimal  @db.Decimal(12, 3)
+  unitPrice      Decimal  @db.Decimal(14, 2)
+  total          Decimal  @db.Decimal(14, 2)
+  /// Future: tax rate, discount, price list reference.
+  meta           Json     @default("{}")
+  document       Document @relation(fields: [documentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([documentId, position])
+  @@index([organizationId, documentId])
+}
+
+model DocumentAttachment {
+  id             String                    @id @default(cuid())
+  organizationId String
+  documentId     String
+  filename       String
+  mimeType       String
+  size           Int
+  sha256         String
+  /// Provider seam: DATABASE today; an object-storage provider can be added without changing callers.
+  storage        DocumentAttachmentStorage @default(DATABASE)
+  createdBy      String
+  createdAt      DateTime                  @default(now())
+  document       Document                  @relation(fields: [documentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  blob           DocumentAttachmentBlob?
+
+  @@unique([id, organizationId])
+  @@index([organizationId, documentId])
+}
+
+/// Binary payload kept apart from metadata so list queries never load bytes.
+model DocumentAttachmentBlob {
+  attachmentId String             @id
+  data         Bytes
+  attachment   DocumentAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
 }

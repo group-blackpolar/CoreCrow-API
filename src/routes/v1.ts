@@ -42,9 +42,11 @@ import { northDatasetImportActivation } from "../modules/north/data/import-activ
 import { northDatasetQuery } from "../modules/north/data/query-service.js";
 import { northAnalyticsBindings } from "../modules/north/data/binding-service.js";
 import { northShowcase } from "../modules/north/showcase-service.js";
+import { documentRoutes } from "./documents.js";
 import { allowedBindingFilterSchema, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
 
 export async function v1Routes(app: FastifyInstance) {
+  await app.register(documentRoutes);
   const key = z.object({
     id: s.id,
     name: s.name,

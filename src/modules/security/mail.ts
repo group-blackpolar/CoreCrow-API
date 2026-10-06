@@ -11,6 +11,26 @@ const transport = process.env.SMTP_URL
     })
   : undefined;
 
+/** True when outbound mail is configured; callers report "not configured" instead of pretending to send. */
+export const mailConfigured = () => Boolean(transport && process.env.MAIL_FROM);
+
+/** Generic transactional mail with attachments (documents). Plain text only: no user content is interpolated into HTML. */
+export async function sendMailWithAttachment(input: {
+  to: string;
+  subject: string;
+  text: string;
+  attachment: { filename: string; content: Buffer; contentType: string };
+}) {
+  if (!transport || !process.env.MAIL_FROM) throw new Error("Email delivery unavailable");
+  await transport.sendMail({
+    from: process.env.MAIL_FROM,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    attachments: [input.attachment],
+  });
+}
+
 export async function verifyIdentityMailTransport() {
   if (!transport || !process.env.MAIL_FROM) return "not_configured" as const;
   try {
