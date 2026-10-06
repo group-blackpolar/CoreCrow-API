@@ -825,9 +825,9 @@ export async function v1Routes(app: FastifyInstance) {
     method: "GET",
     url: "/organizations/:organizationId/members",
     tag: "Multi-tenancy",
-    summary: "List members (up to 100)",
+    summary: "List members with minimal tenant-visible identity (up to 100)",
     params: s.orgParams,
-    response: z.array(s.member),
+    response: z.array(s.organizationMember),
     run: ({ user, params }) => tenants.members(user.id, params.organizationId),
   });
   contract(app, {

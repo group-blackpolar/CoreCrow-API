@@ -837,6 +837,50 @@ test(
       },
     );
     await t.test(
+      "member directory exposes only minimal tenant-visible identity",
+      async () => {
+        const members = expect(
+          await call(
+            "GET",
+            `/v1/organizations/${organizationId}/members`,
+            invited.cookie,
+          ),
+          200,
+        );
+        const listedOwner = members.find(
+          (member: { userId: string }) => member.userId === owner.id,
+        );
+        assert.ok(listedOwner);
+        assert.deepEqual(Object.keys(listedOwner).sort(), [
+          "createdAt",
+          "email",
+          "id",
+          "name",
+          "organizationId",
+          "role",
+          "status",
+          "userId",
+        ]);
+        assert.equal(listedOwner.organizationId, organizationId);
+        assert.equal(listedOwner.userId, owner.id);
+        assert.notEqual(listedOwner.id, listedOwner.userId);
+        assert.equal(listedOwner.email, owner.email);
+        assert.equal(listedOwner.name, "owner");
+        assert.equal(listedOwner.status, "ACTIVE");
+        assert.equal(listedOwner.role, "OWNER");
+        assert.match(listedOwner.createdAt, /^\d{4}-\d{2}-\d{2}T/);
+
+        expect(
+          await call(
+            "GET",
+            `/v1/organizations/${secondOrg}/members`,
+            owner.cookie,
+          ),
+          404,
+        );
+      },
+    );
+    await t.test(
       "organization groups resolve deterministic grants and reject cross-tenant membership",
       async () => {
         expect(
