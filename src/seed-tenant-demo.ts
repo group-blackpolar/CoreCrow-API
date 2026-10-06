@@ -307,6 +307,10 @@ async function seed() {
       update: { name: masterHouseCategory.name, icon: masterHouseCategory.icon, status: "ACTIVE", navigationHidden: false },
       create: { organizationId: organization.id, scope: "ORGANIZATION", resourceKind: "CONTENT", categoryClass: "CUSTOM", name: masterHouseCategory.name, icon: masterHouseCategory.icon, slug: masterHouseCategory.slug, order: masterHouseCategory.order },
     });
+    // Landing order for the demo: Master House first, the original single-panel summary
+    // after it, and the empty system Home hidden. Administration keeps its own order.
+    await tx.northCategory.updateMany({ where: { organizationId: organization.id, slug: "analytics" }, data: { order: 10 } });
+    await tx.northCategory.updateMany({ where: { organizationId: organization.id, slug: "home", resourceKind: "SYSTEM" }, data: { navigationHidden: true } });
     let overviewPanelId: string | null = null;
     for (const page of masterHousePages) {
       const pageSubcategory = await tx.northSubcategory.upsert({
