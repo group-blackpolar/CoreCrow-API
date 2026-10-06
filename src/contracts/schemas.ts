@@ -49,6 +49,11 @@ export const member = z.object({
   role,
   createdAt: date,
 });
+export const organizationMember = member.extend({
+  email: z.string().email().max(254),
+  name: z.string().nullable(),
+  status: accountStatus,
+});
 export const organizationGroup = z.object({
   id,
   organizationId: id,

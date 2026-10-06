@@ -55,6 +55,20 @@ export const tenantRepository = {
       where: { organizationId },
       take: 100,
       orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        organizationId: true,
+        userId: true,
+        role: true,
+        createdAt: true,
+        user: {
+          select: {
+            email: true,
+            name: true,
+            status: true,
+          },
+        },
+      },
     });
   },
   owners(tx: Transaction, organizationId: string) {

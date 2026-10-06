@@ -17128,7 +17128,7 @@
     },
     "/v1/organizations/{organizationId}/members": {
       "get": {
-        "summary": "List members (up to 100)",
+        "summary": "List members with minimal tenant-visible identity (up to 100)",
         "tags": [
           "Multi-tenancy"
         ],
@@ -17187,6 +17187,22 @@
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 254
+                      },
+                      "name": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "ACTIVE",
+                          "SUSPENDED"
+                        ]
                       }
                     },
                     "required": [
@@ -17194,7 +17210,10 @@
                       "organizationId",
                       "userId",
                       "role",
-                      "createdAt"
+                      "createdAt",
+                      "email",
+                      "name",
+                      "status"
                     ],
                     "additionalProperties": false
                   }

@@ -5,34 +5,45 @@ import { z } from "zod";
 import { Prisma, prisma } from "./lib/database.js";
 import { transaction, type Transaction } from "./shared/transaction.js";
 import { validateNorthPanelDocument, type NorthPanelDocument } from "./modules/north/content-schema.js";
+import { masterHouseCategory, masterHousePages } from "./seed-master-house-pages.js";
+import { bootstrapNorthOrganization } from "./modules/north/service.js";
 
+const decimal = z.string().regex(/^-?(?:\d+\.?\d*|\.\d+)$/).nullable();
+const label = z.string().min(1).max(500);
 const fixtureSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   fixtureId: z.string().regex(/^[a-z0-9][a-z0-9-]{2,80}$/),
   source: z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), sourceWorkbook: z.string().min(1).max(255), sanitization: z.string().min(1).max(500) }).strict(),
   rows: z.array(z.object({
     arrival_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    master_carrier: z.string().min(1).max(500),
-    master_consignee: z.string().min(1).max(500),
-    master_metric_tons: z.string().regex(/^-?(?:\d+\.?\d*|\.\d+)$/).nullable(),
-    master_port_departure: z.string().min(1).max(500),
-    master_country_origin: z.string().min(1).max(500),
-    master_teus: z.string().regex(/^-?(?:\d+\.?\d*|\.\d+)$/).nullable(),
-    master_bill_number: z.string().min(1).max(500),
-    container_number: z.string().min(1).max(500),
+    master_carrier: label, master_consignee: label, master_metric_tons: decimal, master_port_arrival: label,
+    master_port_departure: label, master_country_origin: label, master_teus: decimal, master_bill_number: label,
+    container_number: label,
+    house_carrier: label, house_consignee: label, house_metric_tons: decimal, house_port_arrival: label,
+    house_port_departure: label, house_country_origin: label, house_teus: decimal, house_bill_number: label,
   }).strict()).min(1).max(20_000),
 }).strict();
 
+const text = (es: string, en: string) => ({ es, en });
 const fieldDefinitions = [
-  { key: "arrival_date", displayName: { es: "Fecha de llegada", en: "Arrival date" }, canonicalType: "DATE" as const },
-  { key: "master_carrier", displayName: { es: "Transportista", en: "Master carrier" }, canonicalType: "TEXT" as const },
-  { key: "master_consignee", displayName: { es: "Consignatario", en: "Master consignee" }, canonicalType: "TEXT" as const },
-  { key: "master_metric_tons", displayName: { es: "Toneladas métricas", en: "Master metric tons" }, canonicalType: "DECIMAL" as const },
-  { key: "master_port_departure", displayName: { es: "Puerto de salida", en: "Port of departure" }, canonicalType: "TEXT" as const },
-  { key: "master_country_origin", displayName: { es: "País de origen", en: "Country of origin" }, canonicalType: "TEXT" as const },
-  { key: "master_teus", displayName: { es: "TEUs", en: "Master TEUs" }, canonicalType: "DECIMAL" as const },
-  { key: "master_bill_number", displayName: { es: "BL maestro", en: "Master bill of lading" }, canonicalType: "TEXT" as const },
-  { key: "container_number", displayName: { es: "Contenedor", en: "Container" }, canonicalType: "TEXT" as const },
+  { key: "arrival_date", displayName: text("Fecha de llegada", "Arrival date"), canonicalType: "DATE" as const },
+  { key: "master_carrier", displayName: text("Naviera Master", "Master carrier"), canonicalType: "TEXT" as const },
+  { key: "master_consignee", displayName: text("Consignatario Master", "Master consignee"), canonicalType: "TEXT" as const },
+  { key: "master_metric_tons", displayName: text("Toneladas métricas Master", "Master metric tons"), canonicalType: "DECIMAL" as const },
+  { key: "master_port_arrival", displayName: text("Puerto de arribo Master", "Master port of arrival"), canonicalType: "TEXT" as const },
+  { key: "master_port_departure", displayName: text("Puerto de salida Master", "Master port of departure"), canonicalType: "TEXT" as const },
+  { key: "master_country_origin", displayName: text("País de origen Master", "Master country of origin"), canonicalType: "TEXT" as const },
+  { key: "master_teus", displayName: text("TEUs Master", "Master TEUs"), canonicalType: "DECIMAL" as const },
+  { key: "master_bill_number", displayName: text("BL Master", "Master bill of lading"), canonicalType: "TEXT" as const },
+  { key: "container_number", displayName: text("Contenedor", "Container"), canonicalType: "TEXT" as const },
+  { key: "house_carrier", displayName: text("Naviera House", "House carrier"), canonicalType: "TEXT" as const },
+  { key: "house_consignee", displayName: text("Consignatario House", "House consignee"), canonicalType: "TEXT" as const },
+  { key: "house_metric_tons", displayName: text("Toneladas métricas House", "House metric tons"), canonicalType: "DECIMAL" as const },
+  { key: "house_port_arrival", displayName: text("Puerto de arribo House", "House port of arrival"), canonicalType: "TEXT" as const },
+  { key: "house_port_departure", displayName: text("Puerto de salida House", "House port of departure"), canonicalType: "TEXT" as const },
+  { key: "house_country_origin", displayName: text("País de origen House", "House country of origin"), canonicalType: "TEXT" as const },
+  { key: "house_teus", displayName: text("TEUs House", "House TEUs"), canonicalType: "DECIMAL" as const },
+  { key: "house_bill_number", displayName: text("BL House", "House bill of lading"), canonicalType: "TEXT" as const },
 ] as const;
 
 function argumentsFrom(command: string[]) {
@@ -55,7 +66,11 @@ function argumentsFrom(command: string[]) {
   if (!email || !z.string().email().safeParse(email).success) throw new Error("A valid --email is required");
   if (!organizationSlug || !/^[a-z0-9][a-z0-9-]{2,80}$/.test(organizationSlug)) throw new Error("A valid --organization-slug is required");
   if (organizationName.length < 2 || organizationName.length > 120) throw new Error("A valid --organization-name is required");
-  return { email, organizationSlug, organizationName };
+  // Optional comma-separated list of already registered and verified accounts that
+  // receive read-only (VIEWER) membership. Existing roles are never downgraded.
+  const viewerEmails = (values.get("viewer-emails") ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  for (const viewer of viewerEmails) if (!z.string().email().safeParse(viewer).success) throw new Error("Invalid --viewer-emails entry");
+  return { email, organizationSlug, organizationName, viewerEmails };
 }
 
 function etagFor(id: string, panelId: string, revisionNumber: number) {
@@ -131,14 +146,28 @@ async function seed() {
   const fixture = fixtureSchema.parse(JSON.parse(bytes.toString("utf8")));
   const checksum = createHash("sha256").update(bytes).digest("hex");
   if (command.length === 1 && command[0] === "--validate-only") {
-    const fields = new Map(fieldDefinitions.map((definition) => [definition.key, `demo-field-${definition.key}`]));
+    const fields = new Map<string, string>(fieldDefinitions.map((definition) => [definition.key, `demo-field-${definition.key}`]));
     const bindingKeys = ["total-records", "unique-containers", "unique-bills", "unique-consignees", "daily-arrivals", "origin-countries", "carriers"];
     const bindings = new Map(bindingKeys.map((key) => [key, `demo-binding-${key}`]));
     await validateNorthPanelDocument(panelDocument("demo-dataset", fields, bindings), {
       organizationId: "demo-organization", actorId: "demo-user", panelId: "demo-panel",
       validateBindingReference: async (_organizationId, reference) => reference.datasetId === "demo-dataset" && [...bindings.values()].includes(reference.sourceId),
     });
-    process.stdout.write(`${JSON.stringify({ fixtureId: fixture.fixtureId, checksum, rows: fixture.rows.length, status: "valid" })}\n`);
+    for (const page of masterHousePages) {
+      const pageFields = (key: string) => {
+        const id = fields.get(key);
+        if (!id) throw new Error(`Unknown field ${key}`);
+        return id;
+      };
+      const pageBindings = new Map(page.bindings.map((binding) => [binding.key, `demo-binding-${page.panel.slug}-${binding.key}`]));
+      for (const binding of page.bindings) binding.query(pageFields);
+      for (const filter of page.filters) pageFields(filter.field);
+      await validateNorthPanelDocument(page.document({ datasetId: "demo-dataset", id: pageFields, binding: (key) => pageBindings.get(key)! }), {
+        organizationId: "demo-organization", actorId: "demo-user", panelId: `demo-panel-${page.panel.slug}`,
+        validateBindingReference: async (_organizationId, reference) => reference.datasetId === "demo-dataset" && [...pageBindings.values()].includes(reference.sourceId),
+      });
+    }
+    process.stdout.write(`${JSON.stringify({ fixtureId: fixture.fixtureId, checksum, rows: fixture.rows.length, pages: masterHousePages.length, status: "valid" })}\n`);
     return;
   }
   const options = argumentsFrom(command);
@@ -157,6 +186,10 @@ async function seed() {
       membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId: organization.id, userId: user.id } } });
       if (!membership) throw new Error("Demo account is not a member of the existing organization slug");
     }
+
+    // Standard NORTH baseline (Home, Administration and the read grants that let
+    // MEMBER/VIEWER roles see published content). Idempotent, same as organization creation.
+    await bootstrapNorthOrganization(tx, organization.id);
 
     const category = await tx.northCategory.upsert({
       where: { organizationId_slug: { organizationId: organization.id, slug: "analytics" } },
@@ -199,7 +232,7 @@ async function seed() {
       } });
       importJob = await tx.northDatasetImportJob.create({ data: {
         organizationId: organization.id, datasetId: dataset.id, requestedBy: user.id, requestedMembershipId: membership.id,
-        idempotencyOperation: "DATASET_IMPORT_PREPARE", idempotencyKey: `trusted-seed-${fixture.fixtureId}`, requestHash: checksum,
+        idempotencyOperation: "DATASET_IMPORT_PREPARE", idempotencyKey: `trusted-seed-${fixture.fixtureId}-${checksum.slice(0, 16)}`, requestHash: checksum,
         filename: fixture.source.sourceWorkbook, declaredMime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", declaredSize: BigInt(bytes.length), declaredChecksum: checksum,
         storageKey, status: "SUCCEEDED", scanStatus: "UNAVAILABLE", progress: 100, attempts: 1, confirmedAt: new Date(), completedAt: new Date(), activationRequestedBy: user.id,
       } });
@@ -262,8 +295,75 @@ async function seed() {
     } else if (panel.status !== "PUBLISHED") {
       await tx.northPanel.update({ where: { id: panel.id }, data: { status: "PUBLISHED", draftRevisionId: published.id, publishedRevisionId: published.id } });
     }
-    await tx.organization.update({ where: { id: organization.id }, data: { homePanelId: panel.id } });
-    return { organizationId: organization.id, panelId: panel.id, datasetId: dataset.id, rows: fixture.rows.length, fixtureId: fixture.fixtureId };
+
+    // --- Master House report pages: one subcategory + published panel per page. ---
+    const fieldId = (key: string) => {
+      const id = fields.get(key);
+      if (!id) throw new Error(`Unknown field ${key}`);
+      return id;
+    };
+    const mhCategory = await tx.northCategory.upsert({
+      where: { organizationId_slug: { organizationId: organization.id, slug: masterHouseCategory.slug } },
+      update: { name: masterHouseCategory.name, icon: masterHouseCategory.icon, status: "ACTIVE", navigationHidden: false },
+      create: { organizationId: organization.id, scope: "ORGANIZATION", resourceKind: "CONTENT", categoryClass: "CUSTOM", name: masterHouseCategory.name, icon: masterHouseCategory.icon, slug: masterHouseCategory.slug, order: masterHouseCategory.order },
+    });
+    // Landing order for the demo: Master House first, the original single-panel summary
+    // after it, and the empty system Home hidden. Administration keeps its own order.
+    await tx.northCategory.updateMany({ where: { organizationId: organization.id, slug: "analytics" }, data: { order: 10 } });
+    await tx.northCategory.updateMany({ where: { organizationId: organization.id, slug: "home", resourceKind: "SYSTEM" }, data: { navigationHidden: true } });
+    let overviewPanelId: string | null = null;
+    for (const page of masterHousePages) {
+      const pageSubcategory = await tx.northSubcategory.upsert({
+        where: { categoryId_slug: { categoryId: mhCategory.id, slug: page.subcategory.slug } },
+        update: { name: page.subcategory.name, status: "ACTIVE", navigationHidden: false, order: page.subcategory.order },
+        create: { organizationId: organization.id, categoryId: mhCategory.id, resourceKind: "CONTENT", name: page.subcategory.name, slug: page.subcategory.slug, order: page.subcategory.order },
+      });
+      const pagePanel = await tx.northPanel.upsert({
+        where: { subcategoryId_slug: { subcategoryId: pageSubcategory.id, slug: page.panel.slug } },
+        update: { name: page.panel.name, navigationHidden: false, audienceType: "ALL_MEMBERS" },
+        create: { organizationId: organization.id, subcategoryId: pageSubcategory.id, resourceKind: "CONTENT", name: page.panel.name, slug: page.panel.slug, order: 0, audienceType: "ALL_MEMBERS" },
+      });
+      if (page.subcategory.order === 0) overviewPanelId = pagePanel.id;
+      const pageAllowed = page.filters.map((filter) => ({ fieldId: fieldId(filter.field), operators: filter.operators })) as Prisma.InputJsonValue;
+      const pageBindings = new Map<string, string>();
+      for (const definition of page.bindings) {
+        const binding = await upsertBinding(tx, {
+          organizationId: organization.id, panelId: pagePanel.id, datasetId: dataset.id, userId: user.id, allowedFilters: pageAllowed,
+          definition: { key: definition.key, name: definition.name, query: definition.query(fieldId) as Prisma.InputJsonValue },
+        });
+        pageBindings.set(definition.key, binding.id);
+      }
+      const pageValidated = await validateNorthPanelDocument(page.document({ datasetId: dataset.id, id: fieldId, binding: (key) => pageBindings.get(key)! }), {
+        organizationId: organization.id, actorId: user.id, tx, panelId: pagePanel.id,
+        validateBindingReference: async (organizationId, reference) => organizationId === organization!.id && reference.sourceType === "dataset" && reference.datasetId === dataset.id && [...pageBindings.values()].includes(reference.sourceId),
+      });
+      const pagePublished = await tx.northPanelRevision.findFirst({ where: { id: pagePanel.publishedRevisionId ?? "", panelId: pagePanel.id, organizationId: organization.id } });
+      if (!pagePublished || !sameJson(pagePublished.document, pageValidated)) {
+        const maximum = await tx.northPanelRevision.aggregate({ where: { panelId: pagePanel.id }, _max: { revisionNumber: true } });
+        const revisionNumber = (maximum._max.revisionNumber ?? 0) + 1;
+        const id = randomUUID();
+        const revision = await tx.northPanelRevision.create({ data: { id, organizationId: organization.id, panelId: pagePanel.id, revisionNumber, etag: etagFor(id, pagePanel.id, revisionNumber), document: pageValidated as unknown as Prisma.InputJsonValue, defaultLocale: pageValidated.defaultLocale, fallbackLocales: pageValidated.fallbackLocales, message: `Trusted demo seed ${fixture.fixtureId}`, createdBy: user.id } });
+        await tx.northPanel.update({ where: { id: pagePanel.id }, data: { status: "PUBLISHED", draftRevisionId: revision.id, publishedRevisionId: revision.id } });
+        await tx.auditLog.create({ data: { actorId: user.id, organizationId: organization.id, action: "NORTH_DEMO_PANEL_PUBLISHED", targetType: "NorthPanel", targetId: pagePanel.id, metadata: { fixtureId: fixture.fixtureId, revisionNumber, page: page.subcategory.slug } } });
+      } else if (pagePanel.status !== "PUBLISHED") {
+        await tx.northPanel.update({ where: { id: pagePanel.id }, data: { status: "PUBLISHED", draftRevisionId: pagePublished.id, publishedRevisionId: pagePublished.id } });
+      }
+    }
+
+    // --- Read-only viewers: existing, verified accounts only. Nothing is created and no role is changed. ---
+    const viewers: Array<{ email: string; role: string; added: boolean }> = [];
+    for (const viewerEmail of options.viewerEmails) {
+      const viewer = await tx.user.findUnique({ where: { email: viewerEmail } });
+      if (!viewer || viewer.status !== "ACTIVE" || !viewer.emailVerified) throw new Error(`Viewer ${viewerEmail} must be an active, verified account`);
+      const existing = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId: organization.id, userId: viewer.id } } });
+      if (existing) { viewers.push({ email: viewerEmail, role: existing.role, added: false }); continue; }
+      await tx.membership.create({ data: { organizationId: organization.id, userId: viewer.id, role: "VIEWER" } });
+      await tx.auditLog.create({ data: { actorId: user.id, organizationId: organization.id, action: "DEMO_VIEWER_MEMBERSHIP_ADDED", targetType: "User", targetId: viewer.id, metadata: { fixtureId: fixture.fixtureId, role: "VIEWER" } } });
+      viewers.push({ email: viewerEmail, role: "VIEWER", added: true });
+    }
+
+    await tx.organization.update({ where: { id: organization.id }, data: { homePanelId: overviewPanelId ?? panel.id } });
+    return { organizationId: organization.id, panelId: panel.id, datasetId: dataset.id, rows: fixture.rows.length, fixtureId: fixture.fixtureId, pages: masterHousePages.length, viewers };
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

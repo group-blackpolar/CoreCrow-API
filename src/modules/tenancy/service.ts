@@ -137,7 +137,13 @@ export const tenants = {
   members(userId: string, organizationId: string) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "members.read");
-      return repo.members(tx, organizationId);
+      const memberships = await repo.members(tx, organizationId);
+      return memberships.map(({ user, ...membership }) => ({
+        ...membership,
+        email: user.email.trim().toLowerCase(),
+        name: user.name,
+        status: user.status,
+      }));
     });
   },
   changeMember(
