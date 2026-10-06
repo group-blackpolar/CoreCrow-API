@@ -111,6 +111,7 @@ jobs:
             test -n "$DEMO_ACCOUNT_EMAIL"
             sudo -n docker exec corecrow-v1 node dist/seed-tenant-demo.js \
               --email "$DEMO_ACCOUNT_EMAIL" \
-              --organization-slug master-house-demo \
-              --organization-name "Master House Demo" \
+              --organization-slug shark \
+              --organization-name "SHARK" \
+              --public-showcase=true \
               ${VIEWER_EMAILS:+--viewer-emails "$VIEWER_EMAILS"}

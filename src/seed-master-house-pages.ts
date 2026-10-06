@@ -133,7 +133,7 @@ export const masterHousePages: PageSpec[] = [
       datasetId, binding, sectionId: "overview", name: localized("Información del tablero", "Dashboard information"),
       components: (c) => [
         c.heading("overview-title", "Importaciones Master-House", "Imports Master-House", 2, 0, 0, 12),
-        c.paragraph("overview-scope", "Este reporte detalla los agentes declarados en los BL Master de contenedores de importación recibidos por los puertos de Panamá. Las cifras se expresan en contenedores y toneladas métricas; el conjunto de demostración cubre junio de 2026.", "This report details the agents declared in Master Bills of Lading for import containers received through Panama's ports. Figures are in containers and metric tons; the demonstration data set covers June 2026.", 0, 1, 12, 3),
+        c.paragraph("overview-scope", "Este reporte detalla los agentes declarados en los BL Master de contenedores de importación recibidos por los puertos de Panamá. Las cifras se expresan en contenedores y toneladas métricas. Todos los datos de esta demostración son FICTICIOS y cubren junio de 2026.", "This report details the agents declared in Master Bills of Lading for import containers received through Panama's ports. Figures are in containers and metric tons. All data in this demonstration is FICTITIOUS and covers June 2026.", 0, 1, 12, 3),
         c.metric("overview-records", "Registros", "Records", "records", "records", 0, 4, 3),
         c.metric("overview-containers", "Contenedores únicos", "Unique containers", "unique-containers", "containers", 3, 4, 3),
         c.metric("overview-master-bills", "BL master", "Master bills", "unique-master-bills", "master_bills", 6, 4, 3),

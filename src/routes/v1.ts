@@ -41,6 +41,7 @@ import { northDatasetImportAnalysis } from "../modules/north/data/import-analysi
 import { northDatasetImportActivation } from "../modules/north/data/import-activation-service.js";
 import { northDatasetQuery } from "../modules/north/data/query-service.js";
 import { northAnalyticsBindings } from "../modules/north/data/binding-service.js";
+import { northShowcase } from "../modules/north/showcase-service.js";
 import { allowedBindingFilterSchema, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
 
 export async function v1Routes(app: FastifyInstance) {
@@ -1518,6 +1519,64 @@ export async function v1Routes(app: FastifyInstance) {
       canonicalPath: z.string(),
     }),
     run: ({ user, query }) => northTaxonomy.resolve(user.id, query),
+  });
+  // --- Public showcase: anonymous, read-only, explicit opt-in (see ADR 019). ---
+  const showcaseParams = z.object({ organizationSlug: z.string().trim().min(1).max(100) }).strict();
+  const showcaseRevision = z.object({
+    id: s.id, panelId: s.id, revisionNumber: z.number().int(), etag: z.string(), defaultLocale: z.string(),
+    fallbackLocales: z.array(z.string()), document: northPanelDocumentInput,
+    locale: z.object({ requested: z.string().nullable(), resolved: z.string(), fallbackChain: z.array(z.string()) }),
+  });
+  contract(app, {
+    method: "GET", url: "/public/showcases/:organizationSlug/navigation", tag: "NORTH showcase", public: true, rateLimit: 60,
+    summary: "Read the navigation of explicitly public showcase panels without authentication", params: showcaseParams,
+    response: z.object({ organization: z.object({ name: s.name, slug: z.string() }), navigation }),
+    run: async ({ params, reply }) => {
+      reply.header("cache-control", "public, max-age=15, must-revalidate");
+      return northShowcase.navigation(params.organizationSlug);
+    },
+  });
+  contract(app, {
+    method: "GET", url: "/public/showcases/:organizationSlug/resolve", tag: "NORTH showcase", public: true, rateLimit: 60,
+    summary: "Resolve one published public showcase panel without authentication", params: showcaseParams,
+    query: z.object({ categorySlug: z.string(), subcategorySlug: z.string(), panelSlug: z.string(), locale: z.string().optional() }).strict(),
+    response: z.object({
+      organization: z.object({ name: s.name, slug: z.string() }),
+      category: z.object({ id: s.id, name: s.localizedText, slug: z.string() }),
+      subcategory: z.object({ id: s.id, name: s.localizedText, slug: z.string() }),
+      panel: z.object({ id: s.id, name: s.localizedText, description: s.localizedText.nullable(), icon: z.string().nullable(), slug: z.string(), status: z.literal("PUBLISHED") }),
+      revision: showcaseRevision,
+      canonicalPath: z.string(),
+    }),
+    run: async ({ params, query, reply }) => {
+      reply.header("cache-control", "public, max-age=15, must-revalidate");
+      return northShowcase.resolve(params.organizationSlug, query);
+    },
+  });
+  contract(app, {
+    method: "POST", url: "/public/showcases/:organizationSlug/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH showcase", public: true, rateLimit: 30,
+    summary: "Resolve only a binding referenced by a public showcase panel and apply allowlisted runtime filters",
+    params: showcaseParams.extend({ panelId: s.id, bindingId: s.id }),
+    body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).strict(),
+    response: s.northAnalyticsBindingResult,
+    run: async ({ params, body, reply }) => {
+      reply.header("cache-control", "no-store");
+      return northShowcase.results(params.organizationSlug, params.panelId, params.bindingId, body.filters);
+    },
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/public-showcase", tag: "NORTH showcase",
+    summary: "Enable or disable the organization's public showcase (authorized and audited)", params: s.orgParams,
+    body: z.object({ enabled: z.boolean() }).strict(),
+    response: z.object({ organizationId: s.id, showcaseEnabled: z.boolean() }),
+    run: ({ user, params, body }) => northShowcase.setOrganization(user.id, params.organizationId, body.enabled),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/panels/:panelId/public-visibility", tag: "NORTH showcase",
+    summary: "Mark a published content panel PRIVATE or SHOWCASE (authorized and audited)", params: s.orgParams.extend({ panelId: s.id }),
+    body: z.object({ visibility: z.enum(["PRIVATE", "SHOWCASE"]) }).strict(),
+    response: z.object({ panelId: s.id, visibility: z.enum(["PRIVATE", "SHOWCASE"]) }),
+    run: ({ user, params, body }) => northShowcase.setPanelVisibility(user.id, params.organizationId, params.panelId, body.visibility),
   });
   contract(app, {
     method: "GET",

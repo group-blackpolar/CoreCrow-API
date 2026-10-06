@@ -18,6 +18,7 @@ const reservedOrganizationSlugs = new Set([
   "register",
   "security",
   "settings",
+  "showcase",
   "sign-in",
   "sign-up",
   "support",
