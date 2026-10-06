@@ -64,6 +64,9 @@ const catalog = {
   bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional() }).strict(),
   line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional() }).strict(),
   donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional() }).strict(),
+  // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
+  // all data and permissions come from the /documents contracts, never from this document.
+  document_workspace: z.object({ typeKey: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/), title: localized.optional() }).strict(),
   divider: z.object({ variant: z.enum(["solid", "dashed", "dotted"]).optional(), spacing: size.optional() }).strict(),
   embed: z.object({ url: z.string().url().max(2_048), title: localized.optional(), aspectRatio: z.enum(["16:9", "4:3", "1:1"]).optional() }).strict(),
 } as const;

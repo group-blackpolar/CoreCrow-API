@@ -11,6 +11,14 @@ export const permissions = [
   "commerce.read",
   "billing.read",
   "billing.manage",
+  // Documents: tenant-scoped forms/quotes/orders (see ADR 020).
+  "documents.read",
+  "documents.create",
+  "documents.update",
+  "documents.delete",
+  "documents.download",
+  "documents.send",
+  "documents.manage",
 ] as const;
 export type Permission = (typeof permissions)[number];
 export const northCapabilities = [
@@ -80,12 +88,18 @@ const grants: Record<string, readonly Permission[]> = {
     "members.read",
     "groups.read",
     "commerce.read",
+    "documents.read",
+    "documents.create",
+    "documents.update",
+    "documents.download",
   ],
   VIEWER: [
     "organization.read",
     "members.read",
     "groups.read",
     "commerce.read",
+    "documents.read",
+    "documents.download",
   ],
 };
 const permissionSet = new Set<string>(permissions);
