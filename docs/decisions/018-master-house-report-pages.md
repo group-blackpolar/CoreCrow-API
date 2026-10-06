@@ -8,13 +8,13 @@
 
 The trusted June demo seed publishes the Master House report as eight ordinary
 CORECROW panels (one subcategory each) under a `master-house` category in the
-isolated `master-house-demo` organization. Every table and chart reads an
+isolated demo organization (`shark`). Every table and chart reads an
 authoritative analytics binding over the active dataset revision; NORTH renders
 typed results only. No NORTH-owned endpoint, fixture or client-side query exists.
 
-The fixture carries eighteen presentation fields (master and house) selected from
-the June workbook. It is rebuilt offline with
-`scripts/build-master-house-fixture.mjs`; the API never parses the workbook. A
+The fixture carries eighteen presentation fields (master and house) of a synthetic data set shaped like
+the June workbook. It is generated offline (fully synthetic) with
+`scripts/build-demo-fixture.mjs`; the API never parses a workbook. A
 changed fixture has a new checksum, so the seed records it as a new import and
 activates a new dataset revision. Existing field IDs, bindings and the original
 `analytics/master-house/june-2026` panel are preserved.

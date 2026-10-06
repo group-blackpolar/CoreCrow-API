@@ -70,7 +70,9 @@ function argumentsFrom(command: string[]) {
   // receive read-only (VIEWER) membership. Existing roles are never downgraded.
   const viewerEmails = (values.get("viewer-emails") ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
   for (const viewer of viewerEmails) if (!z.string().email().safeParse(viewer).success) throw new Error("Invalid --viewer-emails entry");
-  return { email, organizationSlug, organizationName, viewerEmails };
+  // Explicit publication choice: marks every Master House page SHOWCASE and enables the organization showcase.
+  const publicShowcase = values.get("public-showcase") === "true";
+  return { email, organizationSlug, organizationName, viewerEmails, publicShowcase };
 }
 
 function etagFor(id: string, panelId: string, revisionNumber: number) {
@@ -320,8 +322,8 @@ async function seed() {
       });
       const pagePanel = await tx.northPanel.upsert({
         where: { subcategoryId_slug: { subcategoryId: pageSubcategory.id, slug: page.panel.slug } },
-        update: { name: page.panel.name, navigationHidden: false, audienceType: "ALL_MEMBERS" },
-        create: { organizationId: organization.id, subcategoryId: pageSubcategory.id, resourceKind: "CONTENT", name: page.panel.name, slug: page.panel.slug, order: 0, audienceType: "ALL_MEMBERS" },
+        update: { name: page.panel.name, navigationHidden: false, audienceType: "ALL_MEMBERS", ...(options.publicShowcase ? { visibility: "SHOWCASE" as const } : {}) },
+        create: { organizationId: organization.id, subcategoryId: pageSubcategory.id, resourceKind: "CONTENT", name: page.panel.name, slug: page.panel.slug, order: 0, audienceType: "ALL_MEMBERS", visibility: options.publicShowcase ? "SHOWCASE" : "PRIVATE" },
       });
       if (page.subcategory.order === 0) overviewPanelId = pagePanel.id;
       const pageAllowed = page.filters.map((filter) => ({ fieldId: fieldId(filter.field), operators: filter.operators })) as Prisma.InputJsonValue;
@@ -362,8 +364,10 @@ async function seed() {
       viewers.push({ email: viewerEmail, role: "VIEWER", added: true });
     }
 
-    await tx.organization.update({ where: { id: organization.id }, data: { homePanelId: overviewPanelId ?? panel.id } });
-    return { organizationId: organization.id, panelId: panel.id, datasetId: dataset.id, rows: fixture.rows.length, fixtureId: fixture.fixtureId, pages: masterHousePages.length, viewers };
+    await tx.organization.update({ where: { id: organization.id }, data: { homePanelId: overviewPanelId ?? panel.id, ...(options.publicShowcase ? { showcaseEnabled: true } : {}) } });
+    if (options.publicShowcase)
+      await tx.auditLog.create({ data: { actorId: user.id, organizationId: organization.id, action: "SHOWCASE_ENABLED", targetType: "Organization", targetId: organization.id, metadata: { fixtureId: fixture.fixtureId, pages: masterHousePages.length, synthetic: true } } });
+    return { organizationId: organization.id, panelId: panel.id, datasetId: dataset.id, rows: fixture.rows.length, fixtureId: fixture.fixtureId, pages: masterHousePages.length, publicShowcase: options.publicShowcase, viewers };
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

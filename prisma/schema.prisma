@@ -215,6 +215,11 @@ enum NorthResourceStatus {
   ARCHIVED
 }
 
+enum NorthPanelVisibility {
+  PRIVATE
+  SHOWCASE
+}
+
 enum NorthPanelStatus {
   DRAFT
   PUBLISHED
@@ -318,6 +323,8 @@ model Organization {
   name                  String
   slug                  String                      @unique
   status                OrganizationStatus          @default(ACTIVE)
+  /// Explicit opt-in for anonymous, read-only showcase of panels marked SHOWCASE.
+  showcaseEnabled       Boolean                     @default(false)
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
   memberships           Membership[]
@@ -479,6 +486,8 @@ model NorthPanel {
   status              NorthPanelStatus               @default(DRAFT)
   audienceType        NorthAudienceType              @default(ALL_MEMBERS)
   accessPolicyMode    NorthPanelAccessPolicyMode     @default(LEGACY_AUDIENCE)
+  /// PRIVATE is the default. SHOWCASE additionally requires the organization opt-in and publication.
+  visibility          NorthPanelVisibility           @default(PRIVATE)
   publishedRevisionId String?
   draftRevisionId     String?
   createdAt           DateTime                       @default(now())

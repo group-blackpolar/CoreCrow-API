@@ -24867,6 +24867,1140 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/public/showcases/{organizationSlug}/navigation:
+    get:
+      summary: Read the navigation of explicitly public showcase panels without
+        authentication
+      tags:
+        - NORTH showcase
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          in: path
+          name: organizationSlug
+          required: true
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        minLength: 2
+                        maxLength: 100
+                      slug:
+                        type: string
+                    required:
+                      - name
+                      - slug
+                    additionalProperties: false
+                  navigation:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        name:
+                          type: object
+                          additionalProperties:
+                            type: string
+                            minLength: 1
+                            maxLength: 500
+                        icon:
+                          type: string
+                          nullable: true
+                        color:
+                          type: string
+                          nullable: true
+                        slug:
+                          type: string
+                        subcategories:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              name:
+                                type: object
+                                additionalProperties:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 500
+                              icon:
+                                type: string
+                                nullable: true
+                              slug:
+                                type: string
+                              panels:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: string
+                                      minLength: 1
+                                      maxLength: 128
+                                    name:
+                                      type: object
+                                      additionalProperties:
+                                        type: string
+                                        minLength: 1
+                                        maxLength: 500
+                                    icon:
+                                      type: string
+                                      nullable: true
+                                    slug:
+                                      type: string
+                                    status:
+                                      type: string
+                                      enum:
+                                        - DRAFT
+                                        - PUBLISHED
+                                        - ARCHIVED
+                                  required:
+                                    - id
+                                    - name
+                                    - icon
+                                    - slug
+                                    - status
+                                  additionalProperties: false
+                            required:
+                              - id
+                              - name
+                              - icon
+                              - slug
+                              - panels
+                            additionalProperties: false
+                      required:
+                        - id
+                        - name
+                        - icon
+                        - color
+                        - slug
+                        - subcategories
+                      additionalProperties: false
+                required:
+                  - organization
+                  - navigation
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/public/showcases/{organizationSlug}/resolve:
+    get:
+      summary: Resolve one published public showcase panel without authentication
+      tags:
+        - NORTH showcase
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: categorySlug
+          required: true
+        - schema:
+            type: string
+          in: query
+          name: subcategorySlug
+          required: true
+        - schema:
+            type: string
+          in: query
+          name: panelSlug
+          required: true
+        - schema:
+            type: string
+          in: query
+          name: locale
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          in: path
+          name: organizationSlug
+          required: true
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        minLength: 2
+                        maxLength: 100
+                      slug:
+                        type: string
+                    required:
+                      - name
+                      - slug
+                    additionalProperties: false
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                          minLength: 1
+                          maxLength: 500
+                      slug:
+                        type: string
+                    required:
+                      - id
+                      - name
+                      - slug
+                    additionalProperties: false
+                  subcategory:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                          minLength: 1
+                          maxLength: 500
+                      slug:
+                        type: string
+                    required:
+                      - id
+                      - name
+                      - slug
+                    additionalProperties: false
+                  panel:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      name:
+                        type: object
+                        additionalProperties:
+                          type: string
+                          minLength: 1
+                          maxLength: 500
+                      description:
+                        type: object
+                        additionalProperties:
+                          type: string
+                          minLength: 1
+                          maxLength: 500
+                        nullable: true
+                      icon:
+                        type: string
+                        nullable: true
+                      slug:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - PUBLISHED
+                    required:
+                      - id
+                      - name
+                      - description
+                      - icon
+                      - slug
+                      - status
+                    additionalProperties: false
+                  revision:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      panelId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      revisionNumber:
+                        type: integer
+                      etag:
+                        type: string
+                      defaultLocale:
+                        type: string
+                      fallbackLocales:
+                        type: array
+                        items:
+                          type: string
+                      document:
+                        type: object
+                        properties:
+                          schemaVersion:
+                            type: number
+                            enum:
+                              - 1
+                          defaultLocale:
+                            type: string
+                            pattern: ^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$
+                          fallbackLocales:
+                            type: array
+                            items:
+                              type: string
+                              pattern: ^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$
+                            maxItems: 10
+                            default: []
+                          sections:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                name:
+                                  type: object
+                                  additionalProperties:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 10000
+                                order:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 100000
+                                layout:
+                                  type: object
+                                  properties:
+                                    variant:
+                                      type: string
+                                      enum:
+                                        - grid
+                                      default: grid
+                                    gap:
+                                      type: string
+                                      enum:
+                                        - none
+                                        - sm
+                                        - md
+                                        - lg
+                                      default: md
+                                  additionalProperties: false
+                                components:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      id:
+                                        type: string
+                                        minLength: 1
+                                        maxLength: 128
+                                      type:
+                                        type: string
+                                        minLength: 1
+                                        maxLength: 64
+                                      schemaVersion:
+                                        type: integer
+                                        minimum: 1
+                                      props:
+                                        type: object
+                                        additionalProperties: {}
+                                      bindings:
+                                        type: object
+                                        additionalProperties:
+                                          type: object
+                                          properties:
+                                            sourceType:
+                                              type: string
+                                              enum:
+                                                - metric
+                                                - dataset
+                                            sourceId:
+                                              type: string
+                                              pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                                              description: For dataset sources, the authoritative analytics binding ID
+                                            datasetId:
+                                              type: string
+                                              minLength: 1
+                                              maxLength: 128
+                                              description: Required for dataset sources and checked against the binding-owned
+                                                dataset
+                                            viewId:
+                                              type: string
+                                              minLength: 1
+                                              maxLength: 128
+                                              description: Deprecated compatibility field; ignored for authoritative dataset
+                                                bindings
+                                          required:
+                                            - sourceType
+                                            - sourceId
+                                          additionalProperties: false
+                                        default: {}
+                                      layout:
+                                        type: object
+                                        properties:
+                                          desktop:
+                                            type: object
+                                            properties:
+                                              x:
+                                                type: integer
+                                                minimum: 0
+                                                maximum: 11
+                                              y:
+                                                type: integer
+                                                minimum: 0
+                                                maximum: 10000
+                                              w:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 12
+                                              h:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 100
+                                            required:
+                                              - x
+                                              - y
+                                              - w
+                                              - h
+                                            additionalProperties: false
+                                          tablet:
+                                            type: object
+                                            properties:
+                                              x:
+                                                type: integer
+                                                minimum: 0
+                                                maximum: 11
+                                              y:
+                                                type: integer
+                                                minimum: 0
+                                                maximum: 10000
+                                              w:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 12
+                                              h:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 100
+                                            required:
+                                              - x
+                                              - y
+                                              - w
+                                              - h
+                                            additionalProperties: false
+                                          mobile:
+                                            type: object
+                                            properties:
+                                              x:
+                                                type: integer
+                                                minimum: 0
+                                                maximum: 11
+                                              y:
+                                                type: integer
+                                                minimum: 0
+                                                maximum: 10000
+                                              w:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 12
+                                              h:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 100
+                                            required:
+                                              - x
+                                              - y
+                                              - w
+                                              - h
+                                            additionalProperties: false
+                                        required:
+                                          - desktop
+                                          - tablet
+                                          - mobile
+                                        additionalProperties: false
+                                      order:
+                                        type: integer
+                                        minimum: 0
+                                        maximum: 100000
+                                    required:
+                                      - id
+                                      - type
+                                      - schemaVersion
+                                      - props
+                                      - layout
+                                      - order
+                                    additionalProperties: false
+                                  maxItems: 10000
+                              required:
+                                - id
+                                - order
+                                - layout
+                                - components
+                              additionalProperties: false
+                            maxItems: 10000
+                        required:
+                          - schemaVersion
+                          - defaultLocale
+                          - sections
+                        additionalProperties: false
+                      locale:
+                        type: object
+                        properties:
+                          requested:
+                            type: string
+                            nullable: true
+                          resolved:
+                            type: string
+                          fallbackChain:
+                            type: array
+                            items:
+                              type: string
+                        required:
+                          - requested
+                          - resolved
+                          - fallbackChain
+                        additionalProperties: false
+                    required:
+                      - id
+                      - panelId
+                      - revisionNumber
+                      - etag
+                      - defaultLocale
+                      - fallbackLocales
+                      - document
+                      - locale
+                    additionalProperties: false
+                  canonicalPath:
+                    type: string
+                required:
+                  - organization
+                  - category
+                  - subcategory
+                  - panel
+                  - revision
+                  - canonicalPath
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/public/showcases/{organizationSlug}/panels/{panelId}/analytics-bindings/{bindingId}/results:
+    post:
+      summary: Resolve only a binding referenced by a public showcase panel and apply
+        allowlisted runtime filters
+      tags:
+        - NORTH showcase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filters:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fieldId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      operator:
+                        type: string
+                        enum:
+                          - EQ
+                          - NE
+                          - GT
+                          - GTE
+                          - LT
+                          - LTE
+                          - CONTAINS
+                      value:
+                        anyOf:
+                          - type: string
+                            maxLength: 4096
+                            nullable: true
+                          - type: number
+                          - type: boolean
+                    required:
+                      - fieldId
+                      - operator
+                      - value
+                    additionalProperties: false
+                  maxItems: 10
+                  default: []
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          in: path
+          name: organizationSlug
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: panelId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: bindingId
+          required: true
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - ROWS
+                      - AGGREGATE
+                  datasetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  activeRevisionId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  schemaVersionId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  columns:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        fieldId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        type:
+                          type: string
+                          enum:
+                            - TEXT
+                            - INTEGER
+                            - DECIMAL
+                            - BOOLEAN
+                            - DATE
+                            - DATETIME
+                            - TIME
+                      required:
+                        - key
+                        - type
+                      additionalProperties: false
+                    maxItems: 20
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties:
+                        anyOf:
+                          - type: string
+                            nullable: true
+                          - type: number
+                          - type: boolean
+                    maxItems: 200
+                  rowCount:
+                    type: integer
+                    minimum: 0
+                    maximum: 200
+                  executedAt:
+                    type: string
+                    format: date-time
+                  bindingId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  filterDefinitions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        fieldId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        key:
+                          type: string
+                          pattern: ^[a-z][a-z0-9_]{0,63}$
+                        displayName:
+                          type: object
+                          additionalProperties:
+                            type: string
+                            minLength: 1
+                            maxLength: 500
+                        type:
+                          type: string
+                          enum:
+                            - TEXT
+                            - INTEGER
+                            - DECIMAL
+                            - BOOLEAN
+                            - DATE
+                            - DATETIME
+                            - TIME
+                        operators:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - EQ
+                              - NE
+                              - GT
+                              - GTE
+                              - LT
+                              - LTE
+                              - CONTAINS
+                          minItems: 1
+                          maxItems: 7
+                      required:
+                        - fieldId
+                        - key
+                        - displayName
+                        - type
+                        - operators
+                      additionalProperties: false
+                    maxItems: 10
+                required:
+                  - mode
+                  - datasetId
+                  - activeRevisionId
+                  - schemaVersionId
+                  - columns
+                  - rows
+                  - rowCount
+                  - executedAt
+                  - bindingId
+                  - filterDefinitions
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/public-showcase:
+    patch:
+      summary: Enable or disable the organization's public showcase (authorized and
+        audited)
+      tags:
+        - NORTH showcase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+              required:
+                - enabled
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  showcaseEnabled:
+                    type: boolean
+                required:
+                  - organizationId
+                  - showcaseEnabled
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/panels/{panelId}/public-visibility:
+    put:
+      summary: Mark a published content panel PRIVATE or SHOWCASE (authorized and
+        audited)
+      tags:
+        - NORTH showcase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                visibility:
+                  type: string
+                  enum:
+                    - PRIVATE
+                    - SHOWCASE
+              required:
+                - visibility
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: panelId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  panelId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  visibility:
+                    type: string
+                    enum:
+                      - PRIVATE
+                      - SHOWCASE
+                required:
+                  - panelId
+                  - visibility
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/audit:
     get:
       summary: Read controlled audit records
