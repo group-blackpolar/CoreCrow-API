@@ -17,6 +17,10 @@ on:
         description: Existing verified account that will own the isolated demo organization
         required: false
         type: string
+      viewer_emails:
+        description: Optional comma-separated existing verified accounts to add as read-only VIEWER members of the demo organization
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -92,6 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEMO_ACCOUNT_EMAIL: ${{ inputs.demo_account_email }}
+      VIEWER_EMAILS: ${{ inputs.viewer_emails }}
     steps:
       - name: Seed isolated Master House demo
         uses: appleboy/ssh-action@v1.0.3
@@ -100,11 +105,12 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 10m
-          envs: DEMO_ACCOUNT_EMAIL
+          envs: DEMO_ACCOUNT_EMAIL,VIEWER_EMAILS
           script: |
             set -eu
             test -n "$DEMO_ACCOUNT_EMAIL"
             sudo -n docker exec corecrow-v1 node dist/seed-tenant-demo.js \
               --email "$DEMO_ACCOUNT_EMAIL" \
               --organization-slug master-house-demo \
-              --organization-name "Master House Demo"
+              --organization-name "Master House Demo" \
+              ${VIEWER_EMAILS:+--viewer-emails "$VIEWER_EMAILS"}
