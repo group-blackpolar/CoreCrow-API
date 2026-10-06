@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { Prisma, prisma } from "./lib/database.js";
-import { transaction, type Transaction } from "./shared/transaction.js";
+import type { Transaction } from "./shared/transaction.js";
 import { validateNorthPanelDocument, type NorthPanelDocument } from "./modules/north/content-schema.js";
 import { masterHouseCategory, masterHousePages } from "./seed-master-house-pages.js";
 import { bootstrapNorthOrganization } from "./modules/north/service.js";
@@ -174,7 +174,8 @@ async function seed() {
   }
   const options = argumentsFrom(command);
 
-  const result = await transaction(async (tx) => {
+  // One trusted, idempotent unit of work: it inserts thousands of rows, so the 5 s Prisma default is far too short.
+  const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { email: options.email } });
     if (!user || user.status !== "ACTIVE" || !user.emailVerified) throw new Error("Demo account must be active and verified");
 
@@ -368,7 +369,7 @@ async function seed() {
     if (options.publicShowcase)
       await tx.auditLog.create({ data: { actorId: user.id, organizationId: organization.id, action: "SHOWCASE_ENABLED", targetType: "Organization", targetId: organization.id, metadata: { fixtureId: fixture.fixtureId, pages: masterHousePages.length, synthetic: true } } });
     return { organizationId: organization.id, panelId: panel.id, datasetId: dataset.id, rows: fixture.rows.length, fixtureId: fixture.fixtureId, pages: masterHousePages.length, publicShowcase: options.publicShowcase, viewers };
-  });
+  }, { isolationLevel: "Serializable", timeout: 300_000, maxWait: 15_000 });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

@@ -1528,7 +1528,7 @@ export async function v1Routes(app: FastifyInstance) {
     locale: z.object({ requested: z.string().nullable(), resolved: z.string(), fallbackChain: z.array(z.string()) }),
   });
   contract(app, {
-    method: "GET", url: "/public/showcases/:organizationSlug/navigation", tag: "NORTH showcase", public: true, rateLimit: 60,
+    method: "GET", url: "/public/showcases/:organizationSlug/navigation", tag: "NORTH showcase", public: true, rateLimit: 120,
     summary: "Read the navigation of explicitly public showcase panels without authentication", params: showcaseParams,
     response: z.object({ organization: z.object({ name: s.name, slug: z.string() }), navigation }),
     run: async ({ params, reply }) => {
@@ -1537,7 +1537,7 @@ export async function v1Routes(app: FastifyInstance) {
     },
   });
   contract(app, {
-    method: "GET", url: "/public/showcases/:organizationSlug/resolve", tag: "NORTH showcase", public: true, rateLimit: 60,
+    method: "GET", url: "/public/showcases/:organizationSlug/resolve", tag: "NORTH showcase", public: true, rateLimit: 120,
     summary: "Resolve one published public showcase panel without authentication", params: showcaseParams,
     query: z.object({ categorySlug: z.string(), subcategorySlug: z.string(), panelSlug: z.string(), locale: z.string().optional() }).strict(),
     response: z.object({
@@ -1554,7 +1554,7 @@ export async function v1Routes(app: FastifyInstance) {
     },
   });
   contract(app, {
-    method: "POST", url: "/public/showcases/:organizationSlug/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH showcase", public: true, rateLimit: 30,
+    method: "POST", url: "/public/showcases/:organizationSlug/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH showcase", public: true, rateLimit: 180,
     summary: "Resolve only a binding referenced by a public showcase panel and apply allowlisted runtime filters",
     params: showcaseParams.extend({ panelId: s.id, bindingId: s.id }),
     body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).strict(),
