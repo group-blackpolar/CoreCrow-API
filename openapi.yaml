@@ -12116,6 +12116,9 @@ paths:
                         createdAt:
                           type: string
                           format: date-time
+                        organizationCount:
+                          type: integer
+                          minimum: 0
                       required:
                         - id
                         - name
@@ -12127,6 +12130,7 @@ paths:
                         - termsAcceptedAt
                         - termsVersion
                         - createdAt
+                        - organizationCount
                       additionalProperties: false
                   nextCursor:
                     type: string
@@ -12837,6 +12841,10 @@ paths:
                   enum:
                     - ACTIVE
                     - SUSPENDED
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
               required:
                 - status
               additionalProperties: false
@@ -13034,6 +13042,12 @@ paths:
                           minLength: 1
                           maxLength: 128
                           nullable: true
+                        iconData:
+                          type: string
+                          nullable: true
+                        description:
+                          type: string
+                          nullable: true
                         owner:
                           type: object
                           properties:
@@ -13151,6 +13165,525 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/platform/organizations/{id}/inspection:
+    post:
+      summary: Audit the start of a read-only organization inspection (no membership
+        is created)
+      tags:
+        - Platform administration
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  name:
+                    type: string
+                  slug:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - ACTIVE
+                      - SUSPENDED
+                      - ARCHIVED
+                  iconData:
+                    type: string
+                    nullable: true
+                  inspectionSessionId:
+                    type: string
+                required:
+                  - id
+                  - name
+                  - slug
+                  - status
+                  - iconData
+                  - inspectionSessionId
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    delete:
+      summary: Audit the end of a read-only organization inspection
+      tags:
+        - Platform administration
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  name:
+                    type: string
+                  slug:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - ACTIVE
+                      - SUSPENDED
+                      - ARCHIVED
+                  iconData:
+                    type: string
+                    nullable: true
+                  inspectionSessionId:
+                    type: string
+                required:
+                  - id
+                  - name
+                  - slug
+                  - status
+                  - iconData
+                  - inspectionSessionId
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/platform/users/{id}/auid:
+    get:
+      summary: Whether an administrator has an AUID configured (never returns the
+        credential)
+      tags:
+        - Platform administration
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  revealable:
+                    type: boolean
+                  encryptionAvailable:
+                    type: boolean
+                  role:
+                    type: string
+                    enum:
+                      - USER
+                      - DEVELOPER
+                      - ADMIN
+                      - SUPERADMIN
+                required:
+                  - configured
+                  - revealable
+                  - encryptionAvailable
+                  - role
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/platform/users/{id}/auid/reveal:
+    post:
+      summary: Reveal a recoverable AUID after SUPERADMIN password re-authentication
+        (never cached)
+      tags:
+        - Platform administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+              required:
+                - password
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auid:
+                    type: string
+                required:
+                  - auid
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/platform/users/{id}/auid/regenerate:
+    post:
+      summary: Replace an administrator AUID after SUPERADMIN password
+        re-authentication; shown once
+      tags:
+        - Platform administration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+              required:
+                - password
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auid:
+                    type: string
+                required:
+                  - auid
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/platform/organizations/{id}:
     get:
       summary: Read organization administration detail without tenant bypass
@@ -13200,6 +13733,12 @@ paths:
                     type: string
                     minLength: 1
                     maxLength: 128
+                    nullable: true
+                  iconData:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
                     nullable: true
                   memberships:
                     type: array
@@ -13510,6 +14049,12 @@ paths:
                     type: string
                     minLength: 1
                     maxLength: 128
+                    nullable: true
+                  iconData:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
                     nullable: true
                 required:
                   - id
@@ -14455,6 +15000,12 @@ paths:
                     minLength: 1
                     maxLength: 128
                     nullable: true
+                  iconData:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
                 required:
                   - id
                   - name
@@ -14564,6 +15115,12 @@ paths:
                       type: string
                       minLength: 1
                       maxLength: 128
+                      nullable: true
+                    iconData:
+                      type: string
+                      nullable: true
+                    description:
+                      type: string
                       nullable: true
                   required:
                     - id
@@ -14772,6 +15329,12 @@ paths:
                     minLength: 1
                     maxLength: 128
                     nullable: true
+                  iconData:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
+                    nullable: true
                 required:
                   - id
                   - name
@@ -14840,7 +15403,7 @@ paths:
                   - error
                 additionalProperties: false
     patch:
-      summary: Update an active organization's name or normalized slug
+      summary: Update an active organization's name, normalized slug or icon
       tags:
         - Multi-tenancy
       requestBody:
@@ -14858,6 +15421,14 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 100
+                iconData:
+                  type: string
+                  maxLength: 400000
+                  nullable: true
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
               additionalProperties: false
       parameters:
         - schema:
@@ -14903,6 +15474,12 @@ paths:
                     type: string
                     minLength: 1
                     maxLength: 128
+                    nullable: true
+                  iconData:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
                     nullable: true
                 required:
                   - id
@@ -15035,6 +15612,12 @@ paths:
                     type: string
                     minLength: 1
                     maxLength: 128
+                    nullable: true
+                  iconData:
+                    type: string
+                    nullable: true
+                  description:
+                    type: string
                     nullable: true
                 required:
                   - id
@@ -15173,6 +15756,146 @@ paths:
                     - name
                     - status
                   additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    post:
+      summary: Add an existing verified account to the organization
+      tags:
+        - Multi-tenancy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                role:
+                  type: string
+                  enum:
+                    - ADMIN
+                    - BILLING_ADMIN
+                    - MEMBER
+                    - VIEWER
+                  default: MEMBER
+                groupIds:
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  maxItems: 50
+                  default: []
+              required:
+                - email
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  userId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  role:
+                    type: string
+                    enum:
+                      - OWNER
+                      - ADMIN
+                      - BILLING_ADMIN
+                      - MEMBER
+                      - VIEWER
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - organizationId
+                  - userId
+                  - role
+                  - createdAt
+                additionalProperties: false
         4XX:
           description: Default Response
           content:
@@ -15823,6 +16546,7 @@ paths:
                         - organization.update
                         - members.read
                         - members.manage
+                        - invitations.read
                         - invitations.manage
                         - groups.read
                         - groups.manage
@@ -15961,6 +16685,7 @@ paths:
                           - organization.update
                           - members.read
                           - members.manage
+                          - invitations.read
                           - invitations.manage
                           - groups.read
                           - groups.manage
@@ -16257,6 +16982,7 @@ paths:
                           - organization.update
                           - members.read
                           - members.manage
+                          - invitations.read
                           - invitations.manage
                           - groups.read
                           - groups.manage
@@ -16272,6 +16998,18 @@ paths:
                           - documents.download
                           - documents.send
                           - documents.manage
+                    maxUses:
+                      type: integer
+                    useCount:
+                      type: integer
+                    createdByUserId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      nullable: true
+                    keyHint:
+                      type: string
+                      nullable: true
                   required:
                     - id
                     - organizationId
@@ -16285,6 +17023,10 @@ paths:
                     - createdAt
                     - groupIds
                     - permissions
+                    - maxUses
+                    - useCount
+                    - createdByUserId
+                    - keyHint
                   additionalProperties: false
         4XX:
           description: Default Response
@@ -16377,6 +17119,10 @@ paths:
                   type: integer
                   minimum: 1
                   maximum: 720
+                maxUses:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
                 groupIds:
                   type: array
                   items:
@@ -16394,6 +17140,7 @@ paths:
                       - organization.update
                       - members.read
                       - members.manage
+                      - invitations.read
                       - invitations.manage
                       - groups.read
                       - groups.manage
@@ -16491,6 +17238,7 @@ paths:
                         - organization.update
                         - members.read
                         - members.manage
+                        - invitations.read
                         - invitations.manage
                         - groups.read
                         - groups.manage
@@ -16506,6 +17254,18 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                  maxUses:
+                    type: integer
+                  useCount:
+                    type: integer
+                  createdByUserId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
+                  keyHint:
+                    type: string
+                    nullable: true
                   token:
                     type: string
                   delivery:
@@ -16527,6 +17287,10 @@ paths:
                   - createdAt
                   - groupIds
                   - permissions
+                  - maxUses
+                  - useCount
+                  - createdByUserId
+                  - keyHint
                   - delivery
                 additionalProperties: false
         4XX:
@@ -17041,6 +17805,7 @@ paths:
                     - organization.update
                     - members.read
                     - members.manage
+                    - invitations.read
                     - invitations.manage
                     - groups.read
                     - groups.manage
@@ -17091,6 +17856,7 @@ paths:
                       - organization.update
                       - members.read
                       - members.manage
+                      - invitations.read
                       - invitations.manage
                       - groups.read
                       - groups.manage
@@ -17194,6 +17960,7 @@ paths:
               - organization.update
               - members.read
               - members.manage
+              - invitations.read
               - invitations.manage
               - groups.read
               - groups.manage
@@ -17317,6 +18084,7 @@ paths:
                     - organization.update
                     - members.read
                     - members.manage
+                    - invitations.read
                     - invitations.manage
                     - groups.read
                     - groups.manage
@@ -17408,6 +18176,7 @@ paths:
                     - organization.update
                     - members.read
                     - members.manage
+                    - invitations.read
                     - invitations.manage
                     - groups.read
                     - groups.manage
@@ -17458,6 +18227,7 @@ paths:
                       - organization.update
                       - members.read
                       - members.manage
+                      - invitations.read
                       - invitations.manage
                       - groups.read
                       - groups.manage
@@ -17561,6 +18331,7 @@ paths:
               - organization.update
               - members.read
               - members.manage
+              - invitations.read
               - invitations.manage
               - groups.read
               - groups.manage
@@ -17765,6 +18536,239 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/invitations/validate:
+    post:
+      summary: Check an invitation credential before sign-up and show the organization
+        it belongs to
+      tags:
+        - Multi-tenancy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+              required:
+                - token
+              additionalProperties: false
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      slug:
+                        type: string
+                      iconData:
+                        type: string
+                        nullable: true
+                    required:
+                      - name
+                      - slug
+                      - iconData
+                    additionalProperties: false
+                  kind:
+                    type: string
+                    enum:
+                      - EMAIL
+                      - CODE
+                  expiresAt:
+                    type: string
+                    format: date-time
+                required:
+                  - organization
+                  - kind
+                  - expiresAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/user-lookup:
+    get:
+      summary: Check whether an account exists for an email (members.manage)
+      tags:
+        - Multi-tenancy
+      parameters:
+        - schema:
+            type: string
+            format: email
+            maxLength: 254
+          in: query
+          name: email
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists:
+                    type: boolean
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      email:
+                        type: string
+                      name:
+                        type: string
+                        nullable: true
+                      emailVerified:
+                        type: boolean
+                    required:
+                      - id
+                      - email
+                      - name
+                      - emailVerified
+                    additionalProperties: false
+                    nullable: true
+                  alreadyMember:
+                    type: boolean
+                required:
+                  - exists
+                  - user
+                  - alreadyMember
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/invitations/{id}/replace:
     post:
       summary: Revoke and replace an unaccepted invitation
@@ -17856,6 +18860,7 @@ paths:
                         - organization.update
                         - members.read
                         - members.manage
+                        - invitations.read
                         - invitations.manage
                         - groups.read
                         - groups.manage
@@ -17871,6 +18876,18 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                  maxUses:
+                    type: integer
+                  useCount:
+                    type: integer
+                  createdByUserId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
+                  keyHint:
+                    type: string
+                    nullable: true
                   token:
                     type: string
                   delivery:
@@ -17892,6 +18909,10 @@ paths:
                   - createdAt
                   - groupIds
                   - permissions
+                  - maxUses
+                  - useCount
+                  - createdByUserId
+                  - keyHint
                   - delivery
                 additionalProperties: false
         4XX:

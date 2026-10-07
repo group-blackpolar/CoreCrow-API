@@ -13,6 +13,7 @@ import {
   users,
   requireOperator,
 } from "../modules/identity/service.js";
+import { INSPECTION_SESSION_HEADER } from "../modules/authorization/inspection.js";
 import { northCapabilities, northGlobalCapabilities, permissions } from "../modules/authorization/policy.js";
 import { authorizationGroups } from "../modules/authorization/groups-service.js";
 import { transaction } from "../shared/transaction.js";
@@ -21,6 +22,7 @@ import { operatorLogs } from "../modules/audit/service.js";
 import { createContact, listContacts } from "../modules/business/service.js";
 import { fail } from "../shared/errors.js";
 import { security, keyScopes } from "../modules/security/service.js";
+import { auidState, regenerateAuid, revealAuid } from "../modules/identity/admin-secret-service.js";
 import { changeTemporaryPassword } from "../modules/identity/temporary-password-service.js";
 import {
   confirmEmailVerificationCode,
@@ -533,7 +535,7 @@ export async function v1Routes(app: FastifyInstance) {
     summary: "Search and page non-secret identity summaries (operator only)",
     query: pageQuery,
     response: z.object({
-      items: z.array(s.user),
+      items: z.array(s.user.extend({ organizationCount: z.number().int().nonnegative() })),
       nextCursor: s.id.nullable(),
     }),
     run: ({ user, query }) => platform.users(user.id, query),
@@ -599,10 +601,10 @@ export async function v1Routes(app: FastifyInstance) {
     tag: "Platform administration",
     summary: "Suspend or restore an identity and revoke all sessions (superadmin)",
     params: z.object({ id: s.id }).strict(),
-    body: z.object({ status: s.accountStatus }).strict(),
+    body: z.object({ status: s.accountStatus, reason: z.string().trim().min(1).max(500).optional() }).strict(),
     response: s.user,
     run: ({ user, params, body }) =>
-      platform.setUserStatus(user.id, params.id, body.status),
+      platform.setUserStatus(user.id, params.id, body.status, body.reason),
   });
   contract(app, {
     method: "GET",
@@ -636,6 +638,63 @@ export async function v1Routes(app: FastifyInstance) {
     billableMemberCount: z.number().int().nonnegative(),
     groupsCostMinor: z.literal(0),
     estimatedMonthlyMinor: z.number().int().nonnegative(),
+  });
+  const inspectionView = z.object({ id: s.id, name: z.string(), slug: z.string(), status: s.organizationStatus, iconData: z.string().nullable(), inspectionSessionId: z.string() });
+  contract(app, {
+    method: "POST",
+    url: "/platform/organizations/:id/inspection",
+    tag: "Platform administration",
+    summary: "Audit the start of a read-only organization inspection (no membership is created)",
+    params: z.object({ id: s.id }).strict(),
+    response: inspectionView,
+    run: ({ user, params, request }) => platform.inspect(user.id, params.id, "start", request.ip),
+  });
+  contract(app, {
+    method: "DELETE",
+    url: "/platform/organizations/:id/inspection",
+    tag: "Platform administration",
+    summary: "Audit the end of a read-only organization inspection",
+    params: z.object({ id: s.id }).strict(),
+    response: inspectionView,
+    run: ({ user, params, request }) => platform.inspect(user.id, params.id, "end", request.ip, request.headers[INSPECTION_SESSION_HEADER]),
+  });
+  contract(app, {
+    method: "GET",
+    url: "/platform/users/:id/auid",
+    tag: "Platform administration",
+    summary: "Whether an administrator has an AUID configured (never returns the credential)",
+    params: z.object({ id: s.id }).strict(),
+    response: z.object({ configured: z.boolean(), revealable: z.boolean(), encryptionAvailable: z.boolean(), role: s.globalRole }),
+    run: ({ user, params }) => auidState(user.id, params.id),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/platform/users/:id/auid/reveal",
+    tag: "Platform administration",
+    summary: "Reveal a recoverable AUID after SUPERADMIN password re-authentication (never cached)",
+    params: z.object({ id: s.id }).strict(),
+    body: z.object({ password: z.string().min(1).max(256) }).strict(),
+    response: z.object({ auid: z.string() }),
+    status: 200,
+    rateLimit: 30,
+    run: ({ user, params, body, request, reply }) => {
+      reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
+      return revealAuid(user.id, params.id, body.password, request.ip);
+    },
+  });
+  contract(app, {
+    method: "POST",
+    url: "/platform/users/:id/auid/regenerate",
+    tag: "Platform administration",
+    summary: "Replace an administrator AUID after SUPERADMIN password re-authentication; shown once",
+    params: z.object({ id: s.id }).strict(),
+    body: z.object({ password: z.string().min(1).max(256) }).strict(),
+    response: z.object({ auid: z.string() }),
+    rateLimit: 30,
+    run: ({ user, params, body, request, reply }) => {
+      reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
+      return regenerateAuid(user.id, params.id, body.password, request.ip);
+    },
   });
   contract(app, {
     method: "GET",
@@ -830,12 +889,14 @@ export async function v1Routes(app: FastifyInstance) {
     method: "PATCH",
     url: "/organizations/:organizationId",
     tag: "Multi-tenancy",
-    summary: "Update an active organization's name or normalized slug",
+    summary: "Update an active organization's name, normalized slug or icon",
     params: s.orgParams,
     body: z
       .object({
         name: s.name.optional(),
         slug: z.string().trim().min(1).max(100).optional(),
+        iconData: z.string().max(400_000).nullable().optional(),
+        description: z.string().max(500).nullable().optional(),
       })
       .strict()
       .refine((value) => Object.keys(value).length > 0),
@@ -955,6 +1016,7 @@ export async function v1Routes(app: FastifyInstance) {
         .enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"])
         .default("MEMBER"),
       expiresInHours: z.number().int().min(1).max(720).optional(),
+      maxUses: z.number().int().min(1).max(1000).optional(),
       groupIds: z.array(s.id).max(50).default([]),
       permissions: z.array(z.enum(permissions)).max(50).default([]),
     })
@@ -1180,6 +1242,52 @@ export async function v1Routes(app: FastifyInstance) {
     response: s.member,
     rateLimit: 10,
     run: ({ user, body }) => invitations.accept(user, body.token),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/invitations/validate",
+    tag: "Multi-tenancy",
+    summary: "Check an invitation credential before sign-up and show the organization it belongs to",
+    public: true,
+    body: z.object({ token: z.string().trim().min(8).max(128) }).strict(),
+    response: z.object({
+      organization: z.object({ name: z.string(), slug: z.string(), iconData: z.string().nullable() }),
+      kind: s.invitationKind,
+      expiresAt: s.date,
+    }),
+    rateLimit: 10,
+    run: ({ body }) => invitations.validate(body.token),
+  });
+  contract(app, {
+    method: "GET",
+    url: "/organizations/:organizationId/user-lookup",
+    tag: "Multi-tenancy",
+    summary: "Check whether an account exists for an email (members.manage)",
+    params: s.orgParams,
+    query: z.object({ email: z.string().trim().email().max(254) }).strict(),
+    response: z.object({
+      exists: z.boolean(),
+      user: z.object({ id: s.id, email: z.string(), name: z.string().nullable(), emailVerified: z.boolean() }).nullable(),
+      alreadyMember: z.boolean(),
+    }),
+    rateLimit: 30,
+    run: ({ user, params, query }) => invitations.lookupUser(user.id, params.organizationId, query.email),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/organizations/:organizationId/members",
+    tag: "Multi-tenancy",
+    summary: "Add an existing verified account to the organization",
+    params: s.orgParams,
+    body: z.object({
+      email: z.string().trim().email().max(254),
+      role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
+      groupIds: z.array(s.id).max(50).default([]),
+    }).strict(),
+    response: s.member,
+    status: 201,
+    rateLimit: 30,
+    run: ({ user, params, body }) => invitations.addExistingMember(user.id, params.organizationId, body),
   });
   contract(app, {
     method: "POST",

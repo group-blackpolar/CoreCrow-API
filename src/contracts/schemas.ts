@@ -23,6 +23,8 @@ export const org = z.object({
   createdAt: date,
   updatedAt: date,
   homePanelId: id.nullable(),
+  iconData: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
 });
 export const user = z.object({
   id,
@@ -82,6 +84,10 @@ export const invitation = z.object({
   createdAt: date,
   groupIds: z.array(id),
   permissions: z.array(z.string()),
+  maxUses: z.number().int(),
+  useCount: z.number().int(),
+  createdByUserId: id.nullable(),
+  keyHint: z.string().nullable(),
 });
 export const groupParams = orgParams.extend({ groupId: id });
 export const groupMemberParams = groupParams.extend({ userId: id });

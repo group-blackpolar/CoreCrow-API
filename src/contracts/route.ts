@@ -4,7 +4,8 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { error } from "./schemas.js";
 import { principal } from "../modules/security/session.js";
 import { DomainError } from "../shared/errors.js";
-import { withRequestContext } from "../shared/request-context.js";
+import { withRequestContext, type Inspection } from "../shared/request-context.js";
+import { inspectionFor } from "../modules/authorization/inspection.js";
 const json = (schema: z.ZodTypeAny) =>
   zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
 export function contract<
@@ -79,8 +80,13 @@ export function contract<
       },
     },
     handler: async (request, reply) => {
+      const principalUser = options.public ? undefined : await principal(request);
+      // X-Platform-Inspect: <organizationId>. Validated on every request, GET only.
+      const inspection: Inspection | undefined = principalUser
+        ? await inspectionFor(request, principalUser)
+        : undefined;
       return withRequestContext(request.id, async () => {
-        const user = options.public ? undefined : await principal(request);
+        const user = principalUser;
         const value = await options.run({
           body: options.body?.parse(request.body),
           params: options.params?.parse(request.params),
@@ -102,7 +108,7 @@ export function contract<
             "The response could not be completed",
           );
         return reply.code(options.status ?? 200).send(parsed.data);
-      });
+      }, inspection);
     },
   });
 }

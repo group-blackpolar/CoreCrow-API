@@ -3,6 +3,7 @@ export const permissions = [
   "organization.update",
   "members.read",
   "members.manage",
+  "invitations.read",
   "invitations.manage",
   "groups.read",
   "groups.manage",

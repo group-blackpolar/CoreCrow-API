@@ -50,12 +50,16 @@ export const credentials = {
     tx: Transaction,
     userId: string,
     adminSecretHash: string,
+    sealed: { ciphertext: string; version: number } | null = null,
   ) {
     return tx.user.update({
       where: { id: userId },
       data: {
         role: "SUPERADMIN",
         adminSecretHash,
+        // A re-bootstrapped secret always replaces any earlier recoverable copy (null when no key is configured).
+        adminSecretCiphertext: sealed?.ciphertext ?? null,
+        adminSecretEncryptionVersion: sealed?.version ?? null,
         passwordChangeRequired: true,
       },
       select: publicUser,

@@ -636,7 +636,7 @@ test(
           ),
           201,
         );
-        assert.match(generic.token, /^BP-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+        assert.match(generic.token, /^[A-Z0-9]{1,12}-KEY-[A-Z2-9]{12}$/); // organization key format (was BP-XXXX-XXXX-XXXX)
         assert.equal(generic.email, null);
         assert.equal(generic.delivery, "not_applicable");
         const unverified = await prisma.user.create({

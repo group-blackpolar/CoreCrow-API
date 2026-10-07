@@ -94,7 +94,7 @@ export async function buildApp(
   await app.register(cors, {
     origin: trustedOrigins,
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match", "X-Platform-Inspect", "X-Platform-Inspection-Session"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });

@@ -2,7 +2,7 @@ import { hashPassword } from "better-auth/crypto";
 import { randomBytes } from "node:crypto";
 import { Prisma, type Role } from "../../lib/database.js";
 import { identities, publicUser } from "./repository.js";
-import { transaction } from "../../shared/transaction.js";
+import { transaction, type Transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { auditRepository } from "../audit/repository.js";
 import { tenantRepository } from "../tenancy/repository.js";
@@ -19,6 +19,12 @@ export async function requireOperator(id: string, superOnly = false) {
     fail(403, "FORBIDDEN", "Operator permission required");
   return user;
 }
+/** NORTH must never be left without an active SUPERADMIN (suspension of SUPERADMIN is blocked separately). */
+export async function requireAnotherSuperadmin(tx: Transaction, excludingId: string) {
+  const others = await tx.user.count({ where: { role: "SUPERADMIN", status: "ACTIVE", id: { not: excludingId } } });
+  if (others < 1) fail(409, "LAST_SUPERADMIN", "The last SUPERADMIN cannot be removed or demoted");
+}
+
 export const users = {
   acceptTerms(actorId: string, version: string) {
     if (version !== CURRENT_TERMS_VERSION)
@@ -212,8 +218,10 @@ export const users = {
         fail(409, "SELF_ROLE_CHANGE", "Cannot change your own global role");
     } else if (actorId !== id) await requireOperator(actorId);
     return transaction(async (tx) => {
-      if (!(await identities.getIn(tx, id)))
-        fail(404, "NOT_FOUND", "User not found");
+      const target = await identities.getIn(tx, id);
+      if (!target) fail(404, "NOT_FOUND", "User not found");
+      if (data.role && target.role === "SUPERADMIN" && data.role !== "SUPERADMIN")
+        await requireAnotherSuperadmin(tx, id);
       const user = await identities.update(tx, id, data);
       await auditRepository.append(tx, {
         actorId,
@@ -231,6 +239,8 @@ export const users = {
     if ((await tenantRepository.list(id)).length)
       fail(409, "MEMBERSHIPS_EXIST", "Remove organization memberships first");
     return transaction(async (tx) => {
+      const target = await identities.getIn(tx, id);
+      if (target?.role === "SUPERADMIN") await requireAnotherSuperadmin(tx, id);
       await identities.delete(tx, id);
       await auditRepository.append(tx, {
         actorId,

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AccountStatus, OrganizationStatus, Role } from "../../lib/database.js";
 import { fail } from "../../shared/errors.js";
 import { transaction } from "../../shared/transaction.js";
@@ -37,7 +38,10 @@ function organizationSummary<
 export const platform = {
   async users(actorId: string, query: { q?: string; limit: number; cursor?: string }) {
     await requireOperator(actorId);
-    return transaction(async (tx) => page(await repo.users(tx, query), query.limit));
+    return transaction(async (tx) => {
+      const result = page(await repo.users(tx, query), query.limit);
+      return { ...result, items: result.items.map(({ _count, ...user }) => ({ ...user, organizationCount: _count.memberships })) };
+    });
   },
   async user(actorId: string, id: string) {
     await requireOperator(actorId);
@@ -75,7 +79,7 @@ export const platform = {
       };
     });
   },
-  async setUserStatus(actorId: string, id: string, status: AccountStatus) {
+  async setUserStatus(actorId: string, id: string, status: AccountStatus, reason?: string) {
     await requireOperator(actorId, true);
     if (actorId === id)
       fail(409, "SELF_SUSPENSION", "Cannot suspend or restore your own account");
@@ -91,9 +95,30 @@ export const platform = {
         action: status === "SUSPENDED" ? "platform.user.suspend" : "platform.user.restore",
         targetType: "User",
         targetId: id,
-        metadata: { previousStatus: target.status, status },
+        metadata: { previousStatus: target.status, status, ...(reason ? { reason } : {}) },
       });
       return user;
+    });
+  },
+  /** Starts or ends a read-only inspection of one organization. Every request still carries X-Platform-Inspect and is
+   * re-validated by CORECROW; these calls anchor the audit trail with an inspectionSessionId (audit context only,
+   * not an authentication session). No membership is created. */
+  async inspect(actorId: string, id: string, phase: "start" | "end", ip: string, sessionHeader?: string | string[]) {
+    await requireOperator(actorId);
+    const header = Array.isArray(sessionHeader) ? sessionHeader[0] : sessionHeader;
+    const inspectionSessionId = phase === "start" ? randomUUID() : header && /^[A-Za-z0-9_-]{8,64}$/.test(header) ? header : randomUUID();
+    return transaction(async (tx) => {
+      const organization = await repo.organization(tx, id);
+      if (!organization) fail(404, "NOT_FOUND", "Organization not found");
+      await audit.append(tx, {
+        actorId,
+        organizationId: id,
+        action: phase === "start" ? "platform.inspection.started" : "platform.inspection.ended",
+        targetType: "Organization",
+        targetId: id,
+        metadata: { inspectionSessionId, ip },
+      });
+      return { id: organization.id, name: organization.name, slug: organization.slug, status: organization.status, iconData: organization.iconData, inspectionSessionId };
     });
   },
   async setOrganizationStatus(
