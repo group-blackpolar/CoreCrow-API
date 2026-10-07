@@ -3236,8 +3236,8 @@ paths:
                 format: binary
   /v1/organizations/{organizationId}/documents/{documentId}/attachments:
     post:
-      summary: Upload one JPEG/PNG image (raw body, filename in the query); the file
-        signature decides the type
+      summary: Upload one JPEG/PNG/WebP image (raw body, filename in the query); the
+        file signature decides the type
       tags:
         - Documents
       parameters:

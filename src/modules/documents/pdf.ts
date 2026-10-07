@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { pdfReadyImage } from "./images.js";
 import { formatMoney } from "./money.js";
 
 /**
@@ -38,7 +39,10 @@ const LINE = "#D0D5DD";
 const ACCENT = "#0F766E";
 const MARGIN = 48;
 
-export function renderDocumentPdf(input: PdfDocumentInput): Promise<Buffer> {
+export async function renderDocumentPdf(input: PdfDocumentInput): Promise<Buffer> {
+  // PDFKit embeds JPEG/PNG only: convert anything else (WebP) before drawing. A file that fails to convert is
+  // kept as-is so the existing per-image fallback (filename) still applies.
+  const images = await Promise.all(input.images.map(async (image) => ({ ...image, data: await pdfReadyImage(image).catch(() => image.data) })));
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -136,15 +140,15 @@ export function renderDocumentPdf(input: PdfDocumentInput): Promise<Buffer> {
       doc.fillColor(INK).font("Helvetica").fontSize(10).text(input.comments, left, doc.y + 3, { width });
     }
 
-    // Images (JPEG/PNG only, validated at upload)
-    if (input.images.length > 0) {
+    // Images (JPEG/PNG/WebP validated at upload; WebP converted above)
+    if (images.length > 0) {
       doc.addPage();
       doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text(L.attachments.toUpperCase(), left, MARGIN);
       doc.y = MARGIN + 18;
       const cell = (width - 16) / 2;
       let column = 0;
       let rowTop = doc.y;
-      for (const image of input.images) {
+      for (const image of images) {
         if (rowTop + cell > bottom()) { doc.addPage(); rowTop = MARGIN; column = 0; }
         const x = left + column * (cell + 16);
         try {

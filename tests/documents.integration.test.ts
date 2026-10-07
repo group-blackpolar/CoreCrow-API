@@ -168,6 +168,45 @@ test("Documents integration", { skip: !process.env.TEST_DATABASE_URL }, async (t
     await sent(PNG, "image/png"); // keep one image so the PDF embeds it
   });
 
+  await t.test("attachments: JPEG, PNG and WebP are accepted, corrupt files refused, at most 10, and every image reaches the PDF", async () => {
+    const { default: sharp } = await import("sharp");
+    const swatch = (format: "jpeg" | "png" | "webp", color: string) => sharp({ create: { width: 64, height: 48, channels: 3, background: color } })[format]().toBuffer();
+    const doc = expect(await call("POST", `${base}/documents`, member.cookie, draft()), 201);
+    const upload = (payload: Buffer, filename: string, contentType: string) => app.inject({
+      method: "POST", url: `${base}/documents/${doc.id}/attachments?filename=${encodeURIComponent(filename)}`, remoteAddress: `127.0.4.${address++ % 250 + 1}`,
+      headers: { origin: "http://localhost:3000", cookie: member.cookie, "content-type": contentType }, payload,
+    });
+    const jpeg = await swatch("jpeg", "#cc3333");
+    const png = await swatch("png", "#33cc33");
+    const webp = await swatch("webp", "#3333cc");
+    const a = expect(await upload(jpeg, "foto.jpg", "image/jpeg"), 201);
+    const b = expect(await upload(png, "captura.PNG", "image/png"), 201);
+    const c = expect(await upload(webp, "imagen.webp", "image/webp"), 201);
+    assert.deepEqual([a.mimeType, b.mimeType, c.mimeType], ["image/jpeg", "image/png", "image/webp"]);
+    // The signature decides, not the declared type or the extension.
+    assert.equal(expect(await upload(webp, "disfrazada.png", "image/png"), 201).mimeType, "image/webp");
+    // Corrupt / spoofed files are refused with 415 and nothing is stored.
+    assert.equal((await upload(Buffer.concat([webp.subarray(0, 20), Buffer.from("garbage")]), "rota.webp", "image/webp")).statusCode, 415);
+    assert.equal((await upload(Buffer.from("RIFF0000WAVEfmt "), "audio.webp", "image/webp")).statusCode, 415);
+    assert.equal((await upload(Buffer.from("GIF89a....."), "anim.gif", "image/gif")).statusCode, 415);
+    // WebP bytes round-trip unchanged and are served with their own type.
+    const served = await call("GET", `${base}/documents/${doc.id}/attachments/${c.id}`, viewer.cookie);
+    assert.equal(served.headers["content-type"], "image/webp");
+    assert.ok(Buffer.from(served.rawPayload).equals(webp));
+    // Four stored so far; fill up to ten, the eleventh is refused.
+    for (let index = 0; index < 6; index += 1) expect(await upload(jpeg, `extra-${index}.jpeg`, "image/jpeg"), 201);
+    const eleventh = await upload(jpeg, "once.jpg", "image/jpeg");
+    assert.equal(eleventh.statusCode, 409, eleventh.body);
+    assert.equal(eleventh.json().error?.code ?? eleventh.json().code, "ATTACHMENT_LIMIT");
+    const detail = expect(await call("GET", `${base}/documents/${doc.id}`, member.cookie), 200);
+    assert.equal(detail.attachments.length, 10);
+    // All ten images are embedded in the PDF (JPEG, PNG and the converted WebP).
+    const pdf = await call("GET", `${base}/documents/${doc.id}/pdf`, viewer.cookie);
+    assert.equal(pdf.statusCode, 200, pdf.body);
+    const imageObjects = (Buffer.from(pdf.rawPayload).toString("latin1").match(/\/Subtype \/Image/g) ?? []).length;
+    assert.ok(imageObjects >= 10, `expected at least 10 image objects in the PDF, found ${imageObjects}`);
+  });
+
   await t.test("workflow: transitions are validated and gated by permission", async () => {
     const status = (to: string, cookie = member.cookie) => call("POST", `${base}/documents/${first.id}/status`, cookie, { status: to });
     assert.equal((await status("SENT", owner.cookie)).statusCode, 409); // DRAFT cannot jump to SENT
