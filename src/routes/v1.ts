@@ -564,6 +564,36 @@ export async function v1Routes(app: FastifyInstance) {
     run: ({ user, body }) => users.preprovision(user.id, body),
   });
   contract(app, {
+    method: "POST",
+    url: "/platform/users",
+    tag: "Platform administration",
+    summary:
+      "Create an account with an assigned login (email-shaped) and password, already verified (superadmin)",
+    body: z
+      .object({
+        name: s.name,
+        email: z.string().trim().email().max(254),
+        password: z.string().min(12).max(128),
+        role: z.enum(["USER", "DEVELOPER", "ADMIN"]).default("ADMIN"),
+        passwordChangeRequired: z.boolean().default(true),
+      })
+      .strict(),
+    response: s.user,
+    status: 201,
+    rateLimit: 20,
+    run: ({ user, body }) => users.createAssigned(user.id, body),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/platform/users/:id/verify-email",
+    tag: "Platform administration",
+    summary: "Mark an account as verified without its emailed code (superadmin, idempotent)",
+    params: z.object({ id: s.id }).strict(),
+    response: s.user,
+    rateLimit: 60,
+    run: ({ user, params }) => users.verifyEmailByOperator(user.id, params.id),
+  });
+  contract(app, {
     method: "PATCH",
     url: "/platform/users/:id/status",
     tag: "Platform administration",

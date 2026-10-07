@@ -34,6 +34,7 @@ export const identities = {
       name: string;
       role: Role;
       passwordChangeRequired?: boolean;
+      emailVerified?: boolean;
     },
     password: string,
   ) {
