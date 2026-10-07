@@ -27,7 +27,13 @@ test("Platform accounts integration", { skip: !process.env.TEST_DATABASE_URL }, 
   const { prisma } = await import("../src/lib/database.js");
   const app = await buildApp({ logger: false });
   await app.ready();
-  t.after(async () => { await app.close(); await prisma.$disconnect(); await new Promise<void>((resolve) => smtp.close(() => resolve())); });
+  const promoted: string[] = [];
+  t.after(async () => {
+    // The shared test database must never keep a second SUPERADMIN: other suites (operator bootstrap/recovery)
+    // assume none exists. Demote what this file promoted before closing.
+    if (promoted.length) await prisma.user.updateMany({ where: { id: { in: promoted } }, data: { role: "USER" } });
+    await app.close(); await prisma.$disconnect(); await new Promise<void>((resolve) => smtp.close(() => resolve()));
+  });
 
   const prefix = randomUUID().slice(0, 8);
   const password = "Test-password-only-123!";
@@ -61,6 +67,7 @@ test("Platform accounts integration", { skip: !process.env.TEST_DATABASE_URL }, 
   const superUser = await signup("super");
   const superCookie = await verifiedLogin(superUser);
   await prisma.user.update({ where: { id: superUser.id }, data: { role: "SUPERADMIN" } });
+  promoted.push(superUser.id);
   const plainUser = await signup("plain");
   const plainCookie = await verifiedLogin(plainUser);
   const adminUser = await signup("operator");
