@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import sharp from "sharp";
+import { isDecodableImage, sniffImage } from "../src/modules/documents/images.js";
 import test from "node:test";
 import { allows, effectivePermissions } from "../src/modules/authorization/policy.js";
 import { DomainError } from "../src/shared/errors.js";
@@ -140,6 +142,41 @@ test("pdf: a real A4 document from data, paginated, with embedded images", async
 
   const english = await renderDocumentPdf(sample({ labels: pdfLabels.en }));
   assert.equal(english.subarray(0, 5).toString(), "%PDF-");
+});
+
+const imageObjects = (pdf: Buffer) => (pdf.toString("latin1").match(/\/Subtype \/Image/g) ?? []).length;
+const swatch = (format: "jpeg" | "png" | "webp", color: string) => sharp({ create: { width: 40, height: 30, channels: 3, background: color } })[format]().toBuffer();
+
+test("pdf: JPEG, PNG and WebP images are each embedded as a real image object", async () => {
+  const jpeg = await swatch("jpeg", "#cc3333");
+  const png = await swatch("png", "#33cc33");
+  const webp = await swatch("webp", "#3333cc");
+  const none = imageObjects(await renderDocumentPdf(sample()));
+  for (const [mime, data] of [["image/jpeg", jpeg], ["image/png", png], ["image/webp", webp]] as const) {
+    const pdf = await renderDocumentPdf(sample({ images: [{ filename: `foto.${mime.split("/")[1]}`, mime, data }] }));
+    assert.equal(imageObjects(pdf) - none, 1, `${mime} must appear in the PDF as an image, not as a filename fallback`);
+  }
+  const all = await renderDocumentPdf(sample({ images: [{ filename: "a.jpg", mime: "image/jpeg", data: jpeg }, { filename: "b.png", mime: "image/png", data: png }, { filename: "c.webp", mime: "image/webp", data: webp }] }));
+  assert.equal(imageObjects(all) - none, 3);
+  // A WebP that cannot be decoded still produces a PDF (filename fallback) instead of failing the document.
+  const broken = await renderDocumentPdf(sample({ images: [{ filename: "rota.webp", mime: "image/webp", data: Buffer.from("RIFF0000WEBPnope") }] }));
+  assert.equal(broken.subarray(0, 5).toString(), "%PDF-");
+  assert.equal(imageObjects(broken) - none, 0);
+});
+
+test("images: the file signature decides and the file must decode", async () => {
+  const jpeg = await swatch("jpeg", "#cc3333");
+  const png = await swatch("png", "#33cc33");
+  const webp = await swatch("webp", "#3333cc");
+  assert.equal(sniffImage(jpeg), "image/jpeg");
+  assert.equal(sniffImage(png), "image/png");
+  assert.equal(sniffImage(webp), "image/webp");
+  assert.equal(sniffImage(Buffer.from("<html>not an image</html>")), null);
+  assert.equal(sniffImage(Buffer.from("RIFF....WAVEfmt  ")), null, "RIFF containers that are not WebP are refused");
+  assert.equal(await isDecodableImage(jpeg, "image/jpeg"), true);
+  assert.equal(await isDecodableImage(webp, "image/webp"), true);
+  assert.equal(await isDecodableImage(webp, "image/png"), false, "a mismatching format is not accepted");
+  assert.equal(await isDecodableImage(Buffer.concat([webp.subarray(0, 20), Buffer.from("garbage")]), "image/webp"), false, "a truncated or corrupt file is refused");
 });
 
 test("the document_workspace panel component is a strict, validated schema", async () => {

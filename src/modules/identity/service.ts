@@ -1,7 +1,7 @@
 import { hashPassword } from "better-auth/crypto";
 import { randomBytes } from "node:crypto";
 import { Prisma, type Role } from "../../lib/database.js";
-import { identities } from "./repository.js";
+import { identities, publicUser } from "./repository.js";
 import { transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { auditRepository } from "../audit/repository.js";
@@ -119,6 +119,87 @@ export const users = {
       delivery = "failed";
     }
     return { user, delivery };
+  },
+  /**
+   * Superadmin creates an account with a login identifier shaped like an email and a password they choose.
+   * No verification mail is sent: the account is created already verified and can sign in immediately.
+   * The password is only ever hashed (never audited, logged or returned). SUPERADMIN cannot be created here.
+   */
+  async createAssigned(
+    actorId: string,
+    data: {
+      name: string;
+      email: string;
+      password: string;
+      role: Exclude<Role, "SUPERADMIN">;
+      passwordChangeRequired: boolean;
+    },
+  ) {
+    await requireOperator(actorId, true);
+    const email = data.email.trim().toLowerCase();
+    const password = await hashPassword(data.password);
+    try {
+      return await transaction(async (tx) => {
+        const created = await identities.create(
+          tx,
+          {
+            name: data.name,
+            email,
+            role: data.role,
+            passwordChangeRequired: data.passwordChangeRequired,
+            emailVerified: true,
+          },
+          password,
+        );
+        await auditRepository.append(tx, {
+          actorId,
+          action: "platform.user.create",
+          targetType: "User",
+          targetId: created.id,
+          metadata: {
+            role: data.role,
+            emailVerified: true,
+            passwordChangeRequired: data.passwordChangeRequired,
+          },
+        });
+        await auditRepository.append(tx, {
+          actorId,
+          action: "identity.credential.assigned",
+          targetType: "User",
+          targetId: created.id,
+        });
+        return created;
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+        fail(409, "IDENTITY_EXISTS", "An identity with this email already exists");
+      throw error;
+    }
+  },
+  /** Superadmin marks an account as verified (e.g. one that never received its code). Idempotent. */
+  async verifyEmailByOperator(actorId: string, id: string) {
+    await requireOperator(actorId, true);
+    return transaction(async (tx) => {
+      const current = await identities.getIn(tx, id);
+      if (!current) fail(404, "NOT_FOUND", "User not found");
+      if (current.emailVerified) return current;
+      const user = await tx.user.update({
+        where: { id },
+        data: { emailVerified: true },
+        select: publicUser,
+      });
+      await tx.emailVerificationChallenge.deleteMany({ where: { userId: id } });
+      await auditRepository.append(tx, {
+        actorId,
+        action: "platform.user.verify_email",
+        targetType: "User",
+        targetId: id,
+      });
+      return user;
+    });
   },
   async update(
     actorId: string,

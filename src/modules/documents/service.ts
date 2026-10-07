@@ -7,6 +7,7 @@ import { authorize } from "../authorization/service.js";
 import { computeTotals, lineTotal, money, parseQuantity, parseUnitPrice, quantityText } from "./money.js";
 import { allowedTransitions, canTransition, documentStatuses, formatReference, isEditable, isSendable, permissionForTransition, type DocumentStatusValue } from "./status.js";
 import { deliverEmail, deliverWhatsApp, deliveryChannels, normalizeWhatsAppNumber, type PdfFile } from "./delivery.js";
+import { isDecodableImage, sniffImage } from "./images.js";
 import { pdfLabels, renderDocumentPdf } from "./pdf.js";
 
 /**
@@ -115,12 +116,6 @@ function parseDocumentDate(value: string | undefined) {
   if (Number.isNaN(date.getTime())) fail(422, "DOCUMENT_DATE_INVALID", "The document date is not valid");
   return date;
 }
-
-const sniff = (data: Buffer): "image/jpeg" | "image/png" | null => {
-  if (data.length > 8 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return "image/jpeg";
-  if (data.length > 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  return null;
-};
 
 const safeFilename = (value: string) =>
   // eslint-disable-next-line no-control-regex
@@ -299,14 +294,15 @@ export const documentsService = {
       if (!isEditable(current.status as DocumentStatusValue)) fail(409, "DOCUMENT_LOCKED", "Attachments can only change while the document is a draft or ready");
       if (input.data.length === 0 || input.data.length > ATTACHMENT_LIMITS.maxBytes) fail(413, "ATTACHMENT_TOO_LARGE", "Each image can be at most 5 MiB");
       // The declared content type is never trusted: the file signature decides.
-      const mime = sniff(input.data);
-      if (!mime) fail(415, "ATTACHMENT_TYPE_NOT_ALLOWED", "Only JPEG and PNG images are supported");
+      const mime = sniffImage(input.data);
+      if (!mime) fail(415, "ATTACHMENT_TYPE_NOT_ALLOWED", "Only JPEG, PNG and WebP images are supported");
+      if (!(await isDecodableImage(input.data, mime))) fail(415, "ATTACHMENT_TYPE_NOT_ALLOWED", "The file is not a readable JPEG, PNG or WebP image");
       const existing = current.attachments;
       if (existing.length >= ATTACHMENT_LIMITS.maxCount) fail(409, "ATTACHMENT_LIMIT", "A document supports at most 10 attachments");
       if (existing.reduce((sum, item) => sum + item.size, 0) + input.data.length > ATTACHMENT_LIMITS.maxTotalBytes) fail(409, "ATTACHMENT_LIMIT", "The document attachments exceed 25 MiB");
       const attachment = await tx.documentAttachment.create({
         data: {
-          organizationId, documentId: id, filename: safeFilename(input.filename), mimeType: mime!, size: input.data.length,
+          organizationId, documentId: id, filename: safeFilename(input.filename), mimeType: mime, size: input.data.length,
           sha256: createHash("sha256").update(input.data).digest("hex"), createdBy: userId,
           blob: { create: { data: Uint8Array.from(input.data) } },
         },

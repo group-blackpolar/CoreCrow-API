@@ -51,8 +51,11 @@ rewrites an issued document. No CRM is built.
 ### Attachments
 Object storage (S3 + malware scanner) is not provisioned in production, so
 images are stored in `DocumentAttachmentBlob`, separate from the main record and
-never in list queries. Only JPEG/PNG by file signature (the declared type is not
-trusted), 5 MiB each, 10 and 25 MiB per document. `DocumentAttachment.storage`
+never in list queries. Accepted types: JPEG, PNG and WebP (jpg/jpeg, png, webp), decided by file
+signature (the declared type is not trusted) and required to decode (`sharp`, 40 MP limit). WebP is
+converted to PNG only to embed it in the PDF (PDFKit supports JPEG/PNG); the original is stored and
+served unchanged. Limits: 5 MiB each, 10 images and 25 MiB per document.
+`DocumentAttachment.storage`
 is the provider seam: moving to object storage later does not change the API.
 This is a deliberate exception to "no binaries in PostgreSQL", scoped by those limits.
 

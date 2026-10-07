@@ -194,13 +194,13 @@ export async function documentRoutes(app: FastifyInstance) {
 
   // The raw image parsers are scoped to this plugin so every JSON route keeps its 32 KiB body limit.
   await app.register(async (scope) => {
-    scope.addContentTypeParser(["image/jpeg", "image/png"], { parseAs: "buffer", bodyLimit: ATTACHMENT_LIMITS.maxBytes + 1024 }, (_request, body, done) => done(null, body));
+    scope.addContentTypeParser(["image/jpeg", "image/png", "image/webp"], { parseAs: "buffer", bodyLimit: ATTACHMENT_LIMITS.maxBytes + 1024 }, (_request, body, done) => done(null, body));
     scope.route({
       method: "POST", url: "/organizations/:organizationId/documents/:documentId/attachments",
       bodyLimit: ATTACHMENT_LIMITS.maxBytes + 1024,
       config: { rateLimit: { max: 40, timeWindow: "1 minute" } },
       schema: {
-        tags: [tag], summary: "Upload one JPEG/PNG image (raw body, filename in the query); the file signature decides the type",
+        tags: [tag], summary: "Upload one JPEG/PNG/WebP image (raw body, filename in the query); the file signature decides the type",
         security: [{ sessionCookie: [] }], params: json(docParams), querystring: json(z.object({ filename: z.string().trim().min(1).max(200) }).strict()),
         response: { 201: json(attachmentView) },
       },
