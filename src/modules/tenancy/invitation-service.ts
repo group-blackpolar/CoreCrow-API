@@ -26,18 +26,16 @@ function invitationHash(value: string) {
     .digest("hex");
 }
 
-function genericCode() {
-  const characters = Array.from(
-    { length: 12 },
-    () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)],
-  ).join("");
-  return `BP-${characters.slice(0, 4)}-${characters.slice(4, 8)}-${characters.slice(8)}`;
+/** `SHARK-KEY-V7KD31M9Q2XA`: organization prefix + 12 unambiguous random characters (~60 bits). Security is the
+ * server-side hash lookup, not the format. */
+function organizationKey(slug: string) {
+  const prefix = slug.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "ORG";
+  const random = Array.from({ length: 12 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
+  return `${prefix}-KEY-${random}`;
 }
 
-function rawCredential(kind: InvitationKind) {
-  return kind === "EMAIL"
-    ? randomBytes(EMAIL_TOKEN_BYTES).toString("hex")
-    : genericCode();
+function rawCredential(kind: InvitationKind, slug: string) {
+  return kind === "EMAIL" ? randomBytes(EMAIL_TOKEN_BYTES).toString("hex") : organizationKey(slug);
 }
 
 function invitationStatus(invitation: {
@@ -61,6 +59,10 @@ function view<T extends {
   acceptedAt: Date | null;
   revokedAt: Date | null;
   createdAt: Date;
+  maxUses: number;
+  useCount: number;
+  createdByUserId: string | null;
+  tokenHint: string | null;
   groupGrants: { groupId: string }[];
   permissionGrants: { permission: string }[];
 }>(invitation: T) {
@@ -75,6 +77,10 @@ function view<T extends {
     acceptedAt: invitation.acceptedAt,
     revokedAt: invitation.revokedAt,
     createdAt: invitation.createdAt,
+    maxUses: invitation.maxUses,
+    useCount: invitation.useCount,
+    createdByUserId: invitation.createdByUserId,
+    keyHint: invitation.tokenHint,
     groupIds: invitation.groupGrants.map((grant) => grant.groupId).sort(),
     permissions: invitation.permissionGrants
       .map((grant) => grant.permission)
@@ -88,6 +94,7 @@ type IssueInput = {
   email?: string;
   role: Exclude<TenantRole, "OWNER">;
   expiresInHours?: number;
+  maxUses?: number;
   groupIds?: string[];
   permissions?: Permission[];
 };
@@ -129,13 +136,18 @@ async function createInvitation(
   const replaced = email
     ? await repo.revokePendingEmailInvitations(tx, organizationId, email)
     : { count: 0 };
-  const token = rawCredential(input.kind);
+  const organization = await repo.organization(tx, organizationId);
+  if (!organization) fail(404, "NOT_FOUND", "Organization not found");
+  const token = rawCredential(input.kind, organization.slug);
   const invitation = await repo.invite(tx, {
     organizationId,
     kind: input.kind,
     ...(email ? { email } : {}),
     role: input.role,
     tokenHash: invitationHash(token),
+    tokenHint: token.slice(-4),
+    createdByUserId: actorId,
+    ...(input.kind === "CODE" ? { maxUses: input.maxUses ?? 1 } : {}),
     expiresAt: new Date(
       Date.now() + (input.expiresInHours ?? DEFAULT_EXPIRY_HOURS) * 60 * 60 * 1000,
     ),
@@ -150,6 +162,7 @@ async function createInvitation(
     metadata: {
       kind: input.kind,
       role: input.role,
+      ...(input.kind === "CODE" ? { maxUses: input.maxUses ?? 1, keyHint: token.slice(-4) } : {}),
       groupCount: grants.groupIds.length,
       permissionCount: grants.permissions.length,
       replacedPendingCount: replaced.count,
@@ -181,7 +194,7 @@ async function deliverEmail(
 export const invitations = {
   list(userId: string, organizationId: string) {
     return transaction(async (tx) => {
-      await authorize(tx, userId, organizationId, "invitations.manage");
+      await authorize(tx, userId, organizationId, "invitations.read");
       return (await repo.invitations(tx, organizationId)).map(view);
     });
   },
@@ -220,6 +233,7 @@ export const invitations = {
       });
       return createInvitation(tx, userId, organizationId, {
         kind: previous.kind,
+        ...(previous.kind === "CODE" ? { maxUses: previous.maxUses } : {}),
         ...(previous.email ? { email: previous.email } : {}),
         role: previous.role as Exclude<TenantRole, "OWNER">,
         groupIds: previous.groupGrants.map((grant) => grant.groupId),
@@ -287,6 +301,77 @@ export const invitations = {
         targetType: "invitation",
         targetId: invitation.id,
         metadata: { kind: invitation.kind },
+      });
+      return membership;
+    });
+  },
+  /** Public pre-check used by sign-up and the empty state; reveals only the organization's public identity. */
+  async validate(credentialInput: string) {
+    const credential = credentialInput.trim();
+    const variants = [...new Set([credential, credential.toUpperCase()])];
+    const hashes = variants.flatMap((value) => [invitationHash(value), legacyHash(value)]);
+    return transaction(async (tx) => {
+      const invitation = await repo.invitation(tx, hashes);
+      if (
+        !invitation ||
+        invitation.revokedAt ||
+        invitation.acceptedAt ||
+        invitation.expiresAt <= new Date()
+      )
+        fail(404, "INVITATION_INVALID", "Invitation unavailable");
+      const organization = await repo.organization(tx, invitation.organizationId);
+      if (!organization || organization.status !== "ACTIVE")
+        fail(404, "INVITATION_INVALID", "Invitation unavailable");
+      return {
+        organization: { name: organization.name, slug: organization.slug, iconData: organization.iconData },
+        kind: invitation.kind,
+        expiresAt: invitation.expiresAt,
+      };
+    });
+  },
+  /** Org admins check whether an account already exists for an email (needs members.manage). */
+  lookupUser(userId: string, organizationId: string, emailInput: string) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "members.manage");
+      const found = await repo.userByEmail(tx, normalizedEmail(emailInput));
+      if (!found || found.status !== "ACTIVE") return { exists: false as const, user: null, alreadyMember: false };
+      const membership = await repo.membership(tx, organizationId, found.id);
+      return {
+        exists: true as const,
+        user: { id: found.id, email: found.email, name: found.name, emailVerified: found.emailVerified },
+        alreadyMember: Boolean(membership),
+      };
+    });
+  },
+  /** Adds an existing verified account directly. Unknown accounts must go through an invitation. */
+  addExistingMember(
+    userId: string,
+    organizationId: string,
+    input: { email: string; role: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
+  ) {
+    return transaction(async (tx) => {
+      const actor = await authorize(tx, userId, organizationId, "members.manage");
+      if (!canManageRole(actor.role, input.role, input.role))
+        fail(403, "FORBIDDEN", "Cannot assign this role");
+      const groupIds = [...new Set(input.groupIds ?? [])];
+      if (groupIds.length) await authorize(tx, userId, organizationId, "permissions.manage");
+      for (const groupId of groupIds)
+        if (!(await groups.group(tx, organizationId, groupId)))
+          fail(404, "NOT_FOUND", "Group not found");
+      const target = await repo.userByEmail(tx, normalizedEmail(input.email));
+      if (!target || target.status !== "ACTIVE" || !target.emailVerified)
+        fail(404, "USER_NOT_FOUND", "No verified account exists for this email");
+      if (await repo.membership(tx, organizationId, target.id))
+        fail(409, "ALREADY_MEMBER", "The user already belongs to this organization");
+      const membership = await repo.addMember(tx, organizationId, target.id, input.role);
+      await repo.addInvitationGrants(tx, organizationId, membership.id, groupIds, []);
+      await audit.append(tx, {
+        actorId: userId,
+        organizationId,
+        action: "membership.add",
+        targetType: "membership",
+        targetId: membership.id,
+        metadata: { role: input.role, groupCount: groupIds.length },
       });
       return membership;
     });

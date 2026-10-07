@@ -31,6 +31,29 @@ export const adminSecrets = {
       },
     });
   },
+  stateFor(userId: string) {
+    return prisma.user.findUnique({ where: { id: userId }, select: { role: true, adminSecretHash: true, adminSecretCiphertext: true, adminSecretEncryptionVersion: true } });
+  },
+  stateIn(tx: Transaction, userId: string) {
+    return tx.user.findUnique({ where: { id: userId }, select: { role: true, adminSecretHash: true, adminSecretCiphertext: true, adminSecretEncryptionVersion: true } });
+  },
+  /** Hash and ciphertext are always written together; a null ciphertext clears any stale one. */
+  setCredential(
+    tx: Transaction,
+    userId: string,
+    adminSecretHash: string,
+    sealed: { ciphertext: string; version: number } | null,
+  ) {
+    return tx.user.update({
+      where: { id: userId },
+      data: {
+        adminSecretHash,
+        adminSecretCiphertext: sealed?.ciphertext ?? null,
+        adminSecretEncryptionVersion: sealed?.version ?? null,
+      },
+      select: { id: true },
+    });
+  },
   createSession(
     tx: Transaction,
     userId: string,

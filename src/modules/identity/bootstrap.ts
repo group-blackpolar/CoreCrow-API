@@ -4,6 +4,7 @@ import { auditRepository } from "../audit/repository.js";
 import { fail } from "../../shared/errors.js";
 import { hashPassword } from "better-auth/crypto";
 import { credentials } from "./credential-repository.js";
+import { encryptAuid } from "./auid-crypto.js";
 
 export async function bootstrapOperator(
   email: string,
@@ -45,7 +46,9 @@ export async function bootstrapOperator(
       );
     else
       await credentials.createCredential(tx, user.id, temporaryPasswordHash);
-    await credentials.configureOperator(tx, user.id, adminSecretHash);
+    // Recovery/setup must never be blocked by key management: without AUID_ENCRYPTION_KEY the operator is created
+    // as a legacy (hash-only) AUID and Reveal needs a later Regenerate.
+    await credentials.configureOperator(tx, user.id, adminSecretHash, encryptAuid(user.id, adminSecret));
     await credentials.revokeAllSessions(tx, user.id);
     await auditRepository.append(tx, {
       actorId: user.id,

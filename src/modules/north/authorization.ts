@@ -6,6 +6,8 @@ import {
   northTenantCapabilities,
   type NorthCapability,
 } from "../authorization/policy.js";
+import { inspectionAllowsNorth } from "../authorization/inspection.js";
+import { currentInspection } from "../../shared/request-context.js";
 
 export type NorthTarget = {
   organizationId: string;
@@ -64,7 +66,12 @@ export async function hasNorthCapability(
   const membership = await tx.membership.findUnique({
     where: { organizationId_userId: { organizationId: target.organizationId, userId } },
   });
-  if (!membership) return false;
+  if (!membership) {
+    // Platform inspection (read-only) for operators without membership.
+    const inspection = currentInspection();
+    return inspection?.userId === userId && inspection.organizationId === target.organizationId
+      && inspectionAllowsNorth(capability);
+  }
   if (baseTenantRoles.has(membership.role) && northTenantCapabilities.includes(capability))
     return true;
   const [role, group, direct] = await Promise.all([
@@ -93,7 +100,8 @@ export async function authorizeNorth(
 ) {
   const organization = await tx.organization.findUnique({ where: { id: target.organizationId } });
   if (!organization) fail(404, "NOT_FOUND", "Resource not found");
-  if (organization.status !== "ACTIVE")
+  const inspected = currentInspection()?.organizationId === organization.id;
+  if (!inspected && organization.status !== "ACTIVE")
     fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
   if (!(await hasNorthCapability(tx, userId, capability, target)))
     fail(403, "FORBIDDEN", "Permission denied");

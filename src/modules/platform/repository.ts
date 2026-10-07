@@ -16,7 +16,7 @@ export const platformRepository = {
   users(tx: Transaction, query: { q?: string; limit: number; cursor?: string }) {
     return tx.user.findMany({
       where: userSearch(query.q),
-      select: publicUser,
+      select: { ...publicUser, _count: { select: { memberships: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),

@@ -35,6 +35,9 @@ model User {
   role                   Role          @default(USER)
   status                 AccountStatus @default(ACTIVE)
   adminSecretHash        String?
+  /// AES-256-GCM `v1:<iv>:<ciphertext>:<tag>`; only used by SUPERADMIN Reveal, never to authenticate.
+  adminSecretCiphertext  String?
+  adminSecretEncryptionVersion Int?
   passwordChangeRequired Boolean       @default(false)
   termsAcceptedAt        DateTime?
   termsVersion           String?
@@ -325,6 +328,9 @@ model Organization {
   status                OrganizationStatus          @default(ACTIVE)
   /// Explicit opt-in for anonymous, read-only showcase of panels marked SHOWCASE.
   showcaseEnabled       Boolean                     @default(false)
+  description           String?
+  /// Validated data URL (PNG/JPEG/WebP, <=512x512, <=256 KB); null falls back to initials.
+  iconData              String?
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
   memberships           Membership[]
@@ -1051,6 +1057,12 @@ model Invitation {
   email            String?
   role             TenantRole                  @default(MEMBER)
   tokenHash        String                      @unique
+  /// Last characters of the issued credential, so admins can tell keys apart. Never the credential.
+  tokenHint        String?
+  /// CODE keys may be redeemed several times; acceptedAt is set once useCount reaches maxUses.
+  maxUses          Int                         @default(1)
+  useCount         Int                         @default(0)
+  createdByUserId  String?
   expiresAt        DateTime
   acceptedAt       DateTime?
   acceptedByUserId String?

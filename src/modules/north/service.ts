@@ -1,4 +1,5 @@
 import { Prisma, type NorthAudienceType, type NorthCategoryClass, type NorthPermissionScope, type NorthResourceKind, type TenantRole } from "../../lib/database.js";
+import { currentInspection } from "../../shared/request-context.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { auditRepository as audit } from "../audit/repository.js";
@@ -142,6 +143,11 @@ async function audienceAllows(tx: Transaction, userId: string, panel: Awaited<Re
   return Boolean(subcategory && await northPanelAudienceAllows(tx, userId, panel, subcategory.categoryId));
 }
 
+const isInspecting = (userId: string, organizationId: string) => {
+  const inspection = currentInspection();
+  return inspection?.userId === userId && inspection.organizationId === organizationId;
+};
+
 export const northTaxonomy = {
   ensureBootstrap(organizationId: string) {
     return transaction((tx) => bootstrapNorthOrganization(tx, organizationId));
@@ -149,8 +155,9 @@ export const northTaxonomy = {
   managementTree(userId: string, organizationId: string) {
     return transaction(async (tx) => {
       const membership = await repo.membership(tx, organizationId, userId);
-      if (!membership) fail(404, "NOT_FOUND", "Organization not found");
-      await authorizeNorth(tx, userId, "north.category.create", {
+      const inspecting = !membership && isInspecting(userId, organizationId);
+      if (!membership && !inspecting) fail(404, "NOT_FOUND", "Organization not found");
+      await authorizeNorth(tx, userId, inspecting ? "north.category.read" : "north.category.create", {
         organizationId,
         scope: "ORGANIZATION",
       });
@@ -340,12 +347,14 @@ export const northTaxonomy = {
   },
   navigation(userId: string, organizationId: string) {
     return transaction(async (tx) => {
+      // Platform inspection (read-only, per-request validated) sees the published structure without membership.
+      const inspecting = isInspecting(userId, organizationId);
       const membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
-      if (!membership) fail(404, "NOT_FOUND", "Organization not found");
+      if (!membership && !inspecting) fail(404, "NOT_FOUND", "Organization not found");
       const categories = await repo.navigation(tx, organizationId); const result = [];
       for (const category of categories) { const subcategories = [];
         for (const subcategory of category.subcategories) { const panels = [];
-          for (const panel of subcategory.panels) { const target = { organizationId, scope: "PANEL" as const, categoryId: category.id, subcategoryId: subcategory.id, panelId: panel.id }; if (await hasNorthCapability(tx, userId, "north.panel.read", target) && await audienceAllows(tx, userId, panel)) panels.push({ id: panel.id, name: panel.name, icon: panel.icon, slug: panel.slug, status: panel.status }); }
+          for (const panel of subcategory.panels) { const target = { organizationId, scope: "PANEL" as const, categoryId: category.id, subcategoryId: subcategory.id, panelId: panel.id }; if (await hasNorthCapability(tx, userId, "north.panel.read", target) && (inspecting && !membership || await audienceAllows(tx, userId, panel))) panels.push({ id: panel.id, name: panel.name, icon: panel.icon, slug: panel.slug, status: panel.status }); }
           if (panels.length) subcategories.push({ id: subcategory.id, name: subcategory.name, icon: subcategory.icon, slug: subcategory.slug, panels });
         }
         if (subcategories.length) result.push({ id: category.id, name: category.name, icon: category.icon, color: category.color, slug: category.slug, subcategories });

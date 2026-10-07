@@ -11,6 +11,7 @@ import {
 } from "./slug.js";
 import { bootstrapNorthOrganization } from "../north/service.js";
 import { assetConfiguration } from "../north/asset-config.js";
+import { validateOrganizationIcon } from "./icon.js";
 
 function validSlug(input: string) {
   const slug = normalizeOrganizationSlug(input);
@@ -70,11 +71,15 @@ export const tenants = {
   async update(
     userId: string,
     organizationId: string,
-    data: { name?: string; slug?: string },
+    data: { name?: string; slug?: string; iconData?: string | null; description?: string | null },
   ) {
     const update = {
       ...(data.name ? { name: data.name } : {}),
       ...(data.slug ? { slug: validSlug(data.slug) } : {}),
+      ...(data.description !== undefined ? { description: data.description?.trim() || null } : {}),
+      ...(data.iconData !== undefined
+        ? { iconData: data.iconData === null ? null : await validateOrganizationIcon(data.iconData) }
+        : {}),
     };
     try {
       return await transaction(async (tx) => {

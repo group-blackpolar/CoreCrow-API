@@ -3,6 +3,8 @@ import { effectivePermissions, type Permission } from "./policy.js";
 import { fail } from "../../shared/errors.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { authorizationRepository } from "./repository.js";
+import { currentInspection } from "../../shared/request-context.js";
+import { inspectionPermissions } from "./inspection.js";
 
 export async function resolvePermissions(
   tx: Transaction,
@@ -10,12 +12,22 @@ export async function resolvePermissions(
   organizationId: string,
 ) {
   const member = await tenantRepository.membership(tx, organizationId, userId);
-  if (!member) fail(404, "NOT_FOUND", "Organization not found");
+  if (!member) {
+    const inspection = currentInspection();
+    if (inspection?.userId === userId && inspection.organizationId === organizationId)
+      return {
+        member: { id: "platform-inspection", organizationId, userId, role: "VIEWER" as const, createdAt: new Date(0) },
+        permissions: inspectionPermissions,
+        inspection: true as const,
+      };
+    fail(404, "NOT_FOUND", "Organization not found");
+  }
   const [groupGrants, directGrants] = await Promise.all([
     authorizationRepository.groupGrants(tx, organizationId, member.id),
     authorizationRepository.directGrants(tx, organizationId, member.id),
   ]);
   return {
+    inspection: false as const,
     member,
     permissions: effectivePermissions(
       member.role,
@@ -34,9 +46,11 @@ export async function authorize(
   const resolved = await resolvePermissions(tx, userId, organizationId);
   const organization = await tenantRepository.organization(tx, organizationId);
   if (!organization) fail(404, "NOT_FOUND", "Organization not found");
-  if (organization.status === "SUSPENDED")
+  // Platform inspection may read suspended or archived organizations; it can never write.
+  if (!resolved.inspection && organization.status === "SUSPENDED")
     fail(403, "ORGANIZATION_SUSPENDED", "Organization is suspended");
   if (
+    !resolved.inspection &&
     organization.status === "ARCHIVED" &&
     permission !== "organization.read" &&
     permission !== "organization.update"

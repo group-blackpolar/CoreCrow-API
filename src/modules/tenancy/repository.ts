@@ -46,7 +46,7 @@ export const tenantRepository = {
   update(
     tx: Transaction,
     id: string,
-    data: { name?: string; slug?: string; status?: OrganizationStatus },
+    data: { name?: string; slug?: string; status?: OrganizationStatus; iconData?: string | null; description?: string | null },
   ) {
     return tx.organization.update({ where: { id }, data });
   },
@@ -104,6 +104,9 @@ export const tenantRepository = {
       email?: string;
       role: TenantRole;
       tokenHash: string;
+      tokenHint?: string;
+      maxUses?: number;
+      createdByUserId?: string;
       expiresAt: Date;
       groupIds: string[];
       permissions: string[];
@@ -178,11 +181,22 @@ export const tenantRepository = {
     userId: string,
     role: TenantRole,
   ) {
+    // A use is taken atomically; the invitation becomes ACCEPTED once its last use is taken.
     const consumed = await tx.invitation.updateMany({
-      where: { id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
-      data: { acceptedAt: new Date(), acceptedByUserId: userId },
+      where: {
+        id,
+        acceptedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        useCount: { lt: tx.invitation.fields.maxUses },
+      },
+      data: { useCount: { increment: 1 }, acceptedByUserId: userId },
     });
     if (consumed.count !== 1) return null;
+    await tx.invitation.updateMany({
+      where: { id, useCount: { gte: tx.invitation.fields.maxUses } },
+      data: { acceptedAt: new Date() },
+    });
     // Existing members never gain a new role by replaying an old invitation.
     const membership = await tx.membership.upsert({
       where: { organizationId_userId: { organizationId, userId } },
@@ -190,6 +204,15 @@ export const tenantRepository = {
       update: {},
     });
     return membership;
+  },
+  userByEmail(tx: Transaction, email: string) {
+    return tx.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, name: true, emailVerified: true, status: true },
+    });
+  },
+  addMember(tx: Transaction, organizationId: string, userId: string, role: TenantRole) {
+    return tx.membership.create({ data: { organizationId, userId, role } });
   },
   addInvitationGrants(
     tx: Transaction,
