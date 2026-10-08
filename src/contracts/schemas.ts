@@ -24,6 +24,7 @@ export const org = z.object({
   updatedAt: date,
   homePanelId: id.nullable(),
   iconData: z.string().nullable().optional(),
+  iconAssetId: id.nullable().optional(),
   description: z.string().nullable().optional(),
 });
 export const user = z.object({

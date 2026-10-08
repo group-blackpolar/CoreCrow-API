@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { DomainError, fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
+import { authorize } from "../authorization/service.js";
 import { authorizeNorth } from "./authorization.js";
 import { assetConfiguration, type AssetConfiguration } from "./asset-config.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "./asset-policy.js";
@@ -176,9 +177,27 @@ export class NorthAssetService {
     return { asset: assetView(asset), download };
   }
 
+  /** Icons are identity data: any member who can read the organization may read its icon, without north.asset.read. */
+  async signedIconRead(userId: string, organizationId: string) {
+    const asset = await transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "organization.read");
+      const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { iconAssetId: true } });
+      const current = organization?.iconAssetId ? await repo.asset(tx, organizationId, organization.iconAssetId) : null;
+      if (!current || current.deletedAt || current.status !== "READY") fail(404, "NOT_FOUND", "Icon not found");
+      return current;
+    });
+    const download = await this.dependencies.storage.signedGet({
+      key: asset.storageKey, filename: "icon", mime: asset.mime, ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
+    });
+    return { download };
+  }
+
   async delete(userId: string, organizationId: string, assetId: string) {
     const asset = await transaction(async (tx) => {
       const current = await this.scoped(tx, userId, organizationId, assetId, "north.asset.delete");
+      // Never orphan a reference: an asset that is the organization icon must be replaced or cleared first.
+      if (await tx.organization.findFirst({ where: { id: organizationId, iconAssetId: assetId }, select: { id: true } }))
+        fail(409, "ASSET_IN_USE", "Asset is the organization icon");
       if (!current.deletedAt) {
         if (current.status === "READY") await repo.releaseUsed(tx, organizationId, current.size);
         else if (current.status === "UPLOADING" || current.status === "PROCESSING")
@@ -213,6 +232,7 @@ export const northAssets = {
   requestUpload: (...args: Parameters<NorthAssetService["requestUpload"]>) => configured.requestUpload(...args),
   confirm: (...args: Parameters<NorthAssetService["confirm"]>) => configured.confirm(...args),
   signedRead: (...args: Parameters<NorthAssetService["signedRead"]>) => configured.signedRead(...args),
+  signedIconRead: (...args: Parameters<NorthAssetService["signedIconRead"]>) => configured.signedIconRead(...args),
   delete: (...args: Parameters<NorthAssetService["delete"]>) => configured.delete(...args),
   validateReference: (...args: Parameters<NorthAssetService["validateReference"]>) => configured.validateReference(...args),
 };

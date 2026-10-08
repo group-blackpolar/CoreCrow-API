@@ -32,6 +32,7 @@ import { northPermissions, northPlatformPermissions, northTaxonomy } from "../mo
 import { northContent } from "../modules/north/content-service.js";
 import { northPanelDocumentInput } from "../modules/north/content-schema.js";
 import { northAssets } from "../modules/north/asset-service.js";
+import { userAvatars } from "../modules/identity/avatar-service.js";
 import { northTemplates } from "../modules/north/template-service.js";
 import { northTemplateCreateInput, northTemplateSnapshotInput } from "../modules/north/template-schema.js";
 import { northSearch } from "../modules/north/search-service.js";
@@ -326,6 +327,37 @@ export async function v1Routes(app: FastifyInstance) {
     summary: "Soft-delete an asset, release quota, and request physical object deletion", params: assetParams,
     response: z.null(),
     run: ({ user, params }) => northAssets.delete(user.id, params.organizationId, params.assetId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/icon", tag: "NORTH assets",
+    summary: "Signed read of the managed organization icon (any member who can read the organization)", params: s.orgParams,
+    response: z.object({ download: s.northSignedObjectRequest }),
+    run: ({ user, params }) => northAssets.signedIconRead(user.id, params.organizationId),
+  });
+  const avatarView = z.object({ id: s.id, mime: z.string(), size: z.number().int(), status: s.northAssetStatus, confirmedAt: s.date.nullable(), createdAt: s.date });
+  contract(app, {
+    method: "POST", url: "/me/avatar/uploads", tag: "Identity",
+    summary: "Request a checksum-bound signed upload for your own avatar (JPEG, PNG or WebP, at most 2 MiB)",
+    body: z.object({ mime: z.string().trim().min(1).max(127), size: z.number().int().min(1), checksum: z.string().regex(/^[0-9a-fA-F]{64}$/) }).strict(),
+    response: z.object({ avatar: avatarView, upload: s.northSignedObjectRequest }), status: 201,
+    run: ({ user, body }) => userAvatars.requestUpload(user.id, body),
+  });
+  contract(app, {
+    method: "POST", url: "/me/avatar/:avatarId/confirm", tag: "Identity",
+    summary: "Inspect, scan and activate your uploaded avatar, replacing the previous one",
+    params: z.object({ avatarId: s.id }).strict(), response: avatarView,
+    run: ({ user, params }) => userAvatars.confirm(user.id, params.avatarId),
+  });
+  contract(app, {
+    method: "GET", url: "/me/avatar", tag: "Identity",
+    summary: "Signed read of your own avatar, or nulls when none is set",
+    response: z.object({ avatar: avatarView.nullable(), download: s.northSignedObjectRequest.nullable() }),
+    run: ({ user }) => userAvatars.readOwn(user.id),
+  });
+  contract(app, {
+    method: "DELETE", url: "/me/avatar", tag: "Identity",
+    summary: "Remove your own avatar", response: z.null(),
+    run: ({ user }) => userAvatars.deleteOwn(user.id),
   });
   contract(app, {
     method: "POST",
@@ -898,6 +930,7 @@ export async function v1Routes(app: FastifyInstance) {
         name: s.name.optional(),
         slug: z.string().trim().min(1).max(100).optional(),
         iconData: z.string().max(400_000).nullable().optional(),
+        iconAssetId: s.id.nullable().optional(),
         description: z.string().max(500).nullable().optional(),
       })
       .strict()

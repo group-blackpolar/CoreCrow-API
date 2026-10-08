@@ -46,7 +46,7 @@ export const tenantRepository = {
   update(
     tx: Transaction,
     id: string,
-    data: { name?: string; slug?: string; status?: OrganizationStatus; iconData?: string | null; description?: string | null },
+    data: { name?: string; slug?: string; status?: OrganizationStatus; iconData?: string | null; iconAssetId?: string | null; description?: string | null },
   ) {
     return tx.organization.update({ where: { id }, data });
   },

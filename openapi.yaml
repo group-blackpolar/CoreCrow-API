@@ -11840,6 +11840,596 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/organizations/{organizationId}/icon:
+    get:
+      summary: Signed read of the managed organization icon (any member who can read
+        the organization)
+      tags:
+        - NORTH assets
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      method:
+                        type: string
+                        enum:
+                          - PUT
+                          - GET
+                      headers:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                    required:
+                      - url
+                      - method
+                      - headers
+                      - expiresAt
+                    additionalProperties: false
+                required:
+                  - download
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/me/avatar/uploads:
+    post:
+      summary: Request a checksum-bound signed upload for your own avatar (JPEG, PNG
+        or WebP, at most 2 MiB)
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mime:
+                  type: string
+                  minLength: 1
+                  maxLength: 127
+                size:
+                  type: integer
+                  minimum: 1
+                checksum:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{64}$
+              required:
+                - mime
+                - size
+                - checksum
+              additionalProperties: false
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatar:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      mime:
+                        type: string
+                      size:
+                        type: integer
+                      status:
+                        type: string
+                        enum:
+                          - UPLOADING
+                          - PROCESSING
+                          - READY
+                          - REJECTED
+                          - QUARANTINED
+                      confirmedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+                    required:
+                      - id
+                      - mime
+                      - size
+                      - status
+                      - confirmedAt
+                      - createdAt
+                    additionalProperties: false
+                  upload:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      method:
+                        type: string
+                        enum:
+                          - PUT
+                          - GET
+                      headers:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                    required:
+                      - url
+                      - method
+                      - headers
+                      - expiresAt
+                    additionalProperties: false
+                required:
+                  - avatar
+                  - upload
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/me/avatar/{avatarId}/confirm:
+    post:
+      summary: Inspect, scan and activate your uploaded avatar, replacing the previous
+        one
+      tags:
+        - Identity
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: avatarId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  mime:
+                    type: string
+                  size:
+                    type: integer
+                  status:
+                    type: string
+                    enum:
+                      - UPLOADING
+                      - PROCESSING
+                      - READY
+                      - REJECTED
+                      - QUARANTINED
+                  confirmedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - mime
+                  - size
+                  - status
+                  - confirmedAt
+                  - createdAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/me/avatar:
+    get:
+      summary: Signed read of your own avatar, or nulls when none is set
+      tags:
+        - Identity
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatar:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      mime:
+                        type: string
+                      size:
+                        type: integer
+                      status:
+                        type: string
+                        enum:
+                          - UPLOADING
+                          - PROCESSING
+                          - READY
+                          - REJECTED
+                          - QUARANTINED
+                      confirmedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+                    required:
+                      - id
+                      - mime
+                      - size
+                      - status
+                      - confirmedAt
+                      - createdAt
+                    additionalProperties: false
+                    nullable: true
+                  download:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      method:
+                        type: string
+                        enum:
+                          - PUT
+                          - GET
+                      headers:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                    required:
+                      - url
+                      - method
+                      - headers
+                      - expiresAt
+                    additionalProperties: false
+                    nullable: true
+                required:
+                  - avatar
+                  - download
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    delete:
+      summary: Remove your own avatar
+      tags:
+        - Identity
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                enum:
+                  - "null"
+                nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/identity/verification/send:
     post:
       summary: Send or replace a single-use six-digit email verification code
@@ -14398,6 +14988,11 @@ paths:
                         iconData:
                           type: string
                           nullable: true
+                        iconAssetId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          nullable: true
                         description:
                           type: string
                           nullable: true
@@ -15090,6 +15685,11 @@ paths:
                   iconData:
                     type: string
                     nullable: true
+                  iconAssetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   description:
                     type: string
                     nullable: true
@@ -15405,6 +16005,11 @@ paths:
                     nullable: true
                   iconData:
                     type: string
+                    nullable: true
+                  iconAssetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   description:
                     type: string
@@ -16356,6 +16961,11 @@ paths:
                   iconData:
                     type: string
                     nullable: true
+                  iconAssetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   description:
                     type: string
                     nullable: true
@@ -16471,6 +17081,11 @@ paths:
                       nullable: true
                     iconData:
                       type: string
+                      nullable: true
+                    iconAssetId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
                       nullable: true
                     description:
                       type: string
@@ -16685,6 +17300,11 @@ paths:
                   iconData:
                     type: string
                     nullable: true
+                  iconAssetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   description:
                     type: string
                     nullable: true
@@ -16778,6 +17398,11 @@ paths:
                   type: string
                   maxLength: 400000
                   nullable: true
+                iconAssetId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  nullable: true
                 description:
                   type: string
                   maxLength: 500
@@ -16830,6 +17455,11 @@ paths:
                     nullable: true
                   iconData:
                     type: string
+                    nullable: true
+                  iconAssetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   description:
                     type: string
@@ -16968,6 +17598,11 @@ paths:
                     nullable: true
                   iconData:
                     type: string
+                    nullable: true
+                  iconAssetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   description:
                     type: string

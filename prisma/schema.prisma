@@ -52,6 +52,7 @@ model User {
   northPlatformGrants        NorthPlatformGrant[]
   northPanelRevisions        NorthPanelRevision[]
   northAssets                NorthAsset[]
+  avatars                    UserAvatar[]
   northTemplatesCreated      NorthTemplate[]             @relation("NorthTemplateCreator")
   northTemplateVersionsMade  NorthTemplateVersion[]      @relation("NorthTemplateVersionCreator")
   northDatasetsCreated       NorthDataset[]              @relation("NorthDatasetCreator")
@@ -335,6 +336,9 @@ model Organization {
   description           String?
   /// Validated data URL (PNG/JPEG/WebP, <=512x512, <=256 KB); null falls back to initials.
   iconData              String?
+  /// Managed icon: a READY asset of this same organization (composite FK keeps it tenant-safe). Wins over `iconData` when set.
+  iconAssetId           String?
+  iconAsset             NorthAsset?                 @relation("OrganizationIcon", fields: [iconAssetId, id], references: [id, organizationId], onDelete: Restrict)
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
   memberships           Membership[]
@@ -875,10 +879,30 @@ model NorthAsset {
   updatedAt      DateTime         @updatedAt
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   owner          User             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  iconOf         Organization[]   @relation("OrganizationIcon")
 
   @@unique([id, organizationId])
   @@index([organizationId, status, createdAt])
   @@index([ownerId, createdAt])
+}
+
+/// Personal profile picture. User-scoped (no organization, no quota), private to the owner, same storage/scanner pipeline as NorthAsset.
+/// At most one READY, non-deleted row per user (partial unique index in the migration).
+model UserAvatar {
+  id          String           @id @default(cuid())
+  userId      String
+  mime        String
+  size        Int
+  checksum    String
+  storageKey  String           @unique
+  status      NorthAssetStatus @default(UPLOADING)
+  confirmedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }
 
 model NorthCategorySlugAlias {

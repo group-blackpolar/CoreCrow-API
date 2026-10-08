@@ -12,6 +12,8 @@ import {
 import { bootstrapNorthOrganization } from "../north/service.js";
 import { assetConfiguration } from "../north/asset-config.js";
 import { validateOrganizationIcon } from "./icon.js";
+import { assertIconAsset } from "./icon-asset.js";
+import { northAssets } from "../north/asset-service.js";
 
 function validSlug(input: string) {
   const slug = normalizeOrganizationSlug(input);
@@ -71,19 +73,28 @@ export const tenants = {
   async update(
     userId: string,
     organizationId: string,
-    data: { name?: string; slug?: string; iconData?: string | null; description?: string | null },
+    data: { name?: string; slug?: string; iconData?: string | null; iconAssetId?: string | null; description?: string | null },
   ) {
-    const update = {
+    const update: Parameters<typeof repo.update>[2] = {
       ...(data.name ? { name: data.name } : {}),
       ...(data.slug ? { slug: validSlug(data.slug) } : {}),
       ...(data.description !== undefined ? { description: data.description?.trim() || null } : {}),
       ...(data.iconData !== undefined
         ? { iconData: data.iconData === null ? null : await validateOrganizationIcon(data.iconData) }
         : {}),
+      // The last icon written wins: a legacy data URL supersedes the managed asset, and vice versa.
+      ...(typeof data.iconData === "string" && data.iconAssetId === undefined ? { iconAssetId: null } : {}),
+      ...(data.iconAssetId === null ? { iconAssetId: null } : {}),
     };
     try {
       return await transaction(async (tx) => {
         await authorize(tx, userId, organizationId, "organization.update");
+        if (data.iconAssetId) {
+          // Same-tenant, READY, live and readable by the actor; the composite FK enforces the tenant match again in the database.
+          if (!(await northAssets.validateReference(userId, organizationId, data.iconAssetId, tx))) fail(422, "ICON_ASSET_INVALID", "Icon asset is not available");
+          assertIconAsset(await tx.northAsset.findFirst({ where: { id: data.iconAssetId, organizationId } }));
+          update.iconAssetId = data.iconAssetId;
+        }
         const current = await repo.organization(tx, organizationId);
         if (!current) fail(404, "NOT_FOUND", "Organization not found");
         if (current.status !== "ACTIVE")
