@@ -1,8 +1,17 @@
-# CoreCrow AI MVP with Gemini 2.5 Flash
+# CoreCrow AI MVP with Gemini Flash
 
 - Status: Accepted implementation record
-- Date: 2026-10-07
+- Date: 2026-10-07 (model amended 2026-10-09)
 - Scope: CORECROW
+
+## Amendment 2026-10-09: model
+
+The MVP was specified for Gemini 2.5 Flash. With the project's real API key Google answers `404 ... no longer available to new users`
+for `gemini-2.5-flash`, so the default is now `gemini-3.8-flash` (Google's documented replacement; `AI_DEFAULT_MODEL` still overrides it).
+Gemini 3 models require the opaque `thoughtSignature` of a function call to be replayed in the next turn, so `AIToolCall` carries it
+through the tool round trip, and `AI_THINKING_LEVEL` (`minimal|low|medium|high`) bounds reasoning tokens so `AI_MAX_OUTPUT_TOKENS` is not
+consumed by thinking. `tests/ai.gemini.smoke.test.ts` (opt-in) proves a simple answer, a read-only tool round trip, streaming, normalized
+errors and that the key never appears in errors or logs.
 
 ## Decision
 

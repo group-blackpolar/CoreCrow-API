@@ -70,6 +70,16 @@ objects; an object-store backup alone cannot restore import state.
    attaches the narrow bucket policy. It does not read or print the API runtime
    secrets and does not enable the worker.
 
+## Disposable end-to-end smoke
+
+`scripts/smoke-xlsx-stack.sh` starts an isolated API and worker with their own throwaway PostgreSQL (the production database and accounts are
+never touched) that use the real private MinIO and ClamAV, and drives `scripts/smoke-xlsx-driver.mjs` through upload, ClamAV, OOXML
+validation, analysis, mapping, activation and aggregate queries checked against `scripts/build-shark-test-xlsx.mjs` (synthetic fixture and
+expected totals). Negative cases: another tenant and anonymous callers, a formula workbook, text declared as XLSX, EICAR (plain and inside a
+ZIP), a tampered replay of the signed upload, cancellation, a worker stopped with a queued import, and ClamAV stopped (must block, never
+approve). It also checks that every confirmed import has a pinned storage version and that no secret appears in service logs.
+After a run, remove the smoke objects from the dataset bucket (only when no real imports exist).
+
 ## Backups
 
 `scripts/backup-vps.sh` runs daily from `deploy/systemd/corecrow-backup.timer` (install the script as
