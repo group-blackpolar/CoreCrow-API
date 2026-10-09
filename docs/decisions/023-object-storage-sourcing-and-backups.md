@@ -28,6 +28,17 @@ CORECROW needs a private, versioned, S3-compatible store (assets, avatars, datas
 - **Backups.** `scripts/backup-vps.sh` (systemd timer `corecrow-backup.timer`, daily) takes a verified `pg_dump -Fc` (14-day retention, SHA-256
   manifest) and mirrors both buckets into a private directory. A restore of the latest dump into a scratch database was verified.
 
+## Browser access to presigned URLs
+
+Presigned URLs must be reachable by browsers, so they are signed for `https://api.blackpolar.org` (`NORTH_ASSET_S3_PUBLIC_ENDPOINT`,
+`NORTH_DATA_IMPORT_S3_PUBLIC_ENDPOINT`; presigning is local, server-side calls keep the private endpoint). nginx on the API host proxies
+only presigned `GET`/`PUT`/`HEAD` for `/corecrow-assets/{north-assets,user-avatars}/` and `/corecrow-dataset-imports/north-data-imports/` to MinIO,
+which is published on `127.0.0.1:9000` only. The path and `Host` are forwarded untouched because the signature covers them. Requests without
+`X-Amz-Signature`, other prefixes (bucket listings included) and other methods are refused by nginx, and CORS allows `https://north.blackpolar.org`
+only (`deploy/nginx/*`). No new DNS record or certificate is needed. `api.blackpolar.org` is behind Cloudflare, whose request-body cap
+(100 MB on the free plan) therefore bounds uploads: `NORTH_ASSET_VIDEO_MAX_BYTES` is set below it. The asset probe exercises this public path
+(unsigned and off-prefix refusals, a browser-style presigned PUT, a pinned presigned GET, CORS).
+
 ## Consequences and debt
 
 - MinIO community is unmaintained: no further security fixes. Plan a migration (a maintained S3 store with versioning and checksum-bound presigned PUT)

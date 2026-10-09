@@ -24,11 +24,12 @@ const client = new S3Client({
 });
 const storage = objectStorageFromEnvironment();
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const prefix = `corecrow-asset-probe/${randomUUID()}/`;
+// Inside a published prefix on purpose: the probe must exercise the same public, presigned path a browser uses.
+const prefix = `user-avatars/_probe/${randomUUID()}/`;
 const results = [];
 const step = async (name, fn) => {
   try { await fn(); results.push(`ok   ${name}`); }
-  catch (error) { results.push(`FAIL ${name}: ${error?.code ?? error?.name ?? "error"}`); throw error; }
+  catch (error) { results.push(`FAIL ${name}: ${error?.code ?? error?.name ?? "error"}${error?.message ? ` (${String(error.message).slice(0, 160)})` : ""}`); throw error; }
 };
 
 async function put(name, body, contentType) {
@@ -82,6 +83,16 @@ try {
       const wrongMethod = await fetch(`${publicBase}/${bucket}/${cleanObject.key}?X-Amz-Signature=00`, { method: "DELETE" });
       if (wrongMethod.status !== 405) throw new Error(`DELETE answered HTTP ${wrongMethod.status}`);
     });
+    await step("public endpoint: a browser-style presigned PUT stores the exact bytes", async () => {
+      const body = Buffer.from("browser-path upload probe", "utf8");
+      const key = `${prefix}browser.txt`;
+      const signed = await storage.signedPut({ key, mime: "text/plain", size: body.byteLength, checksum: sha256(body), ttlSeconds: 60 });
+      if (!signed.url.startsWith(process.env.NORTH_ASSET_S3_PUBLIC_ENDPOINT.trim().replace(new RegExp("/+$"), ""))) throw new Error("presigned PUT is not on the public endpoint");
+      const sent = await fetch(signed.url, { method: "PUT", headers: signed.headers, body });
+      if (!sent.ok) throw new Error(`presigned PUT answered HTTP ${sent.status}`);
+      const stored = await storage.inspect(key);
+      if (stored.size !== body.byteLength || stored.checksum !== sha256(body)) throw new Error("stored object differs from the uploaded bytes");
+    });
     await step("public endpoint: CORS preflight allows NORTH only", async () => {
       const publicBase = process.env.NORTH_ASSET_S3_PUBLIC_ENDPOINT.trim().replace(new RegExp("/+$"), "");
       const url = `${publicBase}/${bucket}/${cleanObject.key}?X-Amz-Signature=00`;
@@ -122,7 +133,7 @@ try {
     for (const item of [...(listing.Versions ?? []), ...(listing.DeleteMarkers ?? [])])
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.Key, VersionId: item.VersionId }));
   } catch {
-    console.error("Probe cleanup could not remove every probe object version; remove the corecrow-asset-probe/ prefix manually.");
+    console.error("Probe cleanup could not remove every probe object version; remove the user-avatars/_probe/ prefix manually.");
     process.exitCode = 1;
   }
 }
