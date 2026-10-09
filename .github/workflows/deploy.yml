@@ -85,14 +85,45 @@ jobs:
           script: |
             set -eu
             runtime=/etc/blackpolar/corecrow.env
+            dataset_runtime=/etc/blackpolar/corecrow-dataset.env
             sudo -n test -f "$runtime"
+            network="$(sudo -n awk -F= '
+              $1 == "CORECROW_DOCKER_NETWORK" {
+                value = substr($0, index($0, "=") + 1)
+                gsub(/^[[:space:]\047\"]+|[[:space:]\047\"]+$/, "", value)
+                configured = value
+              }
+              END { print configured }
+            ' "$runtime")"
+            network="${network:-corecrow-api_default}"
+            printf '%s\n' "$network" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$' || {
+              echo 'dataset_private_network=invalid'
+              exit 1
+            }
             echo "cpu_count=$(nproc)"
             free -m | awk '/^Mem:/ { print "memory_total_mib=" $2; print "memory_available_mib=" $7 }'
             df -Pm /var/lib/docker | awk 'NR == 2 { print "docker_disk_available_mib=" $4 }'
+            if sudo -n test -d /var/backups/blackpolar; then
+              df -Pm /var/backups/blackpolar | awk 'NR == 2 { print "backup_disk_available_mib=" $4 }'
+            else
+              echo 'backup_disk_available_mib=missing_backup_directory'
+            fi
+            if sudo -n test -f "$dataset_runtime"; then
+              echo 'dataset_service_runtime=present'
+              echo "dataset_service_runtime_mode=$(sudo -n stat -c '%a' "$dataset_runtime")"
+            else
+              echo 'dataset_service_runtime=missing'
+            fi
+            if sudo -n docker network inspect "$network" >/dev/null 2>&1; then
+              echo 'dataset_private_network=present'
+            else
+              echo 'dataset_private_network=missing'
+            fi
             for name in corecrow-v1 corecrow-db corecrow-dataset-worker corecrow-minio corecrow-clamav; do
               if sudo -n docker container inspect "$name" >/dev/null 2>&1; then
                 state="$(sudo -n docker inspect -f '{{.State.Status}}' "$name")"
-                echo "container_${name}=${state}"
+                health="$(sudo -n docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$name")"
+                echo "container_${name}=${state};health=${health}"
               else
                 echo "container_${name}=missing"
               fi

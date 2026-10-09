@@ -2,6 +2,22 @@
 
 Black Polar's shared backend foundation: Fastify + TypeScript + PostgreSQL + Better Auth. Mainsite and product clients communicate through versioned HTTPS APIs. Only backend repositories own persistence.
 
+## CoreCrow AI MVP
+
+CoreCrow AI is an opt-in CORECROW module. Set `AI_ENABLED=true`, configure the backend-only `GEMINI_API_KEY`, apply migrations, and keep `AI_DEFAULT_MODEL=gemini-2.5-flash` for the confirmed MVP model. NORTH creates a tenant conversation, queues a run with `POST /v1/ai/runs`, then consumes persisted events from `GET /v1/ai/runs/:id/events?organizationId=...`. The SSE contract supports `Last-Event-ID` or `after` replay.
+
+Provider output and retained conversation context are bounded by `AI_MAX_OUTPUT_TOKENS`, `AI_CONTEXT_MAX_MESSAGES`, and `AI_CONTEXT_MAX_CHARACTERS`. Recovery after a process restart drains interrupted runs conservatively in sequence so it cannot bypass the configured concurrency policy.
+
+The initial registry exposes only `organization.current`, `organization.members.list`, and `user.me`. Every exposure and execution requires an active real membership; global roles and NORTH platform grants are deliberately ignored. No mutation tool is enabled, although confirmation records and endpoints are present for future allowlisted actions.
+
+Run the optional real-provider connectivity check only in an explicitly configured environment:
+
+```sh
+AI_REAL_GEMINI_SMOKE=true GEMINI_API_KEY=... pnpm test -- tests/ai.gemini.smoke.test.ts
+```
+
+The smoke test is skipped unless both values are present. Prompts, provider secrets, and tool results are not copied into audit metadata.
+
 ## Start locally
 
 Use Node 22+ and pnpm 9.15.0. Copy `.env.example` to `.env` and configure a local PostgreSQL database, a strong auth secret, trusted origins, and SMTP. The process does not auto-load `.env`; use your process manager, `node --env-file`, or `tsx --env-file=.env src/server.ts`.
@@ -83,6 +99,13 @@ been configured and verified. With the default `false`, API releases deploy
 without the worker and the normal upload/import path continues to fail closed.
 When enabled, `scripts/deploy-vps.sh` starts a candidate worker before replacing
 the active API and keeps the previous worker available for rollback.
+
+For the replacement VPS, the versioned private MinIO and ClamAV service
+definition, a least-privilege bucket policy and bootstrap procedure live in
+[`docs/DATASET_IMPORT_VPS.md`](docs/DATASET_IMPORT_VPS.md). The deployment now
+also submits a harmless byte stream through the real ClamAV protocol and checks
+bucket versioning before it starts a candidate worker. It never enables the
+worker itself.
 
 The `seed-master-house-demo` production workflow is a bounded administrative
 exception for the presentation fixture committed in `src/fixtures`. It creates

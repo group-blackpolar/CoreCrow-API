@@ -53,6 +53,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/src/public ./dist/public
+COPY --from=build /app/scripts/verify-dataset-infrastructure.mjs ./scripts/verify-dataset-infrastructure.mjs
 
 COPY package.json ./
 

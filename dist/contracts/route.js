@@ -3,6 +3,7 @@ import { error } from "./schemas.js";
 import { principal } from "../modules/security/session.js";
 import { DomainError } from "../shared/errors.js";
 import { withRequestContext } from "../shared/request-context.js";
+import { inspectionFor } from "../modules/authorization/inspection.js";
 const json = (schema) => zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
 export function contract(app, options) {
     app.route({
@@ -14,7 +15,7 @@ export function contract(app, options) {
         schema: {
             tags: [options.tag],
             summary: options.summary,
-            security: options.public ? [] : [{ sessionCookie: [] }],
+            security: options.public ? [] : options.security ?? [{ sessionCookie: [] }],
             ...(options.idempotency || options.headers
                 ? {
                     headers: {
@@ -44,8 +45,13 @@ export function contract(app, options) {
             },
         },
         handler: async (request, reply) => {
+            const principalUser = options.public ? undefined : await principal(request);
+            // X-Platform-Inspect: <organizationId>. Validated on every request, GET only.
+            const inspection = principalUser
+                ? await inspectionFor(request, principalUser)
+                : undefined;
             return withRequestContext(request.id, async () => {
-                const user = options.public ? undefined : await principal(request);
+                const user = principalUser;
                 const value = await options.run({
                     body: options.body?.parse(request.body),
                     params: options.params?.parse(request.params),
@@ -59,7 +65,7 @@ export function contract(app, options) {
                 if (!parsed.success)
                     throw new DomainError(500, "RESPONSE_CONTRACT_ERROR", "The response could not be completed");
                 return reply.code(options.status ?? 200).send(parsed.data);
-            });
+            }, inspection);
         },
     });
 }

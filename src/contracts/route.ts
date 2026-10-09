@@ -25,6 +25,7 @@ export function contract<
     response: z.ZodTypeAny;
     status?: number;
     public?: boolean;
+    security?: Array<Record<string, never[]>>;
     rateLimit?: number;
     idempotency?: boolean;
     headers?: {
@@ -50,7 +51,7 @@ export function contract<
     schema: {
       tags: [options.tag],
       summary: options.summary,
-      security: options.public ? [] : [{ sessionCookie: [] }],
+      security: options.public ? [] : options.security ?? [{ sessionCookie: [] }],
       ...(options.idempotency || options.headers
         ? {
             headers: {

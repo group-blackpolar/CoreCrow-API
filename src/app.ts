@@ -94,7 +94,7 @@ export async function buildApp(
   await app.register(cors, {
     origin: trustedOrigins,
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match", "X-Platform-Inspect", "X-Platform-Inspection-Session"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match", "Last-Event-ID", "X-Platform-Inspect", "X-Platform-Inspection-Session"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
@@ -115,6 +115,12 @@ export async function buildApp(
             name: "__Secure-better-auth.session_token",
             description:
               "Better Auth cookie; development uses better-auth.session_token.",
+          },
+          desktopBearer: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "opaque",
+            description: "Short-lived NORTH desktop session bearer token.",
           },
         },
       },

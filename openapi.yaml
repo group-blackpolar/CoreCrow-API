@@ -11,6 +11,11 @@ components:
       in: cookie
       name: __Secure-better-auth.session_token
       description: Better Auth cookie; development uses better-auth.session_token.
+    desktopBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Short-lived NORTH desktop session bearer token.
   schemas: {}
 paths:
   /:
@@ -3290,6 +3295,1354 @@ paths:
                   - mimeType
                   - size
                   - createdAt
+                additionalProperties: false
+  /v1/ai/conversations:
+    post:
+      summary: Create a membership-bound AI conversation
+      tags:
+        - CoreCrow AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organizationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                application:
+                  type: string
+                  enum:
+                    - north
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+              required:
+                - organizationId
+                - application
+              additionalProperties: false
+      security: &a2
+        - sessionCookie: []
+        - desktopBearer: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  userId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  application:
+                    type: string
+                    enum:
+                      - north
+                  title:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - organizationId
+                  - userId
+                  - application
+                  - title
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    get:
+      summary: List the actor's tenant-isolated AI conversations
+      tags:
+        - CoreCrow AI
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: organizationId
+          required: true
+      security: *a2
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    organizationId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    userId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    application:
+                      type: string
+                      enum:
+                        - north
+                    title:
+                      type: string
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                    updatedAt:
+                      type: string
+                      format: date-time
+                  required:
+                    - id
+                    - organizationId
+                    - userId
+                    - application
+                    - title
+                    - createdAt
+                    - updatedAt
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/conversations/{id}:
+    get:
+      summary: Read one tenant-isolated AI conversation and its messages
+      tags:
+        - CoreCrow AI
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security: *a2
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  userId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  application:
+                    type: string
+                    enum:
+                      - north
+                  title:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        runId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          nullable: true
+                        role:
+                          type: string
+                          enum:
+                            - USER
+                            - ASSISTANT
+                            - TOOL
+                        content:
+                          type: string
+                        toolName:
+                          type: string
+                          nullable: true
+                        toolCallId:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                      required:
+                        - id
+                        - runId
+                        - role
+                        - content
+                        - toolName
+                        - toolCallId
+                        - createdAt
+                      additionalProperties: false
+                required:
+                  - id
+                  - organizationId
+                  - userId
+                  - application
+                  - title
+                  - createdAt
+                  - updatedAt
+                  - messages
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/runs:
+    post:
+      summary: Queue an asynchronous Gemini-backed AI run
+      tags:
+        - CoreCrow AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organizationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                conversationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                application:
+                  type: string
+                  enum:
+                    - north
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 8000
+              required:
+                - organizationId
+                - conversationId
+                - application
+                - message
+              additionalProperties: false
+      security: *a2
+      responses:
+        "202":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - runId
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/runs/{id}:
+    get:
+      summary: Read an owned tenant-isolated AI run
+      tags:
+        - CoreCrow AI
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security: *a2
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  conversationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  userId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  application:
+                    type: string
+                    enum:
+                      - north
+                  status:
+                    type: string
+                    enum:
+                      - QUEUED
+                      - RUNNING
+                      - WAITING_CONFIRMATION
+                      - COMPLETED
+                      - FAILED
+                      - CANCELLED
+                  provider:
+                    type: string
+                  model:
+                    type: string
+                  failureCode:
+                    type: string
+                    nullable: true
+                  failureMessage:
+                    type: string
+                    nullable: true
+                  cancellationRequestedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  startedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  completedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  usage:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        provider:
+                          type: string
+                        model:
+                          type: string
+                        inputTokens:
+                          type: integer
+                        outputTokens:
+                          type: integer
+                        totalTokens:
+                          type: integer
+                        latencyMs:
+                          type: integer
+                        estimatedCostMicrousd:
+                          type: string
+                          pattern: ^\d+$
+                        pricingVersion:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                      required:
+                        - id
+                        - provider
+                        - model
+                        - inputTokens
+                        - outputTokens
+                        - totalTokens
+                        - latencyMs
+                        - estimatedCostMicrousd
+                        - pricingVersion
+                        - createdAt
+                      additionalProperties: false
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        status:
+                          type: string
+                          enum:
+                            - PENDING_CONFIRMATION
+                            - CONFIRMED
+                            - CANCELLED
+                            - EXPIRED
+                            - FAILED
+                        toolName:
+                          type: string
+                        expiresAt:
+                          type: string
+                          format: date-time
+                      required:
+                        - id
+                        - status
+                        - toolName
+                        - expiresAt
+                      additionalProperties: false
+                  toolCalls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        name:
+                          type: string
+                        risk:
+                          type: string
+                        status:
+                          type: string
+                        errorCode:
+                          type: string
+                          nullable: true
+                      required:
+                        - id
+                        - name
+                        - risk
+                        - status
+                        - errorCode
+                      additionalProperties: false
+                required:
+                  - id
+                  - conversationId
+                  - organizationId
+                  - userId
+                  - application
+                  - status
+                  - provider
+                  - model
+                  - failureCode
+                  - failureMessage
+                  - cancellationRequestedAt
+                  - startedAt
+                  - completedAt
+                  - createdAt
+                  - updatedAt
+                  - usage
+                  - actions
+                  - toolCalls
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/runs/{id}/cancel:
+    post:
+      summary: Request cancellation of an owned AI run
+      tags:
+        - CoreCrow AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organizationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+              required:
+                - organizationId
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security: *a2
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  conversationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  organizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  userId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  application:
+                    type: string
+                    enum:
+                      - north
+                  status:
+                    type: string
+                    enum:
+                      - QUEUED
+                      - RUNNING
+                      - WAITING_CONFIRMATION
+                      - COMPLETED
+                      - FAILED
+                      - CANCELLED
+                  provider:
+                    type: string
+                  model:
+                    type: string
+                  failureCode:
+                    type: string
+                    nullable: true
+                  failureMessage:
+                    type: string
+                    nullable: true
+                  cancellationRequestedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  startedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  completedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  usage:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        provider:
+                          type: string
+                        model:
+                          type: string
+                        inputTokens:
+                          type: integer
+                        outputTokens:
+                          type: integer
+                        totalTokens:
+                          type: integer
+                        latencyMs:
+                          type: integer
+                        estimatedCostMicrousd:
+                          type: string
+                          pattern: ^\d+$
+                        pricingVersion:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                      required:
+                        - id
+                        - provider
+                        - model
+                        - inputTokens
+                        - outputTokens
+                        - totalTokens
+                        - latencyMs
+                        - estimatedCostMicrousd
+                        - pricingVersion
+                        - createdAt
+                      additionalProperties: false
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        status:
+                          type: string
+                          enum:
+                            - PENDING_CONFIRMATION
+                            - CONFIRMED
+                            - CANCELLED
+                            - EXPIRED
+                            - FAILED
+                        toolName:
+                          type: string
+                        expiresAt:
+                          type: string
+                          format: date-time
+                      required:
+                        - id
+                        - status
+                        - toolName
+                        - expiresAt
+                      additionalProperties: false
+                  toolCalls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        name:
+                          type: string
+                        risk:
+                          type: string
+                        status:
+                          type: string
+                        errorCode:
+                          type: string
+                          nullable: true
+                      required:
+                        - id
+                        - name
+                        - risk
+                        - status
+                        - errorCode
+                      additionalProperties: false
+                required:
+                  - id
+                  - conversationId
+                  - organizationId
+                  - userId
+                  - application
+                  - status
+                  - provider
+                  - model
+                  - failureCode
+                  - failureMessage
+                  - cancellationRequestedAt
+                  - startedAt
+                  - completedAt
+                  - createdAt
+                  - updatedAt
+                  - usage
+                  - actions
+                  - toolCalls
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/actions/{id}/confirm:
+    post:
+      summary: Reauthorize and confirm an AI action (no mutation tools enabled in MVP)
+      tags:
+        - CoreCrow AI
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security: *a2
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  status:
+                    type: string
+                    enum:
+                      - PENDING_CONFIRMATION
+                      - CONFIRMED
+                      - CANCELLED
+                      - EXPIRED
+                      - FAILED
+                  toolName:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - status
+                  - toolName
+                  - expiresAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/actions/{id}/cancel:
+    post:
+      summary: Cancel a pending owned AI action
+      tags:
+        - CoreCrow AI
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+      security: *a2
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  status:
+                    type: string
+                    enum:
+                      - PENDING_CONFIRMATION
+                      - CONFIRMED
+                      - CANCELLED
+                      - EXPIRED
+                      - FAILED
+                  toolName:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - status
+                  - toolName
+                  - expiresAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/ai/runs/{id}/events:
+    get:
+      summary: Stream persisted AI run events with terminal replay
+      tags:
+        - CoreCrow AI
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: query
+          name: organizationId
+          required: true
+        - schema:
+            type: integer
+            minimum: 0
+            default: 0
+          in: query
+          name: after
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: id
+          required: true
+        - schema:
+            type: string
+            pattern: ^[0-9]+$
+          in: header
+          name: last-event-id
+          required: false
+          description: Last received event sequence for resumable replay.
+      security:
+        - sessionCookie: []
+        - desktopBearer: []
+      responses:
+        "200":
+          description: Persisted Server-Sent Events stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Persisted Server-Sent Events stream.
+        4XX:
+          description: Default Response
+          content:
+            text/event-stream:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            text/event-stream:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
   /v1/organizations/{organizationId}/datasets:
     get:

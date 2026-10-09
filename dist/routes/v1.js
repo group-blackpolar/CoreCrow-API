@@ -8,13 +8,16 @@ import { billing } from "../modules/billing/service.js";
 import { commerce } from "../modules/commerce/service.js";
 import { identities } from "../modules/identity/repository.js";
 import { CURRENT_TERMS_VERSION, users, requireOperator, } from "../modules/identity/service.js";
+import { INSPECTION_SESSION_HEADER } from "../modules/authorization/inspection.js";
 import { northCapabilities, northGlobalCapabilities, permissions } from "../modules/authorization/policy.js";
 import { authorizationGroups } from "../modules/authorization/groups-service.js";
 import { transaction } from "../shared/transaction.js";
 import { auditRepository } from "../modules/audit/repository.js";
+import { operatorLogs } from "../modules/audit/service.js";
 import { createContact, listContacts } from "../modules/business/service.js";
 import { fail } from "../shared/errors.js";
 import { security, keyScopes } from "../modules/security/service.js";
+import { auidState, regenerateAuid, revealAuid } from "../modules/identity/admin-secret-service.js";
 import { changeTemporaryPassword } from "../modules/identity/temporary-password-service.js";
 import { confirmEmailVerificationCode, requestEmailVerificationCode, } from "../modules/identity/email-verification-service.js";
 import { northPermissions, northPlatformPermissions, northTaxonomy } from "../modules/north/service.js";
@@ -26,7 +29,19 @@ import { northTemplateCreateInput, northTemplateSnapshotInput } from "../modules
 import { northSearch } from "../modules/north/search-service.js";
 import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
+import { northData } from "../modules/north/data/service.js";
+import { northDatasetImports } from "../modules/north/data/import-service.js";
+import { northDatasetImportAnalysis } from "../modules/north/data/import-analysis-service.js";
+import { northDatasetImportActivation } from "../modules/north/data/import-activation-service.js";
+import { northDatasetQuery } from "../modules/north/data/query-service.js";
+import { northAnalyticsBindings } from "../modules/north/data/binding-service.js";
+import { northShowcase } from "../modules/north/showcase-service.js";
+import { documentRoutes } from "./documents.js";
+import { allowedBindingFilterSchema, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
+import { aiRoutes } from "./ai.js";
 export async function v1Routes(app) {
+    await app.register(documentRoutes);
+    await app.register(aiRoutes);
     const key = z.object({
         id: s.id,
         name: s.name,
@@ -36,6 +51,241 @@ export async function v1Routes(app) {
         expiresAt: s.date,
         revokedAt: s.date.nullable(),
         createdAt: s.date,
+    });
+    const datasetParams = s.orgParams.extend({ datasetId: s.id });
+    const datasetFieldParams = datasetParams.extend({ fieldId: s.id });
+    const datasetSchemaParams = datasetParams.extend({ schemaVersionId: s.id });
+    const datasetAclParams = datasetParams.extend({ aclId: s.id });
+    const datasetImportParams = datasetParams.extend({ importId: s.id });
+    const datasetImportMappingParams = datasetImportParams.extend({ mappingId: s.id });
+    const semanticType = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).nullable();
+    const datasetMetadata = z.object({
+        name: s.localizedText,
+        description: s.localizedText.nullable().optional(),
+        slug: z.string().trim().min(1).max(64),
+    }).strict();
+    const datasetUpdate = datasetMetadata.partial().extend({ status: s.northDatasetStatus.optional() })
+        .refine((value) => Object.keys(value).length > 0);
+    const fieldUpdate = z.object({
+        displayName: s.localizedText.optional(),
+        description: s.localizedText.nullable().optional(),
+        semanticType: semanticType.optional(),
+        nullable: z.boolean().optional(),
+        status: s.northDatasetFieldStatus.optional(),
+    }).strict().refine((value) => Object.keys(value).length > 0);
+    const aclInput = z.discriminatedUnion("principalType", [
+        z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ALL_MEMBERS") }).strict(),
+        z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("MEMBERSHIP"), membershipId: s.id }).strict(),
+        z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("GROUP"), groupId: s.id }).strict(),
+        z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("ROLE"), role: s.role }).strict(),
+        z.object({ effect: s.northDatasetAclEffect, principalType: z.literal("CAPABILITY"), capability: z.string().min(1).max(128) }).strict(),
+    ]);
+    const importMappingInput = z.object({
+        sheetOrdinal: z.number().int().nonnegative().max(31),
+        headerRow: z.literal(1),
+        columns: z.array(s.northDatasetImportMappingColumn).min(1).max(150),
+    }).strict();
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
+        summary: "List up to 100 datasets authorized for the active membership", params: s.orgParams,
+        response: z.array(s.northDataset),
+        run: ({ user, params }) => northData.list(user.id, params.organizationId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
+        summary: "Create a tenant dataset with a safe initial owner ACL", params: s.orgParams,
+        body: datasetMetadata, response: s.northDataset, status: 201,
+        run: ({ user, params, body }) => northData.create(user.id, params.organizationId, body),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+        summary: "Read one authorized tenant dataset", params: datasetParams, response: s.northDataset,
+        run: ({ user, params }) => northData.read(user.id, params.organizationId, params.datasetId),
+    });
+    contract(app, {
+        method: "PATCH", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+        summary: "Update authorized dataset metadata or lifecycle status", params: datasetParams,
+        body: datasetUpdate, response: s.northDataset,
+        run: ({ user, params, body }) => northData.update(user.id, params.organizationId, params.datasetId, body),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
+        summary: "List stable logical fields for an authorized dataset", params: datasetParams,
+        response: z.array(s.northDatasetField),
+        run: ({ user, params }) => northData.fields(user.id, params.organizationId, params.datasetId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
+        summary: "Create a stable logical dataset field", params: datasetParams,
+        body: z.object({
+            key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+            displayName: s.localizedText,
+            description: s.localizedText.nullable().optional(),
+            canonicalType: s.northDatasetFieldType,
+            semanticType: semanticType.optional(),
+            nullable: z.boolean().optional(),
+        }).strict(),
+        response: s.northDatasetField, status: 201,
+        run: ({ user, params, body }) => northData.createField(user.id, params.organizationId, params.datasetId, body),
+    });
+    contract(app, {
+        method: "PATCH", url: "/organizations/:organizationId/datasets/:datasetId/fields/:fieldId", tag: "NORTH data",
+        summary: "Update logical field metadata without rewriting schema snapshots", params: datasetFieldParams,
+        body: fieldUpdate, response: s.northDatasetField,
+        run: ({ user, params, body }) => northData.updateField(user.id, params.organizationId, params.datasetId, params.fieldId, body),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions", tag: "NORTH data",
+        summary: "List immutable schema snapshots for an authorized dataset", params: datasetParams,
+        response: z.array(s.northDatasetSchemaVersion),
+        run: ({ user, params }) => northData.schemaVersions(user.id, params.organizationId, params.datasetId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions", tag: "NORTH data",
+        summary: "Create and activate an immutable schema snapshot", params: datasetParams,
+        body: z.object({
+            fields: z.array(z.object({ fieldId: s.id, ordinal: z.number().int().nonnegative() }).strict()).min(1).max(150),
+        }).strict(),
+        response: s.northDatasetSchemaVersion, status: 201,
+        run: ({ user, params, body }) => northData.createSchemaVersion(user.id, params.organizationId, params.datasetId, body),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/schema-versions/:schemaVersionId", tag: "NORTH data",
+        summary: "Read one immutable dataset schema snapshot", params: datasetSchemaParams,
+        response: s.northDatasetSchemaVersion,
+        run: ({ user, params }) => northData.schemaVersion(user.id, params.organizationId, params.datasetId, params.schemaVersionId),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/acl", tag: "NORTH data authorization",
+        summary: "List dataset ACL rules with explicit deny semantics", params: datasetParams,
+        response: z.array(s.northDatasetAcl),
+        run: ({ user, params }) => northData.acl(user.id, params.organizationId, params.datasetId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/acl", tag: "NORTH data authorization",
+        summary: "Create a tenant-validated dataset ACL rule", params: datasetParams,
+        body: aclInput, response: s.northDatasetAcl, status: 201,
+        run: ({ user, params, body }) => northData.createAclRule(user.id, params.organizationId, params.datasetId, body),
+    });
+    contract(app, {
+        method: "DELETE", url: "/organizations/:organizationId/datasets/:datasetId/acl/:aclId", tag: "NORTH data authorization",
+        summary: "Delete a dataset ACL rule without locking out every owner", params: datasetAclParams,
+        response: z.null(),
+        run: async ({ user, params }) => {
+            await northData.deleteAclRule(user.id, params.organizationId, params.datasetId, params.aclId);
+            return null;
+        },
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports", tag: "NORTH data imports",
+        summary: "Create or replay an idempotent private XLSX upload session; no parsing occurs in the request",
+        params: datasetParams, idempotency: true, rateLimit: 20,
+        body: z.object({
+            filename: z.string().trim().min(1).max(255),
+            mime: z.string().trim().min(1).max(127),
+            size: z.number().int().min(1),
+            checksum: z.string().regex(/^[0-9a-fA-F]{64}$/),
+        }).strict(),
+        response: z.object({ import: s.northDatasetImport, upload: s.northSignedObjectRequest }), status: 201,
+        run: ({ user, params, body, request }) => {
+            const key = request.headers["idempotency-key"];
+            if (typeof key !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(key))
+                fail(400, "IDEMPOTENCY_KEY_REQUIRED", "Provide a 16–128 character Idempotency-Key");
+            return northDatasetImports.prepare(user.id, params.organizationId, params.datasetId, body, key);
+        },
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports", tag: "NORTH data imports",
+        summary: "List up to 100 authorized durable import jobs without internal object identifiers",
+        params: datasetParams, response: z.array(s.northDatasetImport),
+        run: ({ user, params }) => northDatasetImports.list(user.id, params.organizationId, params.datasetId),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId", tag: "NORTH data imports",
+        summary: "Read sanitized progress and security-gate state for one authorized import job",
+        params: datasetImportParams, response: s.northDatasetImport,
+        run: ({ user, params }) => northDatasetImports.read(user.id, params.organizationId, params.datasetId, params.importId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/confirm", tag: "NORTH data imports",
+        summary: "Verify uploaded XLSX declaration and queue fail-closed security checks; never parse synchronously",
+        params: datasetImportParams, response: s.northDatasetImport, status: 202,
+        run: ({ user, params }) => northDatasetImports.confirm(user.id, params.organizationId, params.datasetId, params.importId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/cancel", tag: "NORTH data imports",
+        summary: "Idempotently cancel a waiting import or request cancellation from a claimed worker",
+        params: datasetImportParams, response: s.northDatasetImport,
+        run: ({ user, params }) => northDatasetImports.cancel(user.id, params.organizationId, params.datasetId, params.importId),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/analysis", tag: "NORTH data imports",
+        summary: "Read bounded workbook analysis after the immutable source has passed security validation", params: datasetImportParams,
+        response: s.northDatasetImportAnalysis,
+        run: ({ user, params }) => northDatasetImportAnalysis.read(user.id, params.organizationId, params.datasetId, params.importId),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings", tag: "NORTH data imports",
+        summary: "List immutable mapping versions for an authorized analyzed import", params: datasetImportParams,
+        response: z.array(s.northDatasetImportMapping),
+        run: ({ user, params }) => northDatasetImportAnalysis.listMappings(user.id, params.organizationId, params.datasetId, params.importId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings", tag: "NORTH data imports",
+        summary: "Create an immutable explicit mapping version; this does not activate data", params: datasetImportParams,
+        body: importMappingInput, response: s.northDatasetImportMapping, status: 201,
+        run: ({ user, params, body }) => northDatasetImportAnalysis.createMapping(user.id, params.organizationId, params.datasetId, params.importId, body),
+    });
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/mappings/:mappingId", tag: "NORTH data imports",
+        summary: "Read one immutable authorized mapping version", params: datasetImportMappingParams,
+        response: s.northDatasetImportMapping,
+        run: ({ user, params }) => northDatasetImportAnalysis.readMapping(user.id, params.organizationId, params.datasetId, params.importId, params.mappingId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/activate", tag: "NORTH data imports",
+        summary: "Queue asynchronous immutable REPLACE_DATASET materialization and atomic activation", params: datasetImportParams,
+        body: z.object({ mappingId: s.id, mode: z.literal("REPLACE_DATASET") }).strict(), response: s.northDatasetImport, status: 202,
+        run: ({ user, params, body }) => northDatasetImportActivation.activate(user.id, params.organizationId, params.datasetId, params.importId, body.mappingId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/query", tag: "NORTH data queries",
+        summary: "Execute a bounded tenant-authorized query against the active immutable revision", params: datasetParams,
+        body: datasetQuerySchema, response: s.northDatasetQueryResult, rateLimit: 30,
+        run: ({ user, params, body }) => northDatasetQuery.execute(user.id, params.organizationId, params.datasetId, body),
+    });
+    const panelBindingParams = s.orgParams.extend({ panelId: s.id });
+    const panelBindingDetailParams = panelBindingParams.extend({ bindingId: s.id });
+    const bindingInput = z.object({
+        name: z.string().trim().min(1).max(100),
+        datasetId: s.id,
+        query: datasetQuerySchema,
+        allowedFilters: z.array(allowedBindingFilterSchema).max(10).optional(),
+    }).strict();
+    contract(app, {
+        method: "GET", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings", tag: "NORTH analytics",
+        summary: "List authoritative analytics bindings owned by one authorized panel", params: panelBindingParams,
+        response: z.array(s.northAnalyticsBinding),
+        run: ({ user, params }) => northAnalyticsBindings.list(user.id, params.organizationId, params.panelId),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings", tag: "NORTH analytics",
+        summary: "Create an audited panel-owned binding with a bounded declarative dataset query", params: panelBindingParams,
+        body: bindingInput, response: s.northAnalyticsBinding, status: 201,
+        run: ({ user, params, body }) => northAnalyticsBindings.create(user.id, params.organizationId, params.panelId, body),
+    });
+    contract(app, {
+        method: "PUT", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId", tag: "NORTH analytics",
+        summary: "Replace an audited panel-owned binding after tenant and dataset authorization", params: panelBindingDetailParams,
+        body: bindingInput, response: s.northAnalyticsBinding,
+        run: ({ user, params, body }) => northAnalyticsBindings.update(user.id, params.organizationId, params.panelId, params.bindingId, body),
+    });
+    contract(app, {
+        method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH analytics",
+        summary: "Resolve only a binding referenced by this exact published panel and apply allowlisted runtime filters", params: panelBindingDetailParams,
+        body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).strict(),
+        response: s.northAnalyticsBindingResult, rateLimit: 30,
+        run: ({ user, params, body }) => northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, body.filters),
     });
     contract(app, {
         method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",
@@ -250,6 +500,14 @@ export async function v1Routes(app) {
         }),
     });
     const platformOrganizationSummary = s.org.extend({
+        // Oldest OWNER membership, or null when the organization has no owner yet.
+        owner: z
+            .object({
+            id: s.id,
+            name: z.string().nullable(),
+            email: z.string().email(),
+        })
+            .nullable(),
         memberCount: z.number().int().nonnegative(),
         groupCount: z.number().int().nonnegative(),
         billingStatus: z.enum(["ACTIVE", "PAST_DUE", "SUSPENDED", "CLOSED"]).nullable(),
@@ -262,7 +520,7 @@ export async function v1Routes(app) {
         summary: "Search and page non-secret identity summaries (operator only)",
         query: pageQuery,
         response: z.object({
-            items: z.array(s.user),
+            items: z.array(s.user.extend({ organizationCount: z.number().int().nonnegative() })),
             nextCursor: s.id.nullable(),
         }),
         run: ({ user, query }) => platform.users(user.id, query),
@@ -293,14 +551,43 @@ export async function v1Routes(app) {
         run: ({ user, body }) => users.preprovision(user.id, body),
     });
     contract(app, {
+        method: "POST",
+        url: "/platform/users",
+        tag: "Platform administration",
+        summary: "Create an account with an assigned login (email-shaped) and password, already verified (superadmin)",
+        body: z
+            .object({
+            name: s.name,
+            email: z.string().trim().email().max(254),
+            password: z.string().min(12).max(128),
+            role: z.enum(["USER", "DEVELOPER", "ADMIN"]).default("ADMIN"),
+            passwordChangeRequired: z.boolean().default(true),
+        })
+            .strict(),
+        response: s.user,
+        status: 201,
+        rateLimit: 20,
+        run: ({ user, body }) => users.createAssigned(user.id, body),
+    });
+    contract(app, {
+        method: "POST",
+        url: "/platform/users/:id/verify-email",
+        tag: "Platform administration",
+        summary: "Mark an account as verified without its emailed code (superadmin, idempotent)",
+        params: z.object({ id: s.id }).strict(),
+        response: s.user,
+        rateLimit: 60,
+        run: ({ user, params }) => users.verifyEmailByOperator(user.id, params.id),
+    });
+    contract(app, {
         method: "PATCH",
         url: "/platform/users/:id/status",
         tag: "Platform administration",
         summary: "Suspend or restore an identity and revoke all sessions (superadmin)",
         params: z.object({ id: s.id }).strict(),
-        body: z.object({ status: s.accountStatus }).strict(),
+        body: z.object({ status: s.accountStatus, reason: z.string().trim().min(1).max(500).optional() }).strict(),
         response: s.user,
-        run: ({ user, params, body }) => platform.setUserStatus(user.id, params.id, body.status),
+        run: ({ user, params, body }) => platform.setUserStatus(user.id, params.id, body.status, body.reason),
     });
     contract(app, {
         method: "GET",
@@ -334,6 +621,63 @@ export async function v1Routes(app) {
         billableMemberCount: z.number().int().nonnegative(),
         groupsCostMinor: z.literal(0),
         estimatedMonthlyMinor: z.number().int().nonnegative(),
+    });
+    const inspectionView = z.object({ id: s.id, name: z.string(), slug: z.string(), status: s.organizationStatus, iconData: z.string().nullable(), inspectionSessionId: z.string() });
+    contract(app, {
+        method: "POST",
+        url: "/platform/organizations/:id/inspection",
+        tag: "Platform administration",
+        summary: "Audit the start of a read-only organization inspection (no membership is created)",
+        params: z.object({ id: s.id }).strict(),
+        response: inspectionView,
+        run: ({ user, params, request }) => platform.inspect(user.id, params.id, "start", request.ip),
+    });
+    contract(app, {
+        method: "DELETE",
+        url: "/platform/organizations/:id/inspection",
+        tag: "Platform administration",
+        summary: "Audit the end of a read-only organization inspection",
+        params: z.object({ id: s.id }).strict(),
+        response: inspectionView,
+        run: ({ user, params, request }) => platform.inspect(user.id, params.id, "end", request.ip, request.headers[INSPECTION_SESSION_HEADER]),
+    });
+    contract(app, {
+        method: "GET",
+        url: "/platform/users/:id/auid",
+        tag: "Platform administration",
+        summary: "Whether an administrator has an AUID configured (never returns the credential)",
+        params: z.object({ id: s.id }).strict(),
+        response: z.object({ configured: z.boolean(), revealable: z.boolean(), encryptionAvailable: z.boolean(), role: s.globalRole }),
+        run: ({ user, params }) => auidState(user.id, params.id),
+    });
+    contract(app, {
+        method: "POST",
+        url: "/platform/users/:id/auid/reveal",
+        tag: "Platform administration",
+        summary: "Reveal a recoverable AUID after SUPERADMIN password re-authentication (never cached)",
+        params: z.object({ id: s.id }).strict(),
+        body: z.object({ password: z.string().min(1).max(256) }).strict(),
+        response: z.object({ auid: z.string() }),
+        status: 200,
+        rateLimit: 30,
+        run: ({ user, params, body, request, reply }) => {
+            reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
+            return revealAuid(user.id, params.id, body.password, request.ip);
+        },
+    });
+    contract(app, {
+        method: "POST",
+        url: "/platform/users/:id/auid/regenerate",
+        tag: "Platform administration",
+        summary: "Replace an administrator AUID after SUPERADMIN password re-authentication; shown once",
+        params: z.object({ id: s.id }).strict(),
+        body: z.object({ password: z.string().min(1).max(256) }).strict(),
+        response: z.object({ auid: z.string() }),
+        rateLimit: 30,
+        run: ({ user, params, body, request, reply }) => {
+            reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
+            return regenerateAuid(user.id, params.id, body.password, request.ip);
+        },
     });
     contract(app, {
         method: "GET",
@@ -402,6 +746,74 @@ export async function v1Routes(app) {
         run: ({ user, params, body }) => billing.setStatus(user.id, params.id, body.status),
     });
     contract(app, {
+        method: "GET",
+        url: "/platform/summary",
+        tag: "Platform administration",
+        summary: "Read platform-wide aggregates for the administration dashboard",
+        response: z.object({
+            users: z.object({
+                total: z.number().int().nonnegative(),
+                active: z.number().int().nonnegative(),
+                suspended: z.number().int().nonnegative(),
+                verified: z.number().int().nonnegative(),
+                createdLast7Days: z.number().int().nonnegative(),
+                createdLast30Days: z.number().int().nonnegative(),
+            }),
+            organizations: z.object({
+                total: z.number().int().nonnegative(),
+                active: z.number().int().nonnegative(),
+                suspended: z.number().int().nonnegative(),
+                createdLast30Days: z.number().int().nonnegative(),
+            }),
+            memberships: z.object({ total: z.number().int().nonnegative() }),
+            sessions: z.object({ active: z.number().int().nonnegative() }),
+            // Byte counters are returned as decimal strings on purpose: BigInt values
+            // would be coerced to Number by the contract projection and lose precision.
+            storage: z.object({
+                usedBytes: z.string(),
+                limitBytes: z.string(),
+                reservedBytes: z.string(),
+            }),
+            billing: z.object({
+                currency: z.literal("USD"),
+                basePriceMinor: z.literal(1400),
+                memberPriceMinor: z.literal(500),
+                billableOrganizationCount: z.number().int().nonnegative(),
+                billableMemberCount: z.number().int().nonnegative(),
+                estimatedMonthlyMinor: z.number().int().nonnegative(),
+            }),
+            generatedAt: s.date,
+        }),
+        run: ({ user }) => platform.summary(user.id),
+    });
+    contract(app, {
+        method: "GET",
+        url: "/platform/audit",
+        tag: "Platform administration",
+        summary: "Read the global audit trail (superadmin only)",
+        query: z
+            .object({
+            limit: z.coerce.number().int().min(1).max(100).default(50),
+            cursor: s.id.optional(),
+            action: z.string().trim().min(1).max(128).optional(),
+            actorId: s.id.optional(),
+            targetType: z.string().trim().min(1).max(128).optional(),
+            targetId: s.id.optional(),
+            from: s.date.optional(),
+            to: s.date.optional(),
+        })
+            .strict(),
+        response: z.object({
+            items: z.array(s.auditEvent),
+            nextCursor: s.id.nullable(),
+        }),
+        run: ({ user, query }) => operatorLogs(user.id, {
+            ...query,
+            from: query.from ? new Date(query.from) : undefined,
+            to: query.to ? new Date(query.to) : undefined,
+        }),
+    });
+    contract(app, {
         method: "POST",
         url: "/organizations",
         tag: "Multi-tenancy",
@@ -453,12 +865,14 @@ export async function v1Routes(app) {
         method: "PATCH",
         url: "/organizations/:organizationId",
         tag: "Multi-tenancy",
-        summary: "Update an active organization's name or normalized slug",
+        summary: "Update an active organization's name, normalized slug or icon",
         params: s.orgParams,
         body: z
             .object({
             name: s.name.optional(),
             slug: z.string().trim().min(1).max(100).optional(),
+            iconData: z.string().max(400_000).nullable().optional(),
+            description: z.string().max(500).nullable().optional(),
         })
             .strict()
             .refine((value) => Object.keys(value).length > 0),
@@ -479,9 +893,9 @@ export async function v1Routes(app) {
         method: "GET",
         url: "/organizations/:organizationId/members",
         tag: "Multi-tenancy",
-        summary: "List members (up to 100)",
+        summary: "List members with minimal tenant-visible identity (up to 100)",
         params: s.orgParams,
-        response: z.array(s.member),
+        response: z.array(s.organizationMember),
         run: ({ user, params }) => tenants.members(user.id, params.organizationId),
     });
     contract(app, {
@@ -565,6 +979,7 @@ export async function v1Routes(app) {
             .enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"])
             .default("MEMBER"),
         expiresInHours: z.number().int().min(1).max(720).optional(),
+        maxUses: z.number().int().min(1).max(1000).optional(),
         groupIds: z.array(s.id).max(50).default([]),
         permissions: z.array(z.enum(permissions)).max(50).default([]),
     })
@@ -739,6 +1154,52 @@ export async function v1Routes(app) {
         response: s.member,
         rateLimit: 10,
         run: ({ user, body }) => invitations.accept(user, body.token),
+    });
+    contract(app, {
+        method: "POST",
+        url: "/invitations/validate",
+        tag: "Multi-tenancy",
+        summary: "Check an invitation credential before sign-up and show the organization it belongs to",
+        public: true,
+        body: z.object({ token: z.string().trim().min(8).max(128) }).strict(),
+        response: z.object({
+            organization: z.object({ name: z.string(), slug: z.string(), iconData: z.string().nullable() }),
+            kind: s.invitationKind,
+            expiresAt: s.date,
+        }),
+        rateLimit: 10,
+        run: ({ body }) => invitations.validate(body.token),
+    });
+    contract(app, {
+        method: "GET",
+        url: "/organizations/:organizationId/user-lookup",
+        tag: "Multi-tenancy",
+        summary: "Check whether an account exists for an email (members.manage)",
+        params: s.orgParams,
+        query: z.object({ email: z.string().trim().email().max(254) }).strict(),
+        response: z.object({
+            exists: z.boolean(),
+            user: z.object({ id: s.id, email: z.string(), name: z.string().nullable(), emailVerified: z.boolean() }).nullable(),
+            alreadyMember: z.boolean(),
+        }),
+        rateLimit: 30,
+        run: ({ user, params, query }) => invitations.lookupUser(user.id, params.organizationId, query.email),
+    });
+    contract(app, {
+        method: "POST",
+        url: "/organizations/:organizationId/members",
+        tag: "Multi-tenancy",
+        summary: "Add an existing verified account to the organization",
+        params: s.orgParams,
+        body: z.object({
+            email: z.string().trim().email().max(254),
+            role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
+            groupIds: z.array(s.id).max(50).default([]),
+        }).strict(),
+        response: s.member,
+        status: 201,
+        rateLimit: 30,
+        run: ({ user, params, body }) => invitations.addExistingMember(user.id, params.organizationId, body),
     });
     contract(app, {
         method: "POST",
@@ -1109,6 +1570,64 @@ export async function v1Routes(app) {
             canonicalPath: z.string(),
         }),
         run: ({ user, query }) => northTaxonomy.resolve(user.id, query),
+    });
+    // --- Public showcase: anonymous, read-only, explicit opt-in (see ADR 019). ---
+    const showcaseParams = z.object({ organizationSlug: z.string().trim().min(1).max(100) }).strict();
+    const showcaseRevision = z.object({
+        id: s.id, panelId: s.id, revisionNumber: z.number().int(), etag: z.string(), defaultLocale: z.string(),
+        fallbackLocales: z.array(z.string()), document: northPanelDocumentInput,
+        locale: z.object({ requested: z.string().nullable(), resolved: z.string(), fallbackChain: z.array(z.string()) }),
+    });
+    contract(app, {
+        method: "GET", url: "/public/showcases/:organizationSlug/navigation", tag: "NORTH showcase", public: true, rateLimit: 120,
+        summary: "Read the navigation of explicitly public showcase panels without authentication", params: showcaseParams,
+        response: z.object({ organization: z.object({ name: s.name, slug: z.string() }), navigation }),
+        run: async ({ params, reply }) => {
+            reply.header("cache-control", "public, max-age=15, must-revalidate");
+            return northShowcase.navigation(params.organizationSlug);
+        },
+    });
+    contract(app, {
+        method: "GET", url: "/public/showcases/:organizationSlug/resolve", tag: "NORTH showcase", public: true, rateLimit: 120,
+        summary: "Resolve one published public showcase panel without authentication", params: showcaseParams,
+        query: z.object({ categorySlug: z.string(), subcategorySlug: z.string(), panelSlug: z.string(), locale: z.string().optional() }).strict(),
+        response: z.object({
+            organization: z.object({ name: s.name, slug: z.string() }),
+            category: z.object({ id: s.id, name: s.localizedText, slug: z.string() }),
+            subcategory: z.object({ id: s.id, name: s.localizedText, slug: z.string() }),
+            panel: z.object({ id: s.id, name: s.localizedText, description: s.localizedText.nullable(), icon: z.string().nullable(), slug: z.string(), status: z.literal("PUBLISHED") }),
+            revision: showcaseRevision,
+            canonicalPath: z.string(),
+        }),
+        run: async ({ params, query, reply }) => {
+            reply.header("cache-control", "public, max-age=15, must-revalidate");
+            return northShowcase.resolve(params.organizationSlug, query);
+        },
+    });
+    contract(app, {
+        method: "POST", url: "/public/showcases/:organizationSlug/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH showcase", public: true, rateLimit: 180,
+        summary: "Resolve only a binding referenced by a public showcase panel and apply allowlisted runtime filters",
+        params: showcaseParams.extend({ panelId: s.id, bindingId: s.id }),
+        body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).strict(),
+        response: s.northAnalyticsBindingResult,
+        run: async ({ params, body, reply }) => {
+            reply.header("cache-control", "no-store");
+            return northShowcase.results(params.organizationSlug, params.panelId, params.bindingId, body.filters);
+        },
+    });
+    contract(app, {
+        method: "PATCH", url: "/organizations/:organizationId/public-showcase", tag: "NORTH showcase",
+        summary: "Enable or disable the organization's public showcase (authorized and audited)", params: s.orgParams,
+        body: z.object({ enabled: z.boolean() }).strict(),
+        response: z.object({ organizationId: s.id, showcaseEnabled: z.boolean() }),
+        run: ({ user, params, body }) => northShowcase.setOrganization(user.id, params.organizationId, body.enabled),
+    });
+    contract(app, {
+        method: "PUT", url: "/organizations/:organizationId/panels/:panelId/public-visibility", tag: "NORTH showcase",
+        summary: "Mark a published content panel PRIVATE or SHOWCASE (authorized and audited)", params: s.orgParams.extend({ panelId: s.id }),
+        body: z.object({ visibility: z.enum(["PRIVATE", "SHOWCASE"]) }).strict(),
+        response: z.object({ panelId: s.id, visibility: z.enum(["PRIVATE", "SHOWCASE"]) }),
+        run: ({ user, params, body }) => northShowcase.setPanelVisibility(user.id, params.organizationId, params.panelId, body.visibility),
     });
     contract(app, {
         method: "GET",

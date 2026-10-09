@@ -1,0 +1,34 @@
+import type { Permission } from "../authorization/policy.js";
+import { resolvePermissions } from "../authorization/service.js";
+import { fail } from "../../shared/errors.js";
+import { transaction, type Transaction } from "../../shared/transaction.js";
+
+/** AI tenant authorization is intentionally membership-first and never reads global roles or platform grants. */
+export async function resolveAITenantContextIn(
+  tx: Transaction,
+  userId: string,
+  organizationId: string,
+) {
+  const organization = await tx.organization.findUnique({ where: { id: organizationId } });
+  if (!organization) fail(404, "NOT_FOUND", "Organization not found");
+  if (organization.status !== "ACTIVE")
+    fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
+  const resolved = await resolvePermissions(tx, userId, organizationId);
+  return { organization, ...resolved };
+}
+
+export function resolveAITenantContext(userId: string, organizationId: string) {
+  return transaction((tx) => resolveAITenantContextIn(tx, userId, organizationId));
+}
+
+export async function authorizeAI(
+  userId: string,
+  organizationId: string,
+  required: readonly Permission[],
+) {
+  const context = await resolveAITenantContext(userId, organizationId);
+  if (required.some((permission) => !context.permissions.includes(permission)))
+    fail(403, "AI_PERMISSION_DENIED", "AI capability is not authorized");
+  return context;
+}
+

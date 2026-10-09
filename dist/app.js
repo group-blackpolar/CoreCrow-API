@@ -25,9 +25,11 @@ import { desktopAuthRoutes } from "./routes/desktop-auth.js";
 import { issueEmailVerificationCode } from "./modules/identity/email-verification-service.js";
 import { configureNorthContentReferenceResolvers } from "./modules/north/content-service.js";
 import { northAssets } from "./modules/north/asset-service.js";
+import { northAnalyticsBindings } from "./modules/north/data/binding-service.js";
 export async function buildApp(options = {}) {
     configureNorthContentReferenceResolvers({
         validateAssetReference: (organizationId, assetId, actorId, tx) => northAssets.validateReference(actorId, organizationId, assetId, tx),
+        validateBindingReference: (organizationId, binding, actorId, tx, panelId) => northAnalyticsBindings.validateReference(organizationId, binding, actorId, tx, panelId),
     });
     const app = Fastify({
         logger: options.logger === false
@@ -73,7 +75,7 @@ export async function buildApp(options = {}) {
     await app.register(cors, {
         origin: trustedOrigins,
         credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match"],
+        allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "If-Match", "Last-Event-ID", "X-Platform-Inspect", "X-Platform-Inspection-Session"],
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     });
     await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
@@ -92,6 +94,12 @@ export async function buildApp(options = {}) {
                         in: "cookie",
                         name: "__Secure-better-auth.session_token",
                         description: "Better Auth cookie; development uses better-auth.session_token.",
+                    },
+                    desktopBearer: {
+                        type: "http",
+                        scheme: "bearer",
+                        bearerFormat: "opaque",
+                        description: "Short-lived NORTH desktop session bearer token.",
                     },
                 },
             },

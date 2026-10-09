@@ -1,0 +1,52 @@
+services:
+  minio:
+    # Require immutable, operator-approved image references (prefer a digest).
+    image: ${MINIO_IMAGE:?Set MINIO_IMAGE to an approved immutable reference}
+    container_name: corecrow-minio
+    restart: unless-stopped
+    command: server /data --address :9000 --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the host-only dataset environment}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the host-only dataset environment}
+    volumes:
+      - type: bind
+        source: ${MINIO_DATA_DIR:?Set MINIO_DATA_DIR to a dedicated persistent filesystem path}
+        target: /data
+    networks:
+      corecrow:
+        aliases: [corecrow-minio]
+    # No host port: only CoreCrow's private Docker network can reach MinIO.
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    mem_limit: 1g
+
+  clamav:
+    # Require an immutable, operator-approved image reference (prefer a digest).
+    image: ${CLAMAV_IMAGE:?Set CLAMAV_IMAGE to an approved immutable reference}
+    container_name: corecrow-clamav
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ${CLAMAV_DATABASE_DIR:?Set CLAMAV_DATABASE_DIR to a dedicated persistent filesystem path}
+        target: /var/lib/clamav
+    networks:
+      corecrow:
+        aliases: [corecrow-clamav]
+    # This probes clamd, rather than treating a merely running freshclam process as ready.
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 5 >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+    # The planned VPS has room for ClamAV's documented multi-GiB working set.
+    mem_limit: 4g
+
+networks:
+  corecrow:
+    name: ${CORECROW_DOCKER_NETWORK:-corecrow-api_default}
+    external: true

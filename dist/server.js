@@ -1,6 +1,7 @@
 import { buildApp } from "./app.js";
 import { prisma } from "./lib/database.js";
 import { startContactNotificationWorker } from "./modules/business/contact-notifications.js";
+import { ai } from "./modules/ai/service.js";
 if (process.env.NODE_ENV === "production") {
     if (!process.env.BETTER_AUTH_SECRET ||
         process.env.BETTER_AUTH_SECRET.length < 32)
@@ -23,6 +24,7 @@ for (const signal of ["SIGINT", "SIGTERM"])
     });
 try {
     await app.listen({ port: Number(process.env.PORT ?? 4000), host: "0.0.0.0" });
+    await ai.resumePendingRuns();
     if (process.env.CONTACT_NOTIFICATIONS_ENABLED === "true")
         stopContactNotifications = startContactNotificationWorker((error) => app.log.error({ error }, "Contact notification worker failed"));
 }

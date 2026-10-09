@@ -1,5 +1,17 @@
 # Release and verification
 
+## Dataset-import replacement VPS readiness
+
+Ordinary dataset ingestion stays disabled until the replacement VPS has private,
+versioned S3-compatible storage, a private ClamAV endpoint, the separately
+runnable worker and tested backup capacity. The host implementation is in
+[`DATASET_IMPORT_VPS.md`](DATASET_IMPORT_VPS.md). It keeps MinIO and ClamAV off
+the public network, gives CoreCrow a bucket-scoped identity instead of an object
+store administrator identity, and gates a candidate worker on both bucket
+versioning and a harmless real ClamAV `INSTREAM` probe. Running-service health
+alone does not enable imports; a disposable authorized upload smoke remains
+required after host provisioning.
+
 ## NORTH TASK 11A: authorized management taxonomy tree (2026-09-25)
 
 - Added `GET /v1/organizations/{organizationId}/north/management-tree` for an

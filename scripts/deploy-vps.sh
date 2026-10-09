@@ -9,16 +9,27 @@ image="corecrow-api:$version"
 runtime=/etc/blackpolar/corecrow.env
 sudo -n test -f "$runtime"
 sudo -n docker build -t "$image" .
+network="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e '
+  const network = process.env.CORECROW_DOCKER_NETWORK?.trim() || "corecrow-api_default";
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(network)) process.exit(2);
+  process.stdout.write(network);
+')" || { echo 'Invalid CORECROW_DOCKER_NETWORK'; exit 1; }
+sudo -n docker network inspect "$network" >/dev/null
 backup="/var/backups/blackpolar/corecrow-$version.dump"
 sudo -n sh -c 'umask 077; docker exec corecrow-db pg_dump -U blackpolar -d blackpolar -Fc > "$1"' sh "$backup"
-sudo -n docker run --rm --network corecrow-api_default --env-file "$runtime" "$image" node node_modules/prisma/build/index.js migrate deploy
+sudo -n docker run --rm --network "$network" --env-file "$runtime" "$image" node node_modules/prisma/build/index.js migrate deploy
 candidate="corecrow-check-$version"
 worker_candidate="corecrow-dataset-worker-check-$version"
 worker_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_DATA_IMPORT_WORKER_ENABLED === "true" ? "true" : "false")')"
-sudo -n docker run -d --name "$candidate" --network corecrow-api_default --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
+sudo -n docker run -d --name "$candidate" --network "$network" --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
 cleanup() {
   sudo -n docker rm -f "$candidate" >/dev/null 2>&1 || true
-  if [[ -n "$worker_candidate" ]]; then sudo -n docker rm -f "$worker_candidate" >/dev/null 2>&1 || true; fi
+  if [[ -n "$worker_candidate" ]]; then
+    # Worker shutdown is cooperative; let a bounded in-flight scan release its
+    # lease before removal instead of abruptly interrupting private reads.
+    sudo -n docker stop --time 120 "$worker_candidate" >/dev/null 2>&1 || true
+    sudo -n docker rm -f "$worker_candidate" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 ready=false
@@ -29,7 +40,13 @@ done
 "$ready" || { echo 'Candidate failed liveness; current API remains running'; exit 1; }
 curl --silent --max-time 10 http://127.0.0.1:4101/v1/health | python3 -c 'import sys,json; s=json.load(sys.stdin); assert all(m["status"]=="available" for m in s["modules"])'
 if [[ "$worker_enabled" == "true" ]]; then
-  sudo -n docker run -d --name "$worker_candidate" --network corecrow-api_default --env-file "$runtime" "$image" node dist/dataset-import-worker.js >/dev/null
+  # A running process alone is insufficient: prove the immutable-version check
+  # and an actual private ClamAV INSTREAM request before replacing the worker.
+  sudo -n docker run --rm --network "$network" --env-file "$runtime" "$image" \
+    node scripts/verify-dataset-infrastructure.mjs
+  sudo -n docker run -d --name "$worker_candidate" --network "$network" --env-file "$runtime" \
+    --security-opt no-new-privileges:true --pids-limit 256 --memory 2g --memory-swap 2g --cpus 1.5 \
+    "$image" node dist/dataset-import-worker.js >/dev/null
   worker_ready=false
   for attempt in {1..10}; do
     if [[ "$(sudo -n docker inspect -f '{{.State.Running}}' "$worker_candidate" 2>/dev/null || true)" == "true" ]]; then
@@ -48,34 +65,67 @@ previous="corecrow-rollback-$version"
 worker_previous="corecrow-dataset-worker-rollback-$version"
 had_previous=false
 had_worker_previous=false
+restore_previous_worker() {
+  if [[ "$had_worker_previous" != true ]]; then return 0; fi
+  if ! sudo -n docker container inspect "$worker_previous" >/dev/null 2>&1; then
+    echo 'Rollback worker container is missing; manual recovery is required' >&2
+    return 1
+  fi
+  if sudo -n docker container inspect corecrow-dataset-worker >/dev/null 2>&1; then
+    sudo -n docker rm -f corecrow-dataset-worker >/dev/null 2>&1 || true
+  fi
+  if ! sudo -n docker rename "$worker_previous" corecrow-dataset-worker; then
+    echo 'Could not restore the previous dataset worker name' >&2
+    return 1
+  fi
+  if ! sudo -n docker start corecrow-dataset-worker >/dev/null; then
+    echo 'Could not restart the previous dataset worker' >&2
+    return 1
+  fi
+}
+
+# Quiesce the old worker before moving the API. If it cannot stop cleanly, the
+# old API/worker pair remains intact and both candidates are discarded by trap.
+if sudo -n docker container inspect corecrow-dataset-worker >/dev/null 2>&1; then
+  if ! sudo -n docker stop --time 120 corecrow-dataset-worker >/dev/null; then
+    echo 'Current dataset worker did not stop cleanly; API swap aborted' >&2
+    exit 1
+  fi
+  if ! sudo -n docker rename corecrow-dataset-worker "$worker_previous"; then
+    echo 'Current dataset worker could not be isolated; attempting safe restart' >&2
+    sudo -n docker start corecrow-dataset-worker >/dev/null 2>&1 || true
+    exit 1
+  fi
+  had_worker_previous=true
+fi
+
 if sudo -n docker container inspect corecrow-v1 >/dev/null 2>&1; then
   had_previous=true
-  sudo -n docker stop corecrow-v1 >/dev/null
-  sudo -n docker rename corecrow-v1 "$previous"
+  if ! sudo -n docker stop corecrow-v1 >/dev/null; then
+    echo 'Current API could not be isolated; attempting worker rollback' >&2
+    restore_previous_worker || true
+    exit 1
+  fi
+  if ! sudo -n docker rename corecrow-v1 "$previous"; then
+    echo 'Current API could not be renamed; attempting API and worker rollback' >&2
+    sudo -n docker start corecrow-v1 >/dev/null 2>&1 || true
+    restore_previous_worker || true
+    exit 1
+  fi
 fi
-if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --network corecrow-api_default --env-file "$runtime" -p 127.0.0.1:4100:4000 "$image" >/dev/null; then
+if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --network "$network" --env-file "$runtime" -p 127.0.0.1:4100:4000 "$image" >/dev/null; then
   for attempt in {1..20}; do
     if curl --fail --silent --max-time 3 http://127.0.0.1:4100/v1/live >/dev/null; then
       if [[ "$worker_enabled" == "true" ]]; then
-        if sudo -n docker container inspect corecrow-dataset-worker >/dev/null 2>&1; then
-          had_worker_previous=true
-          sudo -n docker stop corecrow-dataset-worker >/dev/null
-          sudo -n docker rename corecrow-dataset-worker "$worker_previous"
+        if ! sudo -n docker update --restart unless-stopped "$worker_candidate" >/dev/null; then
+          echo 'Candidate dataset worker restart policy could not be applied; rolling back' >&2
+          break
         fi
-        sudo -n docker update --restart unless-stopped "$worker_candidate" >/dev/null
         if sudo -n docker rename "$worker_candidate" corecrow-dataset-worker; then
           echo "CoreCrow $version and dataset worker running; previous containers and database backup retained"
           exit 0
         fi
-        if "$had_worker_previous"; then
-          sudo -n docker rename "$worker_previous" corecrow-dataset-worker
-          sudo -n docker start corecrow-dataset-worker >/dev/null
-        fi
         break
-      fi
-      if sudo -n docker container inspect corecrow-dataset-worker >/dev/null 2>&1; then
-        sudo -n docker stop corecrow-dataset-worker >/dev/null
-        sudo -n docker rename corecrow-dataset-worker "$worker_previous"
       fi
       echo "CoreCrow $version running; dataset worker disabled; previous containers and database backup retained"
       exit 0
@@ -85,8 +135,9 @@ if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --network c
 fi
 sudo -n docker rm -f corecrow-v1 >/dev/null 2>&1 || true
 if "$had_previous"; then
-  sudo -n docker rename "$previous" corecrow-v1
-  sudo -n docker start corecrow-v1 >/dev/null
+  sudo -n docker rename "$previous" corecrow-v1 || true
+  sudo -n docker start corecrow-v1 >/dev/null || true
 fi
-echo 'Release failed; previous API restored where available'
+restore_previous_worker || true
+echo 'Release failed; previous API/worker pair restored where available'
 exit 1

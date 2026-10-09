@@ -62,6 +62,10 @@ model User {
   northDatasetActivations    NorthDatasetImportJob[]     @relation("NorthDatasetActivationRequester")
   northDatasetRevisionsMade NorthDatasetRevision[]       @relation("NorthDatasetRevisionCreator")
   northAnalyticsBindingsMade NorthAnalyticsBinding[]     @relation("NorthAnalyticsBindingCreator")
+  aiConversations            AIConversation[]
+  aiRuns                     AIRun[]
+  aiActions                  AIAction[]
+  aiUsage                    AIUsage[]
 
   @@index([status, createdAt])
   @@map("users")
@@ -363,6 +367,10 @@ model Organization {
   northDatasetBatches   NorthDatasetImportBatch[]
   northDatasetRevisions NorthDatasetRevision[]
   northAnalyticsBindings NorthAnalyticsBinding[]
+  aiConversations       AIConversation[]
+  aiRuns                AIRun[]
+  aiActions             AIAction[]
+  aiUsage               AIUsage[]
 
   @@index([status, createdAt])
 }
@@ -1375,4 +1383,174 @@ model DocumentAttachmentBlob {
   attachmentId String             @id
   data         Bytes
   attachment   DocumentAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+}
+
+enum AIApplication {
+  NORTH
+}
+
+enum AIRunStatus {
+  QUEUED
+  RUNNING
+  WAITING_CONFIRMATION
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AIMessageRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
+enum AIToolCallStatus {
+  PROPOSED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AIActionStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+model AIConversation {
+  id             String        @id @default(cuid())
+  organizationId String
+  userId         String
+  application    AIApplication
+  title          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messages       AIMessage[]
+  runs           AIRun[]
+  usage          AIUsage[]
+
+  @@index([organizationId, userId, updatedAt])
+}
+
+model AIMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  runId          String?
+  role           AIMessageRole
+  content        String
+  toolName       String?
+  toolCallId     String?
+  createdAt      DateTime       @default(now())
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  run            AIRun?         @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, createdAt, id])
+  @@index([runId])
+}
+
+model AIRun {
+  id                      String         @id @default(cuid())
+  conversationId          String
+  organizationId          String
+  userId                  String
+  application             AIApplication
+  status                  AIRunStatus    @default(QUEUED)
+  provider                String
+  model                   String
+  failureCode             String?
+  failureMessage          String?
+  cancellationRequestedAt DateTime?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  conversation            AIConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  organization            Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user                    User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messages                AIMessage[]
+  events                  AIEvent[]
+  toolCalls               AIToolCall[]
+  actions                 AIAction[]
+  usage                   AIUsage[]
+
+  @@index([organizationId, userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AIEvent {
+  id        String   @id @default(cuid())
+  runId     String
+  sequence  Int
+  type      String
+  data      Json
+  createdAt DateTime @default(now())
+  run       AIRun    @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, sequence])
+  @@index([runId, createdAt])
+}
+
+model AIToolCall {
+  id          String           @id @default(cuid())
+  runId       String
+  providerId  String?
+  name        String
+  risk        String
+  arguments   Json
+  result      Json?
+  status      AIToolCallStatus @default(PROPOSED)
+  errorCode   String?
+  createdAt   DateTime         @default(now())
+  completedAt DateTime?
+  run         AIRun            @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@index([runId, createdAt])
+}
+
+model AIAction {
+  id             String         @id @default(cuid())
+  runId          String
+  organizationId String
+  userId         String
+  toolName       String
+  arguments      Json
+  status         AIActionStatus @default(PENDING_CONFIRMATION)
+  expiresAt      DateTime
+  confirmedAt    DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime       @default(now())
+  run            AIRun          @relation(fields: [runId], references: [id], onDelete: Restrict)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, userId, status])
+}
+
+model AIUsage {
+  id                    String         @id @default(cuid())
+  runId                 String
+  conversationId        String
+  organizationId        String
+  userId                String
+  application           AIApplication
+  provider              String
+  model                 String
+  inputTokens           Int
+  outputTokens          Int
+  totalTokens           Int
+  latencyMs             Int
+  estimatedCostMicrousd BigInt
+  pricingVersion        String
+  createdAt             DateTime       @default(now())
+  run                    AIRun          @relation(fields: [runId], references: [id], onDelete: Restrict)
+  conversation           AIConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([runId])
 }
