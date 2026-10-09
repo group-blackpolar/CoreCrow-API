@@ -1,6 +1,6 @@
 # User avatars and organization icon assets
 
-- Status: Proposed (code and migration are in the PR; nothing is applied or deployed)
+- Status: Accepted implementation record (integrated locally; nothing is applied or deployed)
 - Date: 2026-10-08
 - Scope: CORECROW identity, tenancy and NORTH assets (builds on ADR-015)
 
@@ -43,6 +43,11 @@ deleted from storage. Deleting a user cascades the avatar rows; their objects ne
 Additive migration `20261008120000_media_assets_avatars_icons`; no row is rewritten. Existing icons keep working through
 `iconData`. NORTH uses the managed path first and falls back to `iconData` for icons when CORECROW cannot store assets. Avatars have
 no legacy path and report "storage not available" until storage and a scanner adapter are configured.
+
+Integration note (2026-10-08): this change is additive alongside the CoreCrow AI MVP and the dataset-import VPS stack. It does
+not alter AI contracts or tenant authorization. The VPS ClamAV service is currently wired only to the dataset-import scanner;
+ordinary NORTH assets and user avatars continue to use the fail-closed `UnconfiguredMalwareScanner` until a production
+`MalwareScanner` adapter is implemented and wired explicitly. Installing ClamAV alone does not enable those upload confirmations.
 
 ## Pending
 
