@@ -24,7 +24,8 @@ CREATE UNIQUE INDEX "UserAvatar_storageKey_key" ON "UserAvatar"("storageKey");
 -- CreateIndex
 CREATE INDEX "UserAvatar_userId_status_idx" ON "UserAvatar"("userId", "status");
 
--- AddForeignKey
+-- AddForeignKey (hand-maintained: not a Prisma relation, because a relation that includes Organization.id as a scalar field makes
+-- Prisma null the primary key on create. The composite FK keeps an icon asset inside its own organization at the database level.)
 ALTER TABLE "Organization" ADD CONSTRAINT "Organization_iconAssetId_id_fkey" FOREIGN KEY ("iconAssetId", "id") REFERENCES "NorthAsset"("id", "organizationId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey

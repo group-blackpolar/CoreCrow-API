@@ -336,9 +336,11 @@ model Organization {
   description           String?
   /// Validated data URL (PNG/JPEG/WebP, <=512x512, <=256 KB); null falls back to initials.
   iconData              String?
-  /// Managed icon: a READY asset of this same organization (composite FK keeps it tenant-safe). Wins over `iconData` when set.
+  /// Managed icon: a READY asset of this same organization. Wins over `iconData` when set. The database enforces the tenant
+  /// match with the hand-written composite FK "Organization_iconAssetId_id_fkey" (iconAssetId, id) -> NorthAsset(id, organizationId)
+  /// ON DELETE RESTRICT in migration 20261008120000. It is deliberately NOT a Prisma relation: a relation whose scalar fields
+  /// include this model's own primary key makes Prisma null `id` on create.
   iconAssetId           String?
-  iconAsset             NorthAsset?                 @relation("OrganizationIcon", fields: [iconAssetId, id], references: [id, organizationId], onDelete: Restrict)
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
   memberships           Membership[]
@@ -881,7 +883,6 @@ model NorthAsset {
   updatedAt      DateTime         @updatedAt
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   owner          User             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  iconOf         Organization[]   @relation("OrganizationIcon")
 
   @@unique([id, organizationId])
   @@index([organizationId, status, createdAt])
