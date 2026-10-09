@@ -1392,10 +1392,13 @@ test(
         const activation = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${approvedJob.id}/activate`, owner.cookie, { mappingId: mapping.id, mode: "REPLACE_DATASET" }), 202);
         assert.equal(activation.status, "READY_TO_ACTIVATE");
         const materializationWorker = new NorthDatasetImportMaterializationWorker("materialization-worker", {
-          async materialize(input: { columns: Array<{ fieldId: string }>; signal: AbortSignal }) {
+          async materialize(input: { columns: Array<{ fieldId: string }>; signal: AbortSignal }, sink: { begin(summary: { parserVersion: string; rowCount: number }): Promise<void>; rows(batch: Array<Record<string, string | number | null>>): Promise<void> }) {
             assert.equal(input.signal.aborted, false);
             const revenueId = input.columns[0]!.fieldId;
-            return { parserVersion: "test-parser", rows: [{ [revenueId]: "10.5" }, { [revenueId]: "20" }] };
+            await sink.begin({ parserVersion: "test-parser", rowCount: 2 });
+            await sink.rows([{ [revenueId]: "10.5" }]);
+            await sink.rows([{ [revenueId]: "20" }]);
+            return { parserVersion: "test-parser", rowCount: 2 };
           },
         }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 });
         assert.equal(await materializationWorker.runOnce(), "SUCCEEDED");
@@ -1491,10 +1494,12 @@ test(
         expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${retryJob.id}/activate`, owner.cookie, { mappingId: retryMapping.id, mode: "REPLACE_DATASET" }), 202);
         let materializationCalls = 0;
         const retryWorker = new NorthDatasetImportMaterializationWorker("retry-materialization-worker", {
-          async materialize(input: { columns: Array<{ fieldId: string }> }) {
+          async materialize(input: { columns: Array<{ fieldId: string }> }, sink: { begin(summary: { parserVersion: string; rowCount: number }): Promise<void>; rows(batch: Array<Record<string, string | number | null>>): Promise<void> }) {
             materializationCalls += 1;
+            await sink.begin({ parserVersion: "test-parser", rowCount: 1 });
+            await sink.rows([{ [input.columns[0]!.fieldId]: 7 }]);
             if (materializationCalls === 1) throw new Error("transient parser outage");
-            return { parserVersion: "test-parser", rows: [{ [input.columns[0]!.fieldId]: 7 }] };
+            return { parserVersion: "test-parser", rowCount: 1 };
           },
         }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 1 });
         const activeBeforeRetry = (await prisma.northDataset.findUniqueOrThrow({ where: { id: dataset.id } })).activeRevisionId;
@@ -1562,7 +1567,7 @@ test(
         let clockCalls = 0;
         const expiringClock = () => new Date(baseLeaseTime + (++clockCalls >= 4 ? 31_000 : 0));
         const expiringWorker = new NorthDatasetImportMaterializationWorker("expiring-materialization-worker", {
-          async materialize() { return { parserVersion: "test-parser", rows: [{ [mappedField.id]: "99", [retryField.id]: 1 }] }; },
+          async materialize(_input: unknown, sink: { begin(summary: { parserVersion: string; rowCount: number }): Promise<void>; rows(batch: Array<Record<string, string | number | null>>): Promise<void> }) { await sink.begin({ parserVersion: "test-parser", rowCount: 1 }); await sink.rows([{ [mappedField.id]: "99", [retryField.id]: 1 }]); return { parserVersion: "test-parser", rowCount: 1 }; },
         }, { leaseMilliseconds: 30_000, heartbeatMilliseconds: 5_000, retryDelayMilliseconds: 60_000 }, expiringClock);
         assert.equal(await expiringWorker.runOnce(), "LEASE_LOST");
         assert.equal(await prisma.northDatasetImportBatch.findUnique({ where: { importId: expiredPublishJob.id } }), null);

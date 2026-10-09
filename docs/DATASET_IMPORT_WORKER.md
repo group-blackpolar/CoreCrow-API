@@ -86,13 +86,16 @@ egress and instance-metadata access to parser work, use a separate
 least-privilege identity, and never place cloud credentials in the worker
 environment.
 
-## Provisional materialization and query limits
+## Streaming materialization and limits
 
-The current activation slice is deliberately bounded: one mapped worksheet, at most 50,000 materialized rows and at
-most 64 MiB of materializer output. Formula cells are rejected. A failed or
-cancelled attempt cannot publish a partial batch or change the active revision;
-retryable failures keep the job durable and reuse the immutable mapping and
-object version.
+Workbooks are read with a streaming ZIP/SAX reader (see [ADR 025](decisions/025-streaming-xlsx-ingestion.md)) inside the sandboxed child:
+one mapped worksheet, a validating pass followed by a backpressured NDJSON stream into a single atomic transaction. Formula cells are
+rejected. A failed or cancelled attempt cannot publish a partial batch or change the active revision; retryable failures keep the job
+durable and reuse the immutable mapping and object version.
+
+Limits come from `NORTH_DATA_IMPORT_*` variables (rows, columns, cells, entry/expanded/compressed bytes, compression ratio, shared-string
+memory, output bytes, analysis/materialization time, parser heap). Each is clamped to a hard ceiling; defaults suit a ~200k-row workbook.
+Set `NORTH_IMPORT_DEBUG=1` to log the failing materialization error.
 
 `REPLACE_DATASET` is the only activation mode currently accepted. Dataset
 queries read only the active immutable revision, require both the
@@ -101,7 +104,4 @@ five-second PostgreSQL statement timeout. Row and aggregate requests are
 bounded and field identifiers are resolved against the active schema before
 parameterized SQL is executed.
 
-This is not the general high-volume ingestion design. Chunked staging,
-streaming materialization, published analytics bindings and panel-result
-resolution remain separate follow-up work before unbounded or public analytics
-use.
+Chunked upload staging and append/merge activation modes remain separate follow-up work before unbounded or public analytics use.

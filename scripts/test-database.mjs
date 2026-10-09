@@ -2,7 +2,7 @@ import EmbeddedPostgres from "embedded-postgres";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 const directory = mkdtempSync(resolve("node_modules/.cache/corecrow-test-"));
-const pg = new EmbeddedPostgres({ databaseDir: directory, user: "corecrow_test", password: "local-test-only", port: 55432, persistent: true, postgresFlags: ["-h", "127.0.0.1"], onLog: () => {}, onError: () => {} });
+const pg = new EmbeddedPostgres({ databaseDir: directory, user: "corecrow_test", password: "local-test-only", port: 55432, persistent: true, initdbFlags: ["--encoding=UTF8", "--locale=C"], postgresFlags: ["-h", "127.0.0.1"], onLog: () => {}, onError: () => {} });
 await pg.initialise();
 await pg.start();
 await pg.createDatabase("corecrow_test");

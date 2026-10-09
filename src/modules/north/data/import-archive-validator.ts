@@ -6,6 +6,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { openPromise, type Entry } from "yauzl";
 import { DomainError } from "../../../shared/errors.js";
+import { datasetImportLimits, type DatasetImportLimits } from "./import-limits.js";
 
 export type DatasetImportArchiveValidationInput = {
   filename: string;
@@ -19,21 +20,7 @@ export interface DatasetImportArchiveValidator {
   validate(input: DatasetImportArchiveValidationInput): Promise<"APPROVED">;
 }
 
-export type DatasetImportArchiveLimits = {
-  maximumCompressedBytes: number;
-  maximumEntries: number;
-  maximumEntryBytes: number;
-  maximumUncompressedBytes: number;
-  maximumCompressionRatio: number;
-};
-
-const defaultLimits: DatasetImportArchiveLimits = {
-  maximumCompressedBytes: 50 * 1024 * 1024,
-  maximumEntries: 2_048,
-  maximumEntryBytes: 64 * 1024 * 1024,
-  maximumUncompressedBytes: 256 * 1024 * 1024,
-  maximumCompressionRatio: 100,
-};
+export type DatasetImportArchiveLimits = Pick<DatasetImportLimits, "maximumCompressedBytes" | "maximumEntries" | "maximumEntryBytes" | "maximumUncompressedBytes" | "maximumCompressionRatio">;
 
 const requiredParts = new Set([
   "[content_types].xml",
@@ -118,7 +105,7 @@ async function consumeEntry(
 }
 
 export class SecureXlsxArchiveValidator implements DatasetImportArchiveValidator {
-  constructor(private readonly limits: DatasetImportArchiveLimits = defaultLimits) {}
+  constructor(private readonly limits: DatasetImportArchiveLimits = datasetImportLimits()) {}
 
   async validate(input: DatasetImportArchiveValidationInput): Promise<"APPROVED"> {
     if (input.size > this.limits.maximumCompressedBytes)

@@ -5,13 +5,14 @@ import { transaction } from "../../../shared/transaction.js";
 import { auditRepository } from "../../audit/repository.js";
 import type { DatasetImportMappingColumn } from "./import-analysis-types.js";
 import type { DatasetImportMaterializer, MaterializationColumn } from "./import-materialization-parser.js";
+import { datasetImportLimits } from "./import-limits.js";
 
 type Claimed = {
   id: string; organizationId: string; datasetId: string; storageKey: string; storageVersionId: string;
   claimToken: string; claimedBy: string; materializationAttempts: number; activationMappingId: string;
   activationRequestedBy: string;
 };
-type Configuration = { leaseMilliseconds: number; heartbeatMilliseconds: number; retryDelayMilliseconds: number; maxAttempts?: number };
+type Configuration = { leaseMilliseconds: number; heartbeatMilliseconds: number; retryDelayMilliseconds: number; maxAttempts?: number; transactionTimeoutMilliseconds?: number };
 class LeaseLostError extends Error {}
 
 function mappingColumns(value: Prisma.JsonValue): DatasetImportMappingColumn[] {
@@ -66,7 +67,8 @@ export class NorthDatasetImportMaterializationWorker {
       if (!result.count) { lost = true; controller.abort(new LeaseLostError()); }
     }); };
     const timer = setInterval(renew, this.configuration.heartbeatMilliseconds);
-    try { const result = await work(controller.signal); renew(); await pending; if (lost) throw new LeaseLostError(); return result; }
+    // The work commits its own lease-fenced completion, so a trailing renewal would fail against the finished job.
+    try { const result = await work(controller.signal); if (lost) throw new LeaseLostError(); return result; }
     finally { clearInterval(timer); await pending; }
   }
 
@@ -93,7 +95,12 @@ export class NorthDatasetImportMaterializationWorker {
     });
   }
 
-  private async persist(job: Claimed, plan: Awaited<ReturnType<NorthDatasetImportMaterializationWorker["plan"]>>, parsed: Awaited<ReturnType<DatasetImportMaterializer["materialize"]>>) {
+  /**
+   * One transaction owns the whole activation: schema, batch, streamed rows, revision and the active pointer commit
+   * together or not at all, so a failed or cancelled import never leaves a partial dataset visible. Rows are inserted as
+   * the parser child emits them (bounded batches, real backpressure); nothing accumulates in memory.
+   */
+  private async activate(job: Claimed, plan: Awaited<ReturnType<NorthDatasetImportMaterializationWorker["plan"]>>, signal: AbortSignal) {
     return transaction(async (tx) => {
       const current = await tx.northDatasetImportJob.findFirst({ where: this.where(job) });
       if (!current || current.cancellationRequestedAt) return false;
@@ -104,20 +111,36 @@ export class NorthDatasetImportMaterializationWorker {
       const schema = await tx.northDatasetSchemaVersion.create({ data: { organizationId: job.organizationId, datasetId: job.datasetId, version: nextSchema + 1, createdBy: job.activationRequestedBy } });
       await tx.northDatasetSchemaVersionField.createMany({ data: activeFields.map((field, ordinal) => ({ organizationId: job.organizationId, datasetId: job.datasetId, schemaVersionId: schema.id, datasetFieldId: field.id, canonicalType: field.canonicalType, semanticType: field.semanticType ?? null, nullable: field.nullable, status: field.status ?? "ACTIVE", ordinal })) });
       const batchId = randomUUID();
-      await tx.northDatasetImportBatch.create({ data: { id: batchId, organizationId: job.organizationId, datasetId: job.datasetId, importId: job.id, schemaVersionId: schema.id, mappingVersionId: plan.mapping.id, sheetOrdinal: plan.mapping.sheetOrdinal, rowCount: parsed.rows.length, parserVersion: parsed.parserVersion } });
-      for (let offset = 0; offset < parsed.rows.length; offset += 500) await tx.northDatasetRow.createMany({ data: parsed.rows.slice(offset, offset + 500).map((values, index) => ({ id: randomUUID(), organizationId: job.organizationId, datasetId: job.datasetId, batchId, ordinal: offset + index, values: values as Prisma.InputJsonValue })) });
+      let ordinal = 0;
+      let rowCount = 0;
+      const parsed = await this.materializer.materialize(
+        { storageKey: job.storageKey, storageVersionId: job.storageVersionId, sheetOrdinal: plan.mapping.sheetOrdinal, headerRow: plan.mapping.headerRow, columns: plan.columns, signal },
+        {
+          // Batches are append-only, so the exact count from the validating pass is known before the first insert.
+          async begin(summary) {
+            rowCount = summary.rowCount;
+            await tx.northDatasetImportBatch.create({ data: { id: batchId, organizationId: job.organizationId, datasetId: job.datasetId, importId: job.id, schemaVersionId: schema.id, mappingVersionId: plan.mapping.id, sheetOrdinal: plan.mapping.sheetOrdinal, rowCount: summary.rowCount, parserVersion: summary.parserVersion } });
+          },
+          async rows(batch) {
+            const start = ordinal;
+            await tx.northDatasetRow.createMany({ data: batch.map((values, index) => ({ id: randomUUID(), organizationId: job.organizationId, datasetId: job.datasetId, batchId, ordinal: start + index, values: values as Prisma.InputJsonValue })) });
+            ordinal += batch.length;
+          },
+        },
+      );
+      if (parsed.rowCount !== ordinal || rowCount !== ordinal) throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
       const nextRevision = (await tx.northDatasetRevision.aggregate({ where: { organizationId: job.organizationId, datasetId: job.datasetId }, _max: { version: true } }))._max.version ?? 0;
       const revisionId = randomUUID();
-      await tx.northDatasetRevision.create({ data: { id: revisionId, organizationId: job.organizationId, datasetId: job.datasetId, schemaVersionId: schema.id, version: nextRevision + 1, mode: "REPLACE_DATASET", rowCount: parsed.rows.length, createdBy: job.activationRequestedBy } });
+      await tx.northDatasetRevision.create({ data: { id: revisionId, organizationId: job.organizationId, datasetId: job.datasetId, schemaVersionId: schema.id, version: nextRevision + 1, mode: "REPLACE_DATASET", rowCount: ordinal, createdBy: job.activationRequestedBy } });
       await tx.northDatasetRevisionBatch.create({ data: { organizationId: job.organizationId, datasetId: job.datasetId, revisionId, batchId, ordinal: 0 } });
       const published = await tx.northDataset.updateMany({ where: { id: job.datasetId, organizationId: job.organizationId }, data: { currentSchemaVersionId: schema.id, activeRevisionId: revisionId } });
       if (published.count !== 1) throw new LeaseLostError();
       const completedAt = this.now();
       const completed = await tx.northDatasetImportJob.updateMany({ where: this.where(job, completedAt), data: { status: "SUCCEEDED", progress: 100, completedAt, claimedAt: null, claimExpiresAt: null, claimedBy: null, claimToken: null } });
       if (completed.count !== 1) throw new LeaseLostError();
-      await auditRepository.append(tx, { actorId: job.activationRequestedBy, organizationId: job.organizationId, action: "NORTH_DATASET_REVISION_ACTIVATED", targetType: "NorthDatasetRevision", targetId: revisionId, metadata: { datasetId: job.datasetId, importId: job.id, batchId, mode: "REPLACE_DATASET", rowCount: parsed.rows.length } });
+      await auditRepository.append(tx, { actorId: job.activationRequestedBy, organizationId: job.organizationId, action: "NORTH_DATASET_REVISION_ACTIVATED", targetType: "NorthDatasetRevision", targetId: revisionId, metadata: { datasetId: job.datasetId, importId: job.id, batchId, mode: "REPLACE_DATASET", rowCount: ordinal } });
       return true;
-    });
+    }, { retries: 0, isolationLevel: "ReadCommitted", timeoutMilliseconds: this.configuration.transactionTimeoutMilliseconds ?? datasetImportLimits().materializationTimeoutMilliseconds + 120_000 });
   }
 
   private async finish(job: Claimed, retryable: boolean, code: string) {
@@ -164,10 +187,11 @@ export class NorthDatasetImportMaterializationWorker {
     if (job === "EXHAUSTED") return "FAILED" as const;
     try {
       const plan = await this.plan(job);
-      const parsed = await this.withHeartbeat(job, (signal) => this.materializer.materialize({ storageKey: job.storageKey, storageVersionId: job.storageVersionId, sheetOrdinal: plan.mapping.sheetOrdinal, headerRow: plan.mapping.headerRow, columns: plan.columns, signal }));
-      return await this.persist(job, plan, parsed) ? "SUCCEEDED" as const : await this.finalizeCancellation(job) ? "CANCELLED" as const : "LEASE_LOST" as const;
+      const activated = await this.withHeartbeat(job, (signal) => this.activate(job, plan, signal));
+      return activated ? "SUCCEEDED" as const : await this.finalizeCancellation(job) ? "CANCELLED" as const : "LEASE_LOST" as const;
     } catch (error) {
       if (error instanceof LeaseLostError || (error instanceof Error && error.name === "AbortError")) return await this.finalizeCancellation(job) ? "CANCELLED" as const : "LEASE_LOST" as const;
+      if (process.env.NORTH_IMPORT_DEBUG) console.error("import materialization failed", error);
       const retryable = !(error instanceof DomainError) || error.statusCode >= 500;
       const code = error instanceof DomainError ? error.code : "IMPORT_MATERIALIZER_UNAVAILABLE";
       return await this.finish(job, retryable, code) ? retryable && job.materializationAttempts < (this.configuration.maxAttempts ?? 3) ? "READY_TO_ACTIVATE" as const : "FAILED" as const : await this.finalizeCancellation(job) ? "CANCELLED" as const : "LEASE_LOST" as const;

@@ -34,8 +34,8 @@ import {
   datasetImportWorkerRuntimeConfiguration,
   runDatasetImportWorkerLoop,
 } from "../src/modules/north/data/import-worker-runtime.js";
-import { SheetJsDatasetImportAnalyzer } from "../src/modules/north/data/import-analysis-parser.js";
-import { SheetJsDatasetImportMaterializer } from "../src/modules/north/data/import-materialization-parser.js";
+import { StreamingDatasetImportAnalyzer } from "../src/modules/north/data/import-analysis-parser.js";
+import { StreamingDatasetImportMaterializer } from "../src/modules/north/data/import-materialization-parser.js";
 
 async function xlsxArchive(extra: Record<string, string> = {}) {
   const zip = new ZipFile();
@@ -85,12 +85,12 @@ test("isolated XLSX analysis exposes only bounded metadata and rejects formulas"
   const storage = (bytes: Buffer) => ({
     async openPrivateRead() { return Readable.from(bytes); },
   });
-  const analyzer = new SheetJsDatasetImportAnalyzer(storage(bytesFor(false)) as never, 10_000, 128);
+  const analyzer = new StreamingDatasetImportAnalyzer(storage(bytesFor(false)) as never);
   const result = await analyzer.analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal });
-  assert.equal(result.parserVersion, "sheetjs-ce-0.20.3");
+  assert.equal(result.parserVersion, "ooxml-stream-1");
   assert.deepEqual(result.workbook.sheets[0]?.columns.map((column) => [column.ordinal, column.header]), [[0, "Duplicate"], [1, "Duplicate"]]);
   await assert.rejects(
-    new SheetJsDatasetImportAnalyzer(storage(bytesFor(true)) as never, 10_000, 128).analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal }),
+    new StreamingDatasetImportAnalyzer(storage(bytesFor(true)) as never).analyze({ storageKey: "not-exposed", storageVersionId: "version-not-exposed", signal: new AbortController().signal }),
     (error) => error instanceof DomainError && error.code === "IMPORT_SOURCE_FORMULA_REJECTED",
   );
 });
@@ -99,7 +99,8 @@ test("isolated XLSX materialization emits stable field IDs with strict coercion"
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([["Revenue", "Region"], [10.5, "North"], [20, "South"], ["12345678901234567890.123", "West"]]), "June");
   const bytes = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
-  const materializer = new SheetJsDatasetImportMaterializer({ async openPrivateRead() { return Readable.from(bytes); } } as never, 10_000, 128);
+  const materializer = new StreamingDatasetImportMaterializer({ async openPrivateRead() { return Readable.from(bytes); } } as never);
+  const rows: Array<Record<string, string | number | boolean | null>> = [];
   const result = await materializer.materialize({
     storageKey: "opaque", storageVersionId: "immutable", sheetOrdinal: 0, headerRow: 1,
     columns: [
@@ -107,8 +108,9 @@ test("isolated XLSX materialization emits stable field IDs with strict coercion"
       { sourceOrdinal: 1, action: "CREATE", fieldId: "field-region", canonicalType: "TEXT", nullable: false },
     ],
     signal: new AbortController().signal,
-  });
-  assert.deepEqual(result.rows, [
+  }, { async begin() {}, async rows(batch) { rows.push(...batch); } });
+  assert.equal(result.rowCount, 3);
+  assert.deepEqual(rows, [
     { "field-revenue": "10.5", "field-region": "North" },
     { "field-revenue": "20", "field-region": "South" },
     { "field-revenue": "12345678901234567890.123", "field-region": "West" },
