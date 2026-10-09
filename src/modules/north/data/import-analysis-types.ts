@@ -29,4 +29,5 @@ export type DatasetImportMappingInput = {
   sheetOrdinal: number;
   headerRow: number;
   columns: DatasetImportMappingColumn[];
+  duplicates?: "KEEP" | "SKIP_EXACT";
 };

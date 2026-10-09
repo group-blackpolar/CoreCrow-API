@@ -28,7 +28,7 @@ export const northDatasetImportAnalysisRepository = {
   },
   createMapping(tx: Transaction, input: {
     organizationId: string; datasetId: string; importId: string; version: number; sheetOrdinal: number; headerRow: number;
-    definition: DatasetImportWorkbookAnalysis | { columns: unknown[] }; createdBy: string;
+    definition: DatasetImportWorkbookAnalysis | { columns: unknown[]; duplicates?: "KEEP" | "SKIP_EXACT" }; createdBy: string;
   }) {
     return tx.northDatasetImportMappingVersion.create({ data: { ...input, definition: input.definition as Prisma.InputJsonValue } });
   },

@@ -73,12 +73,14 @@ export const tenants = {
   async update(
     userId: string,
     organizationId: string,
-    data: { name?: string; slug?: string; iconData?: string | null; iconAssetId?: string | null; description?: string | null },
+    data: { name?: string; slug?: string; iconData?: string | null; iconAssetId?: string | null; description?: string | null; brandPrimary?: string | null; brandAccent?: string | null },
   ) {
     const update: Parameters<typeof repo.update>[2] = {
       ...(data.name ? { name: data.name } : {}),
       ...(data.slug ? { slug: validSlug(data.slug) } : {}),
       ...(data.description !== undefined ? { description: data.description?.trim() || null } : {}),
+      ...(data.brandPrimary !== undefined ? { brandPrimary: data.brandPrimary?.toUpperCase() ?? null } : {}),
+      ...(data.brandAccent !== undefined ? { brandAccent: data.brandAccent?.toUpperCase() ?? null } : {}),
       ...(data.iconData !== undefined
         ? { iconData: data.iconData === null ? null : await validateOrganizationIcon(data.iconData) }
         : {}),

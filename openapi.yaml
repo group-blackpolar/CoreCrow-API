@@ -8311,6 +8311,11 @@ paths:
                                   - action
                                 additionalProperties: false
                           maxItems: 150
+                        duplicates:
+                          type: string
+                          enum:
+                            - KEEP
+                            - SKIP_EXACT
                       required:
                         - columns
                       additionalProperties: false
@@ -8485,6 +8490,12 @@ paths:
                         additionalProperties: false
                   minItems: 1
                   maxItems: 150
+                duplicates:
+                  type: string
+                  enum:
+                    - KEEP
+                    - SKIP_EXACT
+                  default: KEEP
               required:
                 - sheetOrdinal
                 - headerRow
@@ -8618,6 +8629,11 @@ paths:
                                 - action
                               additionalProperties: false
                         maxItems: 150
+                      duplicates:
+                        type: string
+                        enum:
+                          - KEEP
+                          - SKIP_EXACT
                     required:
                       - columns
                     additionalProperties: false
@@ -8836,6 +8852,11 @@ paths:
                                 - action
                               additionalProperties: false
                         maxItems: 150
+                      duplicates:
+                        type: string
+                        enum:
+                          - KEEP
+                          - SKIP_EXACT
                     required:
                       - columns
                     additionalProperties: false
@@ -9240,7 +9261,40 @@ paths:
                     offset:
                       type: integer
                       minimum: 0
-                      maximum: 1000
+                      maximum: 100000
+                    search:
+                      type: object
+                      properties:
+                        fieldIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          minItems: 1
+                          maxItems: 5
+                        text:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                      required:
+                        - fieldIds
+                        - text
+                      additionalProperties: false
+                    searchFieldIds:
+                      type: array
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      minItems: 1
+                      maxItems: 5
+                    includeTotal:
+                      type: boolean
+                    compareBy:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
                   required:
                     - mode
                     - fields
@@ -9257,7 +9311,16 @@ paths:
                         type: string
                         minLength: 1
                         maxLength: 128
-                      maxItems: 2
+                      maxItems: 3
+                    granularity:
+                      type: object
+                      additionalProperties:
+                        type: string
+                        enum:
+                          - DAY
+                          - MONTH
+                          - QUARTER
+                          - YEAR
                     measures:
                       type: array
                       items:
@@ -9350,7 +9413,44 @@ paths:
                     limit:
                       type: integer
                       minimum: 1
-                      maximum: 100
+                      maximum: 1000
+                    offset:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                    search:
+                      type: object
+                      properties:
+                        fieldIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          minItems: 1
+                          maxItems: 5
+                        text:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                      required:
+                        - fieldIds
+                        - text
+                      additionalProperties: false
+                    searchFieldIds:
+                      type: array
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      minItems: 1
+                      maxItems: 5
+                    includeTotal:
+                      type: boolean
+                    compareBy:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
                   required:
                     - mode
                     - measures
@@ -9435,11 +9535,14 @@ paths:
                             nullable: true
                           - type: number
                           - type: boolean
-                    maxItems: 200
+                    maxItems: 1000
                   rowCount:
                     type: integer
                     minimum: 0
-                    maximum: 200
+                    maximum: 1000
+                  totalRows:
+                    type: integer
+                    minimum: 0
                   executedAt:
                     type: string
                     format: date-time
@@ -9648,7 +9751,40 @@ paths:
                             offset:
                               type: integer
                               minimum: 0
-                              maximum: 1000
+                              maximum: 100000
+                            search:
+                              type: object
+                              properties:
+                                fieldIds:
+                                  type: array
+                                  items:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 128
+                                  minItems: 1
+                                  maxItems: 5
+                                text:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 200
+                              required:
+                                - fieldIds
+                                - text
+                              additionalProperties: false
+                            searchFieldIds:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              minItems: 1
+                              maxItems: 5
+                            includeTotal:
+                              type: boolean
+                            compareBy:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
                           required:
                             - mode
                             - fields
@@ -9665,7 +9801,16 @@ paths:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
-                              maxItems: 2
+                              maxItems: 3
+                            granularity:
+                              type: object
+                              additionalProperties:
+                                type: string
+                                enum:
+                                  - DAY
+                                  - MONTH
+                                  - QUARTER
+                                  - YEAR
                             measures:
                               type: array
                               items:
@@ -9758,7 +9903,44 @@ paths:
                             limit:
                               type: integer
                               minimum: 1
-                              maximum: 100
+                              maximum: 1000
+                            offset:
+                              type: integer
+                              minimum: 0
+                              maximum: 100000
+                            search:
+                              type: object
+                              properties:
+                                fieldIds:
+                                  type: array
+                                  items:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 128
+                                  minItems: 1
+                                  maxItems: 5
+                                text:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 200
+                              required:
+                                - fieldIds
+                                - text
+                              additionalProperties: false
+                            searchFieldIds:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              minItems: 1
+                              maxItems: 5
+                            includeTotal:
+                              type: boolean
+                            compareBy:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
                           required:
                             - mode
                             - measures
@@ -9977,7 +10159,40 @@ paths:
                         offset:
                           type: integer
                           minimum: 0
-                          maximum: 1000
+                          maximum: 100000
+                        search:
+                          type: object
+                          properties:
+                            fieldIds:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              minItems: 1
+                              maxItems: 5
+                            text:
+                              type: string
+                              minLength: 1
+                              maxLength: 200
+                          required:
+                            - fieldIds
+                            - text
+                          additionalProperties: false
+                        searchFieldIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          minItems: 1
+                          maxItems: 5
+                        includeTotal:
+                          type: boolean
+                        compareBy:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
                       required:
                         - mode
                         - fields
@@ -9994,7 +10209,16 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
-                          maxItems: 2
+                          maxItems: 3
+                        granularity:
+                          type: object
+                          additionalProperties:
+                            type: string
+                            enum:
+                              - DAY
+                              - MONTH
+                              - QUARTER
+                              - YEAR
                         measures:
                           type: array
                           items:
@@ -10087,7 +10311,44 @@ paths:
                         limit:
                           type: integer
                           minimum: 1
-                          maximum: 100
+                          maximum: 1000
+                        offset:
+                          type: integer
+                          minimum: 0
+                          maximum: 100000
+                        search:
+                          type: object
+                          properties:
+                            fieldIds:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              minItems: 1
+                              maxItems: 5
+                            text:
+                              type: string
+                              minLength: 1
+                              maxLength: 200
+                          required:
+                            - fieldIds
+                            - text
+                          additionalProperties: false
+                        searchFieldIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          minItems: 1
+                          maxItems: 5
+                        includeTotal:
+                          type: boolean
+                        compareBy:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
                       required:
                         - mode
                         - measures
@@ -10256,7 +10517,40 @@ paths:
                           offset:
                             type: integer
                             minimum: 0
-                            maximum: 1000
+                            maximum: 100000
+                          search:
+                            type: object
+                            properties:
+                              fieldIds:
+                                type: array
+                                items:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                minItems: 1
+                                maxItems: 5
+                              text:
+                                type: string
+                                minLength: 1
+                                maxLength: 200
+                            required:
+                              - fieldIds
+                              - text
+                            additionalProperties: false
+                          searchFieldIds:
+                            type: array
+                            items:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                            minItems: 1
+                            maxItems: 5
+                          includeTotal:
+                            type: boolean
+                          compareBy:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
                         required:
                           - mode
                           - fields
@@ -10273,7 +10567,16 @@ paths:
                               type: string
                               minLength: 1
                               maxLength: 128
-                            maxItems: 2
+                            maxItems: 3
+                          granularity:
+                            type: object
+                            additionalProperties:
+                              type: string
+                              enum:
+                                - DAY
+                                - MONTH
+                                - QUARTER
+                                - YEAR
                           measures:
                             type: array
                             items:
@@ -10366,7 +10669,44 @@ paths:
                           limit:
                             type: integer
                             minimum: 1
-                            maximum: 100
+                            maximum: 1000
+                          offset:
+                            type: integer
+                            minimum: 0
+                            maximum: 100000
+                          search:
+                            type: object
+                            properties:
+                              fieldIds:
+                                type: array
+                                items:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                minItems: 1
+                                maxItems: 5
+                              text:
+                                type: string
+                                minLength: 1
+                                maxLength: 200
+                            required:
+                              - fieldIds
+                              - text
+                            additionalProperties: false
+                          searchFieldIds:
+                            type: array
+                            items:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                            minItems: 1
+                            maxItems: 5
+                          includeTotal:
+                            type: boolean
+                          compareBy:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
                         required:
                           - mode
                           - measures
@@ -10586,7 +10926,40 @@ paths:
                         offset:
                           type: integer
                           minimum: 0
-                          maximum: 1000
+                          maximum: 100000
+                        search:
+                          type: object
+                          properties:
+                            fieldIds:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              minItems: 1
+                              maxItems: 5
+                            text:
+                              type: string
+                              minLength: 1
+                              maxLength: 200
+                          required:
+                            - fieldIds
+                            - text
+                          additionalProperties: false
+                        searchFieldIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          minItems: 1
+                          maxItems: 5
+                        includeTotal:
+                          type: boolean
+                        compareBy:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
                       required:
                         - mode
                         - fields
@@ -10603,7 +10976,16 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
-                          maxItems: 2
+                          maxItems: 3
+                        granularity:
+                          type: object
+                          additionalProperties:
+                            type: string
+                            enum:
+                              - DAY
+                              - MONTH
+                              - QUARTER
+                              - YEAR
                         measures:
                           type: array
                           items:
@@ -10696,7 +11078,44 @@ paths:
                         limit:
                           type: integer
                           minimum: 1
-                          maximum: 100
+                          maximum: 1000
+                        offset:
+                          type: integer
+                          minimum: 0
+                          maximum: 100000
+                        search:
+                          type: object
+                          properties:
+                            fieldIds:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              minItems: 1
+                              maxItems: 5
+                            text:
+                              type: string
+                              minLength: 1
+                              maxLength: 200
+                          required:
+                            - fieldIds
+                            - text
+                          additionalProperties: false
+                        searchFieldIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          minItems: 1
+                          maxItems: 5
+                        includeTotal:
+                          type: boolean
+                        compareBy:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
                       required:
                         - mode
                         - measures
@@ -10872,7 +11291,40 @@ paths:
                           offset:
                             type: integer
                             minimum: 0
-                            maximum: 1000
+                            maximum: 100000
+                          search:
+                            type: object
+                            properties:
+                              fieldIds:
+                                type: array
+                                items:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                minItems: 1
+                                maxItems: 5
+                              text:
+                                type: string
+                                minLength: 1
+                                maxLength: 200
+                            required:
+                              - fieldIds
+                              - text
+                            additionalProperties: false
+                          searchFieldIds:
+                            type: array
+                            items:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                            minItems: 1
+                            maxItems: 5
+                          includeTotal:
+                            type: boolean
+                          compareBy:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
                         required:
                           - mode
                           - fields
@@ -10889,7 +11341,16 @@ paths:
                               type: string
                               minLength: 1
                               maxLength: 128
-                            maxItems: 2
+                            maxItems: 3
+                          granularity:
+                            type: object
+                            additionalProperties:
+                              type: string
+                              enum:
+                                - DAY
+                                - MONTH
+                                - QUARTER
+                                - YEAR
                           measures:
                             type: array
                             items:
@@ -10982,7 +11443,44 @@ paths:
                           limit:
                             type: integer
                             minimum: 1
-                            maximum: 100
+                            maximum: 1000
+                          offset:
+                            type: integer
+                            minimum: 0
+                            maximum: 100000
+                          search:
+                            type: object
+                            properties:
+                              fieldIds:
+                                type: array
+                                items:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                minItems: 1
+                                maxItems: 5
+                              text:
+                                type: string
+                                minLength: 1
+                                maxLength: 200
+                            required:
+                              - fieldIds
+                              - text
+                            additionalProperties: false
+                          searchFieldIds:
+                            type: array
+                            items:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                            minItems: 1
+                            maxItems: 5
+                          includeTotal:
+                            type: boolean
+                          compareBy:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
                         required:
                           - mode
                           - measures
@@ -11153,6 +11651,36 @@ paths:
                     additionalProperties: false
                   maxItems: 10
                   default: []
+                sort:
+                  type: object
+                  properties:
+                    key:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    direction:
+                      type: string
+                      enum:
+                        - ASC
+                        - DESC
+                  required:
+                    - key
+                    - direction
+                  additionalProperties: false
+                offset:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                search:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                compare:
+                  type: boolean
               additionalProperties: false
       parameters:
         - schema:
@@ -11241,11 +11769,14 @@ paths:
                             nullable: true
                           - type: number
                           - type: boolean
-                    maxItems: 200
+                    maxItems: 1000
                   rowCount:
                     type: integer
                     minimum: 0
-                    maximum: 200
+                    maximum: 1000
+                  totalRows:
+                    type: integer
+                    minimum: 0
                   executedAt:
                     type: string
                     format: date-time
@@ -11304,6 +11835,47 @@ paths:
                         - operators
                       additionalProperties: false
                     maxItems: 10
+                  comparison:
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          from:
+                            type: string
+                          to:
+                            type: string
+                        required:
+                          - from
+                          - to
+                        additionalProperties: false
+                      previousPeriod:
+                        type: object
+                        properties:
+                          from:
+                            type: string
+                          to:
+                            type: string
+                        required:
+                          - from
+                          - to
+                        additionalProperties: false
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties:
+                            anyOf:
+                              - type: string
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                        maxItems: 1000
+                    required:
+                      - period
+                      - previousPeriod
+                      - rows
+                    additionalProperties: false
                 required:
                   - mode
                   - datasetId
@@ -11444,6 +12016,11 @@ paths:
                   minimum: 1
                   maximum: 100
                   default: 50
+                offset:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  default: 0
               required:
                 - fieldId
               additionalProperties: false
@@ -11508,6 +12085,9 @@ paths:
                     maxItems: 100
                   truncated:
                     type: boolean
+                  total:
+                    type: integer
+                    minimum: 0
                   executedAt:
                     type: string
                     format: date-time
@@ -15347,6 +15927,12 @@ paths:
                         description:
                           type: string
                           nullable: true
+                        brandPrimary:
+                          type: string
+                          nullable: true
+                        brandAccent:
+                          type: string
+                          nullable: true
                         owner:
                           type: object
                           properties:
@@ -16044,6 +16630,12 @@ paths:
                   description:
                     type: string
                     nullable: true
+                  brandPrimary:
+                    type: string
+                    nullable: true
+                  brandAccent:
+                    type: string
+                    nullable: true
                   memberships:
                     type: array
                     items:
@@ -16363,6 +16955,12 @@ paths:
                     maxLength: 128
                     nullable: true
                   description:
+                    type: string
+                    nullable: true
+                  brandPrimary:
+                    type: string
+                    nullable: true
+                  brandAccent:
                     type: string
                     nullable: true
                 required:
@@ -17320,6 +17918,12 @@ paths:
                   description:
                     type: string
                     nullable: true
+                  brandPrimary:
+                    type: string
+                    nullable: true
+                  brandAccent:
+                    type: string
+                    nullable: true
                 required:
                   - id
                   - name
@@ -17439,6 +18043,12 @@ paths:
                       maxLength: 128
                       nullable: true
                     description:
+                      type: string
+                      nullable: true
+                    brandPrimary:
+                      type: string
+                      nullable: true
+                    brandAccent:
                       type: string
                       nullable: true
                   required:
@@ -17659,6 +18269,12 @@ paths:
                   description:
                     type: string
                     nullable: true
+                  brandPrimary:
+                    type: string
+                    nullable: true
+                  brandAccent:
+                    type: string
+                    nullable: true
                 required:
                   - id
                   - name
@@ -17727,7 +18343,8 @@ paths:
                   - error
                 additionalProperties: false
     patch:
-      summary: Update an active organization's name, normalized slug or icon
+      summary: Update an active organization's name, normalized slug, icon or brand
+        colors
       tags:
         - Multi-tenancy
       requestBody:
@@ -17757,6 +18374,14 @@ paths:
                 description:
                   type: string
                   maxLength: 500
+                  nullable: true
+                brandPrimary:
+                  type: string
+                  pattern: ^#[0-9A-Fa-f]{6}$
+                  nullable: true
+                brandAccent:
+                  type: string
+                  pattern: ^#[0-9A-Fa-f]{6}$
                   nullable: true
               additionalProperties: false
       parameters:
@@ -17813,6 +18438,12 @@ paths:
                     maxLength: 128
                     nullable: true
                   description:
+                    type: string
+                    nullable: true
+                  brandPrimary:
+                    type: string
+                    nullable: true
+                  brandAccent:
                     type: string
                     nullable: true
                 required:
@@ -17956,6 +18587,12 @@ paths:
                     maxLength: 128
                     nullable: true
                   description:
+                    type: string
+                    nullable: true
+                  brandPrimary:
+                    type: string
+                    nullable: true
+                  brandAccent:
                     type: string
                     nullable: true
                 required:
@@ -32369,11 +33006,14 @@ paths:
                             nullable: true
                           - type: number
                           - type: boolean
-                    maxItems: 200
+                    maxItems: 1000
                   rowCount:
                     type: integer
                     minimum: 0
-                    maximum: 200
+                    maximum: 1000
+                  totalRows:
+                    type: integer
+                    minimum: 0
                   executedAt:
                     type: string
                     format: date-time
@@ -32432,6 +33072,47 @@ paths:
                         - operators
                       additionalProperties: false
                     maxItems: 10
+                  comparison:
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          from:
+                            type: string
+                          to:
+                            type: string
+                        required:
+                          - from
+                          - to
+                        additionalProperties: false
+                      previousPeriod:
+                        type: object
+                        properties:
+                          from:
+                            type: string
+                          to:
+                            type: string
+                        required:
+                          - from
+                          - to
+                        additionalProperties: false
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties:
+                            anyOf:
+                              - type: string
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                        maxItems: 1000
+                    required:
+                      - period
+                      - previousPeriod
+                      - rows
+                    additionalProperties: false
                 required:
                   - mode
                   - datasetId

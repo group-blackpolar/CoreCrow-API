@@ -334,6 +334,9 @@ model Organization {
   /// Explicit opt-in for anonymous, read-only showcase of panels marked SHOWCASE.
   showcaseEnabled       Boolean                     @default(false)
   description           String?
+  /// Organization brand colors (#RRGGBB) applied across the NORTH shell for members of this organization.
+  brandPrimary          String?
+  brandAccent           String?
   /// Validated data URL (PNG/JPEG/WebP, <=512x512, <=256 KB); null falls back to initials.
   iconData              String?
   /// Managed icon: a READY asset of this same organization. Wins over `iconData` when set. The database enforces the tenant

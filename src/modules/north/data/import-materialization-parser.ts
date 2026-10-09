@@ -24,7 +24,7 @@ export type MaterializedRow = Record<string, string | number | boolean | null>;
  * `begin` runs between the phases with the row count and parser version.
  */
 export type DatasetImportMaterializationSink = {
-  begin(summary: { parserVersion: string; rowCount: number }): Promise<void>;
+  begin(summary: { parserVersion: string; rowCount: number; skippedDuplicates: number }): Promise<void>;
   rows(batch: MaterializedRow[]): Promise<void>;
 };
 
@@ -36,13 +36,14 @@ export type DatasetImportMaterializer = {
       sheetOrdinal: number;
       headerRow: number;
       columns: MaterializationColumn[];
+      duplicates?: "KEEP" | "SKIP_EXACT";
       signal: AbortSignal;
     },
     sink: DatasetImportMaterializationSink,
-  ): Promise<{ parserVersion: string; rowCount: number; maxRssKiB?: number }>;
+  ): Promise<{ parserVersion: string; rowCount: number; skippedDuplicates?: number; maxRssKiB?: number }>;
 };
 
-type Summary = { parserVersion: string; rowCount: number; maxRssKiB?: number };
+type Summary = { parserVersion: string; rowCount: number; skippedDuplicates: number; maxRssKiB?: number };
 const MAXIMUM_LINE_BYTES = 16 * 1024 * 1024;
 
 export class StreamingDatasetImportMaterializer implements DatasetImportMaterializer {
@@ -54,9 +55,9 @@ export class StreamingDatasetImportMaterializer implements DatasetImportMaterial
       throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
     });
     try {
-      const mappingPath = await sandbox.writeMapping({ sheetOrdinal: input.sheetOrdinal, headerRow: input.headerRow, columns: input.columns });
+      const mappingPath = await sandbox.writeMapping({ sheetOrdinal: input.sheetOrdinal, headerRow: input.headerRow, duplicates: input.duplicates ?? "KEEP", columns: input.columns });
       const counted = await this.run(sandbox, "count", mappingPath, input.signal, async () => {});
-      await sink.begin({ parserVersion: counted.parserVersion, rowCount: counted.rowCount });
+      await sink.begin({ parserVersion: counted.parserVersion, rowCount: counted.rowCount, skippedDuplicates: counted.skippedDuplicates });
       const streamed = await this.run(sandbox, "materialize", mappingPath, input.signal, (rows) => sink.rows(rows));
       if (streamed.rowCount !== counted.rowCount) throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
       return streamed;
@@ -82,9 +83,9 @@ export class StreamingDatasetImportMaterializer implements DatasetImportMaterial
       let carry = "";
       const handle = async (line: string) => {
         if (!line) return;
-        const message = JSON.parse(line) as { ok?: boolean; code?: string; done?: boolean; rows?: MaterializedRow[]; parserVersion?: string; rowCount?: number; maxRssKiB?: number };
+        const message = JSON.parse(line) as { ok?: boolean; code?: string; done?: boolean; rows?: MaterializedRow[]; parserVersion?: string; rowCount?: number; skippedDuplicates?: number; maxRssKiB?: number };
         if (message.ok === false) failureCode = message.code ?? "IMPORT_MATERIALIZATION_FAILED";
-        else if (message.done && message.parserVersion && typeof message.rowCount === "number") summary = { parserVersion: message.parserVersion, rowCount: message.rowCount, maxRssKiB: message.maxRssKiB };
+        else if (message.done && message.parserVersion && typeof message.rowCount === "number") summary = { parserVersion: message.parserVersion, rowCount: message.rowCount, skippedDuplicates: message.skippedDuplicates ?? 0, maxRssKiB: message.maxRssKiB };
         else if (Array.isArray(message.rows)) {
           rowCount += message.rows.length;
           if (rowCount > this.limits.maximumRows) throw new DomainError(422, "IMPORT_ROW_LIMIT_EXCEEDED", "Workbook exceeds the allowed row count");

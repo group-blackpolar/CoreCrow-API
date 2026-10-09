@@ -91,7 +91,8 @@ export class NorthDatasetImportMaterializationWorker {
         const field = byId.get(column.fieldId)!;
         return { sourceOrdinal: column.sourceOrdinal, action: "MAP", fieldId: field.id, canonicalType: field.canonicalType, nullable: field.nullable };
       });
-      return { mapping, definitions, activeFields, created, columns };
+      const duplicates = mapping.definition && typeof mapping.definition === "object" && !Array.isArray(mapping.definition) && (mapping.definition as { duplicates?: unknown }).duplicates === "SKIP_EXACT" ? "SKIP_EXACT" as const : "KEEP" as const;
+      return { mapping, definitions, activeFields, created, columns, duplicates };
     });
   }
 
@@ -113,12 +114,14 @@ export class NorthDatasetImportMaterializationWorker {
       const batchId = randomUUID();
       let ordinal = 0;
       let rowCount = 0;
+      let skippedDuplicates = 0;
       const parsed = await this.materializer.materialize(
-        { storageKey: job.storageKey, storageVersionId: job.storageVersionId, sheetOrdinal: plan.mapping.sheetOrdinal, headerRow: plan.mapping.headerRow, columns: plan.columns, signal },
+        { storageKey: job.storageKey, storageVersionId: job.storageVersionId, sheetOrdinal: plan.mapping.sheetOrdinal, headerRow: plan.mapping.headerRow, columns: plan.columns, duplicates: plan.duplicates, signal },
         {
           // Batches are append-only, so the exact count from the validating pass is known before the first insert.
           async begin(summary) {
             rowCount = summary.rowCount;
+            skippedDuplicates = summary.skippedDuplicates;
             await tx.northDatasetImportBatch.create({ data: { id: batchId, organizationId: job.organizationId, datasetId: job.datasetId, importId: job.id, schemaVersionId: schema.id, mappingVersionId: plan.mapping.id, sheetOrdinal: plan.mapping.sheetOrdinal, rowCount: summary.rowCount, parserVersion: summary.parserVersion } });
           },
           async rows(batch) {
@@ -138,7 +141,7 @@ export class NorthDatasetImportMaterializationWorker {
       const completedAt = this.now();
       const completed = await tx.northDatasetImportJob.updateMany({ where: this.where(job, completedAt), data: { status: "SUCCEEDED", progress: 100, completedAt, claimedAt: null, claimExpiresAt: null, claimedBy: null, claimToken: null } });
       if (completed.count !== 1) throw new LeaseLostError();
-      await auditRepository.append(tx, { actorId: job.activationRequestedBy, organizationId: job.organizationId, action: "NORTH_DATASET_REVISION_ACTIVATED", targetType: "NorthDatasetRevision", targetId: revisionId, metadata: { datasetId: job.datasetId, importId: job.id, batchId, mode: "REPLACE_DATASET", rowCount: ordinal } });
+      await auditRepository.append(tx, { actorId: job.activationRequestedBy, organizationId: job.organizationId, action: "NORTH_DATASET_REVISION_ACTIVATED", targetType: "NorthDatasetRevision", targetId: revisionId, metadata: { datasetId: job.datasetId, importId: job.id, batchId, mode: "REPLACE_DATASET", rowCount: ordinal, duplicates: plan.duplicates, skippedDuplicates } });
       return true;
     }, { retries: 0, isolationLevel: "ReadCommitted", timeoutMilliseconds: this.configuration.transactionTimeoutMilliseconds ?? datasetImportLimits().materializationTimeoutMilliseconds + 120_000 });
   }

@@ -6,7 +6,8 @@ import { hasNorthCapability } from "../authorization.js";
 import { northPanelAudienceAllows } from "../audience.js";
 import type { NorthPanelDocument } from "../content-schema.js";
 import { authorizeDataset } from "./authorization.js";
-import { allowedBindingFilterSchema, datasetQuerySchema, type AllowedBindingFilter, type DatasetQuery, type DatasetQueryFilter } from "./query-contract.js";
+import { allowedBindingFilterSchema, datasetQuerySchema, type AllowedBindingFilter, type BindingRuntimeOptions, type DatasetQuery, type DatasetQueryFilter } from "./query-contract.js";
+import { previousPeriod, selectedPeriod, withPeriod } from "./period.js";
 import { executeDatasetQuery } from "./query-service.js";
 
 type BindingInput = { name: string; datasetId: string; query: DatasetQuery; allowedFilters?: AllowedBindingFilter[] };
@@ -38,6 +39,25 @@ async function validateAllowedFilters(tx: Transaction, organizationId: string, d
   if (parsed.some((item) => !activeFields.has(item.fieldId)))
     fail(422, "BINDING_FILTER_INVALID", "Allowed filters must reference fields in the active dataset schema");
   return parsed;
+}
+
+const outputKeys = (query: DatasetQuery) => query.mode === "ROWS" ? query.fields : [...(query.groupBy ?? []), ...query.measures.map((measure) => measure.alias)];
+
+/** Declarations that only make sense against the dataset schema: the comparison date and the searchable text fields. */
+async function validateQueryDeclarations(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery, allowed: AllowedBindingFilter[]) {
+  if (!query.compareBy && !query.searchFieldIds) return;
+  const dataset = await tx.northDataset.findFirst({
+    where: { id: datasetId, organizationId, status: "ACTIVE" },
+    include: { activeRevision: { include: { schemaVersion: { include: { fields: true } } } } },
+  });
+  const fields = new Map((dataset?.activeRevision?.schemaVersion.fields ?? []).filter((field) => field.status === "ACTIVE").map((field) => [field.datasetFieldId, field]));
+  if (query.compareBy) {
+    const field = fields.get(query.compareBy);
+    if (!field || !["DATE", "DATETIME"].includes(field.canonicalType) || !allowed.some((item) => item.fieldId === query.compareBy))
+      fail(422, "BINDING_COMPARE_INVALID", "compareBy must be an allowed filter on a date field of the active schema");
+  }
+  if (query.searchFieldIds?.some((id) => fields.get(id)?.canonicalType !== "TEXT"))
+    fail(422, "BINDING_SEARCH_INVALID", "searchFieldIds must be text fields of the active schema");
 }
 
 function referenced(document: NorthPanelDocument, binding: { id: string; datasetId: string }) {
@@ -89,6 +109,7 @@ export const northAnalyticsBindings = {
       await authorizeDataset(tx, userId, organizationId, input.datasetId, "north.data.query");
       const query = datasetQuerySchema.parse(input.query);
       const allowedFilters = await validateAllowedFilters(tx, organizationId, input.datasetId, input.allowedFilters ?? []);
+      await validateQueryDeclarations(tx, organizationId, input.datasetId, query, allowedFilters);
       await executeDatasetQuery(tx, organizationId, input.datasetId, query);
       const binding = await tx.northAnalyticsBinding.create({ data: { organizationId, panelId, datasetId: input.datasetId, name: input.name, query, allowedFilters, createdBy: userId } });
       await audit.append(tx, { actorId: userId, organizationId, action: "ANALYTICS_BINDING_CREATED", targetType: "NorthAnalyticsBinding", targetId: binding.id, metadata: { panelId, datasetId: input.datasetId } });
@@ -103,6 +124,7 @@ export const northAnalyticsBindings = {
       await authorizeDataset(tx, userId, organizationId, input.datasetId, "north.data.query");
       const query = datasetQuerySchema.parse(input.query);
       const allowedFilters = await validateAllowedFilters(tx, organizationId, input.datasetId, input.allowedFilters ?? []);
+      await validateQueryDeclarations(tx, organizationId, input.datasetId, query, allowedFilters);
       await executeDatasetQuery(tx, organizationId, input.datasetId, query);
       const binding = await tx.northAnalyticsBinding.update({
         where: { id_panelId_organizationId: { id: bindingId, panelId, organizationId } },
@@ -119,12 +141,36 @@ export const northAnalyticsBindings = {
     try { await authorizeDataset(tx, actorId, organizationId, binding.datasetId, "north.data.query"); } catch { return false; }
     return true;
   },
-  results(userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[]) {
+  results(userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[], options: BindingRuntimeOptions = {}) {
     return transaction(async (tx) => {
       const { binding, query, allowed } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, runtimeFilters);
-      const effective = { ...query, filters: [...(query.filters ?? []), ...runtimeFilters] } as DatasetQuery;
-      if ((effective.filters?.length ?? 0) > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
-      const result = await executeDatasetQuery(tx, organizationId, binding.datasetId, effective);
+      const withOptions = (filters: DatasetQueryFilter[]): DatasetQuery => {
+        const effective = { ...query, filters: [...(query.filters ?? []), ...filters] } as DatasetQuery;
+        if ((effective.filters?.length ?? 0) > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
+        if (options.sort) {
+          if (!outputKeys(query).includes(options.sort.key)) fail(422, "BINDING_SORT_NOT_ALLOWED", "Sorting is only available on the binding's own output columns");
+          if (effective.mode === "ROWS") effective.orderBy = [{ fieldId: options.sort.key, direction: options.sort.direction }];
+          else effective.orderBy = [{ key: options.sort.key, direction: options.sort.direction }];
+        }
+        if (options.offset !== undefined) effective.offset = options.offset;
+        // A reader can only shrink the page: the binding's own limit is the ceiling.
+        if (options.limit !== undefined) effective.limit = Math.min(options.limit, query.limit ?? 100);
+        if (options.search) {
+          if (!query.searchFieldIds) fail(422, "BINDING_SEARCH_NOT_ALLOWED", "This binding does not declare searchable fields");
+          effective.search = { fieldIds: query.searchFieldIds, text: options.search };
+        }
+        return effective;
+      };
+      const result = await executeDatasetQuery(tx, organizationId, binding.datasetId, withOptions(runtimeFilters));
+      let comparison: { period: { from: string; to: string }; previousPeriod: { from: string; to: string }; rows: typeof result.rows } | undefined;
+      if (options.compare && query.compareBy) {
+        const period = selectedPeriod(runtimeFilters, query.compareBy);
+        const previous = period && previousPeriod(period.from, period.to);
+        if (period && previous) {
+          const earlier = await executeDatasetQuery(tx, organizationId, binding.datasetId, withOptions(withPeriod(runtimeFilters, query.compareBy, previous)));
+          comparison = { period, previousPeriod: previous, rows: earlier.rows };
+        }
+      }
       const definitions = allowed.length
         ? await tx.northDatasetField.findMany({
           where: { organizationId, datasetId: binding.datasetId, id: { in: allowed.map((item) => item.fieldId) } },
@@ -137,10 +183,10 @@ export const northAnalyticsBindings = {
         if (!field) fail(422, "BINDING_FILTER_INVALID", "An allowed filter field no longer exists");
         return { fieldId: field.id, key: field.key, displayName: field.displayName, type: field.canonicalType, operators: policy.operators };
       });
-      return { bindingId, filterDefinitions, ...result };
+      return { bindingId, filterDefinitions, ...result, ...(comparison ? { comparison } : {}) };
     });
   },
-  facets(userId: string, organizationId: string, panelId: string, bindingId: string, input: { fieldId: string; search?: string; filters: DatasetQueryFilter[]; limit: number }) {
+  facets(userId: string, organizationId: string, panelId: string, bindingId: string, input: { fieldId: string; search?: string; filters: DatasetQueryFilter[]; limit: number; offset?: number }) {
     return transaction(async (tx) => {
       const { binding, query, allowed } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, input.filters);
       if (!allowed.some((item) => item.fieldId === input.fieldId)) fail(422, "BINDING_FILTER_NOT_ALLOWED", "Facet values are only available for fields this binding allows as filters");
@@ -153,10 +199,11 @@ export const northAnalyticsBindings = {
       const limit = Math.min(input.limit, 100);
       const result = await executeDatasetQuery(tx, organizationId, binding.datasetId, {
         mode: "AGGREGATE", groupBy: [input.fieldId], measures: [{ operation: "COUNT", alias: "count" }],
-        filters, orderBy: [{ key: "count", direction: "DESC" }], limit,
+        filters, orderBy: [{ key: "count", direction: "DESC" }], limit, offset: input.offset ?? 0, includeTotal: true,
       });
       const values = result.rows.map((row) => ({ value: (row[input.fieldId] ?? null) as string | number | boolean | null, count: Number(row.count) }));
-      return { bindingId, fieldId: input.fieldId, values, truncated: values.length >= limit, executedAt: result.executedAt };
+      const total = result.totalRows ?? values.length;
+      return { bindingId, fieldId: input.fieldId, values, truncated: (input.offset ?? 0) + values.length < total, total, executedAt: result.executedAt };
     });
   },
 };

@@ -11864,6 +11864,13 @@
                               ]
                             },
                             "maxItems": 150
+                          },
+                          "duplicates": {
+                            "type": "string",
+                            "enum": [
+                              "KEEP",
+                              "SKIP_EXACT"
+                            ]
                           }
                         },
                         "required": [
@@ -12115,6 +12122,14 @@
                     },
                     "minItems": 1,
                     "maxItems": 150
+                  },
+                  "duplicates": {
+                    "type": "string",
+                    "enum": [
+                      "KEEP",
+                      "SKIP_EXACT"
+                    ],
+                    "default": "KEEP"
                   }
                 },
                 "required": [
@@ -12303,6 +12318,13 @@
                             ]
                           },
                           "maxItems": 150
+                        },
+                        "duplicates": {
+                          "type": "string",
+                          "enum": [
+                            "KEEP",
+                            "SKIP_EXACT"
+                          ]
                         }
                       },
                       "required": [
@@ -12616,6 +12638,13 @@
                             ]
                           },
                           "maxItems": 150
+                        },
+                        "duplicates": {
+                          "type": "string",
+                          "enum": [
+                            "KEEP",
+                            "SKIP_EXACT"
+                          ]
                         }
                       },
                       "required": [
@@ -13186,7 +13215,50 @@
                       "offset": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 1000
+                        "maximum": 100000
+                      },
+                      "search": {
+                        "type": "object",
+                        "properties": {
+                          "fieldIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 5
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "fieldIds",
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "searchFieldIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "minItems": 1,
+                        "maxItems": 5
+                      },
+                      "includeTotal": {
+                        "type": "boolean"
+                      },
+                      "compareBy": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
                       }
                     },
                     "required": [
@@ -13211,7 +13283,19 @@
                           "minLength": 1,
                           "maxLength": 128
                         },
-                        "maxItems": 2
+                        "maxItems": 3
+                      },
+                      "granularity": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "enum": [
+                            "DAY",
+                            "MONTH",
+                            "QUARTER",
+                            "YEAR"
+                          ]
+                        }
                       },
                       "measures": {
                         "type": "array",
@@ -13348,7 +13432,55 @@
                       "limit": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 100
+                        "maximum": 1000
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100000
+                      },
+                      "search": {
+                        "type": "object",
+                        "properties": {
+                          "fieldIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 5
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "fieldIds",
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "searchFieldIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "minItems": 1,
+                        "maxItems": 5
+                      },
+                      "includeTotal": {
+                        "type": "boolean"
+                      },
+                      "compareBy": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
                       }
                     },
                     "required": [
@@ -13474,12 +13606,16 @@
                           ]
                         }
                       },
-                      "maxItems": 200
+                      "maxItems": 1000
                     },
                     "rowCount": {
                       "type": "integer",
                       "minimum": 0,
-                      "maximum": 200
+                      "maximum": 1000
+                    },
+                    "totalRows": {
+                      "type": "integer",
+                      "minimum": 0
                     },
                     "executedAt": {
                       "type": "string",
@@ -13784,7 +13920,50 @@
                               "offset": {
                                 "type": "integer",
                                 "minimum": 0,
-                                "maximum": 1000
+                                "maximum": 100000
+                              },
+                              "search": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldIds": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 5
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": [
+                                  "fieldIds",
+                                  "text"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "searchFieldIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 5
+                              },
+                              "includeTotal": {
+                                "type": "boolean"
+                              },
+                              "compareBy": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
                               }
                             },
                             "required": [
@@ -13809,7 +13988,19 @@
                                   "minLength": 1,
                                   "maxLength": 128
                                 },
-                                "maxItems": 2
+                                "maxItems": 3
+                              },
+                              "granularity": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "enum": [
+                                    "DAY",
+                                    "MONTH",
+                                    "QUARTER",
+                                    "YEAR"
+                                  ]
+                                }
                               },
                               "measures": {
                                 "type": "array",
@@ -13946,7 +14137,55 @@
                               "limit": {
                                 "type": "integer",
                                 "minimum": 1,
-                                "maximum": 100
+                                "maximum": 1000
+                              },
+                              "offset": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100000
+                              },
+                              "search": {
+                                "type": "object",
+                                "properties": {
+                                  "fieldIds": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 5
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": [
+                                  "fieldIds",
+                                  "text"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "searchFieldIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 5
+                              },
+                              "includeTotal": {
+                                "type": "boolean"
+                              },
+                              "compareBy": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
                               }
                             },
                             "required": [
@@ -14262,7 +14501,50 @@
                           "offset": {
                             "type": "integer",
                             "minimum": 0,
-                            "maximum": 1000
+                            "maximum": 100000
+                          },
+                          "search": {
+                            "type": "object",
+                            "properties": {
+                              "fieldIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 5
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "fieldIds",
+                              "text"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "searchFieldIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 5
+                          },
+                          "includeTotal": {
+                            "type": "boolean"
+                          },
+                          "compareBy": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
                           }
                         },
                         "required": [
@@ -14287,7 +14569,19 @@
                               "minLength": 1,
                               "maxLength": 128
                             },
-                            "maxItems": 2
+                            "maxItems": 3
+                          },
+                          "granularity": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "enum": [
+                                "DAY",
+                                "MONTH",
+                                "QUARTER",
+                                "YEAR"
+                              ]
+                            }
                           },
                           "measures": {
                             "type": "array",
@@ -14424,7 +14718,55 @@
                           "limit": {
                             "type": "integer",
                             "minimum": 1,
-                            "maximum": 100
+                            "maximum": 1000
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "search": {
+                            "type": "object",
+                            "properties": {
+                              "fieldIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 5
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "fieldIds",
+                              "text"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "searchFieldIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 5
+                          },
+                          "includeTotal": {
+                            "type": "boolean"
+                          },
+                          "compareBy": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
                           }
                         },
                         "required": [
@@ -14669,7 +15011,50 @@
                             "offset": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 1000
+                              "maximum": 100000
+                            },
+                            "search": {
+                              "type": "object",
+                              "properties": {
+                                "fieldIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 5
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "fieldIds",
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "searchFieldIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "minItems": 1,
+                              "maxItems": 5
+                            },
+                            "includeTotal": {
+                              "type": "boolean"
+                            },
+                            "compareBy": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
                             }
                           },
                           "required": [
@@ -14694,7 +15079,19 @@
                                 "minLength": 1,
                                 "maxLength": 128
                               },
-                              "maxItems": 2
+                              "maxItems": 3
+                            },
+                            "granularity": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string",
+                                "enum": [
+                                  "DAY",
+                                  "MONTH",
+                                  "QUARTER",
+                                  "YEAR"
+                                ]
+                              }
                             },
                             "measures": {
                               "type": "array",
@@ -14831,7 +15228,55 @@
                             "limit": {
                               "type": "integer",
                               "minimum": 1,
-                              "maximum": 100
+                              "maximum": 1000
+                            },
+                            "offset": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100000
+                            },
+                            "search": {
+                              "type": "object",
+                              "properties": {
+                                "fieldIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 5
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "fieldIds",
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "searchFieldIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "minItems": 1,
+                              "maxItems": 5
+                            },
+                            "includeTotal": {
+                              "type": "boolean"
+                            },
+                            "compareBy": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
                             }
                           },
                           "required": [
@@ -15148,7 +15593,50 @@
                           "offset": {
                             "type": "integer",
                             "minimum": 0,
-                            "maximum": 1000
+                            "maximum": 100000
+                          },
+                          "search": {
+                            "type": "object",
+                            "properties": {
+                              "fieldIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 5
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "fieldIds",
+                              "text"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "searchFieldIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 5
+                          },
+                          "includeTotal": {
+                            "type": "boolean"
+                          },
+                          "compareBy": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
                           }
                         },
                         "required": [
@@ -15173,7 +15661,19 @@
                               "minLength": 1,
                               "maxLength": 128
                             },
-                            "maxItems": 2
+                            "maxItems": 3
+                          },
+                          "granularity": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "enum": [
+                                "DAY",
+                                "MONTH",
+                                "QUARTER",
+                                "YEAR"
+                              ]
+                            }
                           },
                           "measures": {
                             "type": "array",
@@ -15310,7 +15810,55 @@
                           "limit": {
                             "type": "integer",
                             "minimum": 1,
-                            "maximum": 100
+                            "maximum": 1000
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "search": {
+                            "type": "object",
+                            "properties": {
+                              "fieldIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "minItems": 1,
+                                "maxItems": 5
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "fieldIds",
+                              "text"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "searchFieldIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "minItems": 1,
+                            "maxItems": 5
+                          },
+                          "includeTotal": {
+                            "type": "boolean"
+                          },
+                          "compareBy": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
                           }
                         },
                         "required": [
@@ -15565,7 +16113,50 @@
                             "offset": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 1000
+                              "maximum": 100000
+                            },
+                            "search": {
+                              "type": "object",
+                              "properties": {
+                                "fieldIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 5
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "fieldIds",
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "searchFieldIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "minItems": 1,
+                              "maxItems": 5
+                            },
+                            "includeTotal": {
+                              "type": "boolean"
+                            },
+                            "compareBy": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
                             }
                           },
                           "required": [
@@ -15590,7 +16181,19 @@
                                 "minLength": 1,
                                 "maxLength": 128
                               },
-                              "maxItems": 2
+                              "maxItems": 3
+                            },
+                            "granularity": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string",
+                                "enum": [
+                                  "DAY",
+                                  "MONTH",
+                                  "QUARTER",
+                                  "YEAR"
+                                ]
+                              }
                             },
                             "measures": {
                               "type": "array",
@@ -15727,7 +16330,55 @@
                             "limit": {
                               "type": "integer",
                               "minimum": 1,
-                              "maximum": 100
+                              "maximum": 1000
+                            },
+                            "offset": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100000
+                            },
+                            "search": {
+                              "type": "object",
+                              "properties": {
+                                "fieldIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 5
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "fieldIds",
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "searchFieldIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "minItems": 1,
+                              "maxItems": 5
+                            },
+                            "includeTotal": {
+                              "type": "boolean"
+                            },
+                            "compareBy": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
                             }
                           },
                           "required": [
@@ -15979,6 +16630,46 @@
                     },
                     "maxItems": 10,
                     "default": []
+                  },
+                  "sort": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "ASC",
+                          "DESC"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "direction"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "search": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "compare": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -16108,12 +16799,16 @@
                           ]
                         }
                       },
-                      "maxItems": 200
+                      "maxItems": 1000
                     },
                     "rowCount": {
                       "type": "integer",
                       "minimum": 0,
-                      "maximum": 200
+                      "maximum": 1000
+                    },
+                    "totalRows": {
+                      "type": "integer",
+                      "minimum": 0
                     },
                     "executedAt": {
                       "type": "string",
@@ -16187,6 +16882,70 @@
                         "additionalProperties": false
                       },
                       "maxItems": 10
+                    },
+                    "comparison": {
+                      "type": "object",
+                      "properties": {
+                        "period": {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "previousPeriod": {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                }
+                              ]
+                            }
+                          },
+                          "maxItems": 1000
+                        }
+                      },
+                      "required": [
+                        "period",
+                        "previousPeriod",
+                        "rows"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -16394,6 +17153,12 @@
                     "minimum": 1,
                     "maximum": 100,
                     "default": 50
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "default": 0
                   }
                 },
                 "required": [
@@ -16493,6 +17258,10 @@
                     },
                     "truncated": {
                       "type": "boolean"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
                     },
                     "executedAt": {
                       "type": "string",
@@ -22025,6 +22794,14 @@
                             "type": "string",
                             "nullable": true
                           },
+                          "brandPrimary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "brandAccent": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "owner": {
                             "type": "object",
                             "properties": {
@@ -23049,6 +23826,14 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "brandPrimary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandAccent": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "memberships": {
                       "type": "array",
                       "items": {
@@ -23483,6 +24268,14 @@
                       "nullable": true
                     },
                     "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandPrimary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandAccent": {
                       "type": "string",
                       "nullable": true
                     }
@@ -24857,6 +25650,14 @@
                     "description": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "brandPrimary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandAccent": {
+                      "type": "string",
+                      "nullable": true
                     }
                   },
                   "required": [
@@ -25027,6 +25828,14 @@
                         "nullable": true
                       },
                       "description": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "brandPrimary": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "brandAccent": {
                         "type": "string",
                         "nullable": true
                       }
@@ -25348,6 +26157,14 @@
                     "description": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "brandPrimary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandAccent": {
+                      "type": "string",
+                      "nullable": true
                     }
                   },
                   "required": [
@@ -25453,7 +26270,7 @@
         }
       },
       "patch": {
-        "summary": "Update an active organization's name, normalized slug or icon",
+        "summary": "Update an active organization's name, normalized slug, icon or brand colors",
         "tags": [
           "Multi-tenancy"
         ],
@@ -25488,6 +26305,16 @@
                   "description": {
                     "type": "string",
                     "maxLength": 500,
+                    "nullable": true
+                  },
+                  "brandPrimary": {
+                    "type": "string",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "nullable": true
+                  },
+                  "brandAccent": {
+                    "type": "string",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
                     "nullable": true
                   }
                 },
@@ -25567,6 +26394,14 @@
                       "nullable": true
                     },
                     "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandPrimary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandAccent": {
                       "type": "string",
                       "nullable": true
                     }
@@ -25774,6 +26609,14 @@
                       "nullable": true
                     },
                     "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandPrimary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "brandAccent": {
                       "type": "string",
                       "nullable": true
                     }
@@ -45710,12 +46553,16 @@
                           ]
                         }
                       },
-                      "maxItems": 200
+                      "maxItems": 1000
                     },
                     "rowCount": {
                       "type": "integer",
                       "minimum": 0,
-                      "maximum": 200
+                      "maximum": 1000
+                    },
+                    "totalRows": {
+                      "type": "integer",
+                      "minimum": 0
                     },
                     "executedAt": {
                       "type": "string",
@@ -45789,6 +46636,70 @@
                         "additionalProperties": false
                       },
                       "maxItems": 10
+                    },
+                    "comparison": {
+                      "type": "object",
+                      "properties": {
+                        "period": {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "previousPeriod": {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                }
+                              ]
+                            }
+                          },
+                          "maxItems": 1000
+                        }
+                      },
+                      "required": [
+                        "period",
+                        "previousPeriod",
+                        "rows"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [

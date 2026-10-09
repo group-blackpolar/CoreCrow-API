@@ -50,6 +50,36 @@ const chartSeries = z.object({
   color: safeChartColor.optional(),
 }).strict();
 
+// Reusable analytics presentation vocabulary. Everything is data (enums and keys), never markup or expressions.
+const tone = z.enum(["blue", "violet", "green", "amber", "rose", "cyan", "slate"]);
+const iconName = z.enum(["container", "scale", "users", "buildings", "globe", "clock", "ship", "anchor", "pin", "chart", "package", "truck", "calendar", "trend", "warning", "star"]);
+const valueFormat = z.enum(["number", "decimal", "percent", "text", "date", "month"]);
+const kpiSubtitle = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("text"), text: localized }).strict(),
+  // "38.8% of the total": rows[0][valueKey] over the `total` binding's rows[0][totalKey].
+  z.object({ mode: z.literal("share"), valueKey: resultKey, totalKey: resultKey, label: localized.optional() }).strict(),
+  z.object({ mode: z.literal("relative_date") }).strict(),
+]);
+const gridColumn = z.object({
+  key: resultKey,
+  label: localized,
+  kind: z.enum(["text", "number", "decimal", "date", "month", "bar", "badge", "sparkline", "actions"]).default("text"),
+  align: align.optional(),
+  width: z.number().int().min(48).max(640).optional(),
+  sortable: z.boolean().optional(),
+  hidden: z.boolean().optional(),
+  // bar: the cell shows its share of the column maximum on the current page.
+  barTone: tone.optional(),
+}).strict();
+const insightRule = z.discriminatedUnion("rule", [
+  // The leading entity of a ranking and its share of the ranking total.
+  z.object({ id: resourceId, rule: z.literal("leader_share"), binding: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/), labelKey: resultKey, valueKey: resultKey, title: localized, tone: tone.optional(), icon: iconName.optional() }).strict(),
+  // Period over period change of the first row's value (needs a closed date range selected and compareBy on the binding).
+  z.object({ id: resourceId, rule: z.literal("period_change"), binding: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/), valueKey: resultKey, title: localized, tone: tone.optional(), icon: iconName.optional() }).strict(),
+  // Share of the top N entries of a ranking.
+  z.object({ id: resourceId, rule: z.literal("top_concentration"), binding: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/), labelKey: resultKey, valueKey: resultKey, top: z.number().int().min(1).max(10), title: localized, tone: tone.optional(), icon: iconName.optional() }).strict(),
+]);
+
 const catalog = {
   heading: z.object({ text: localized, level: z.number().int().min(1).max(6), align: align.optional(), variant: commonVariant.optional() }).strict(),
   rich_text: z.object({ documents: z.record(locale, z.unknown()), variant: commonVariant.optional() }).strict(),
@@ -61,14 +91,57 @@ const catalog = {
   card: z.object({ title: localized, body: localized.optional(), assetId: resourceId.optional(), variant: commonVariant.optional() }).strict(),
   list: z.object({ ordered: z.boolean().optional(), items: z.array(z.object({ id: resourceId, text: localized, href: safeUrl.optional() }).strict()).min(1).max(200) }).strict(),
   metric: z.object({ label: localized, value: z.union([z.string().max(500), z.number()]).optional(), fieldKey: resultKey.optional(), format: z.enum(["number", "currency", "percent", "duration", "text"]).optional(), variant: commonVariant.optional() }).strict(),
-  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional() }).strict(),
+  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional(), showValues: z.boolean().optional(), valueFormat: valueFormat.optional() }).strict(),
   line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional() }).strict(),
-  donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional() }).strict(),
+  donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional(), centerLabel: localized.optional(), showTotal: z.boolean().optional(), legend: z.enum(["right", "bottom", "none"]).optional() }).strict(),
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
   document_workspace: z.object({ typeKey: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/), title: localized.optional() }).strict(),
   divider: z.object({ variant: z.enum(["solid", "dashed", "dotted"]).optional(), spacing: size.optional() }).strict(),
   embed: z.object({ url: z.string().url().max(2_048), title: localized.optional(), aspectRatio: z.enum(["16:9", "4:3", "1:1"]).optional() }).strict(),
+  // KPI Card Pro: icon, value, unit, subtitle, period comparison and tooltip over one binding (`data`; optional `total`).
+  kpi_card: z.object({
+    label: localized,
+    valueKey: resultKey,
+    format: valueFormat.default("number"),
+    decimals: z.number().int().min(0).max(6).optional(),
+    unit: localized.optional(),
+    icon: iconName.optional(),
+    tone: tone.optional(),
+    variant: z.enum(["compact", "standard", "trend", "comparison"]).default("standard"),
+    subtitle: kpiSubtitle.optional(),
+    // Compare with the previous period computed by CORECROW (binding needs compareBy); hidden when no comparison exists.
+    comparison: z.object({ label: localized.optional(), inverse: z.boolean().optional() }).strict().optional(),
+    tooltip: localized.optional(),
+  }).strict(),
+  // Advanced data grid over one paged binding (`data`) with an optional `trend` binding for real sparklines.
+  data_grid: z.object({
+    title: localized.optional(),
+    columns: z.array(gridColumn).min(1).max(30),
+    pageSizes: z.array(z.number().int().min(5).max(200)).min(1).max(5).default([10, 20, 50]),
+    defaultPageSize: z.number().int().min(5).max(200).default(20),
+    defaultSort: z.object({ key: resultKey, direction: z.enum(["ASC", "DESC"]) }).strict().optional(),
+    searchable: z.boolean().default(true),
+    selectable: z.boolean().default(false),
+    exportable: z.boolean().default(true),
+    inspectorKeys: z.array(resultKey).max(30).optional(),
+    // Sparkline cells: one point per `categoryKey` bucket of `valueKey`, rows matched on `rowKeys`.
+    trend: z.object({ binding: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/), rowKeys: z.array(resultKey).min(1).max(3), categoryKey: resultKey, valueKey: resultKey }).strict().optional(),
+    height: z.number().int().min(240).max(1_200).optional(),
+  }).strict(),
+  // Country bubble map: aggregated by a region key holding country names/ISO codes; never invents coordinates.
+  geo_map: z.object({
+    title: localized.optional(),
+    regionKey: resultKey,
+    valueKey: resultKey,
+    secondaryKey: resultKey.optional(),
+    valueLabel: localized.optional(),
+    secondaryLabel: localized.optional(),
+    tone: tone.optional(),
+    height: chartHeight.optional(),
+  }).strict(),
+  // Deterministic findings computed from binding results (no generative text).
+  insights: z.object({ title: localized.optional(), items: z.array(insightRule).min(1).max(6) }).strict(),
 } as const;
 
 export const northComponentTypes = Object.freeze(Object.keys(catalog) as Array<keyof typeof catalog>);
