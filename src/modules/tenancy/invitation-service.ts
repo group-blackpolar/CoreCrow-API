@@ -26,7 +26,7 @@ function invitationHash(value: string) {
     .digest("hex");
 }
 
-/** `SHARK-KEY-V7KD31M9Q2XA`: organization prefix + 12 unambiguous random characters (~60 bits). Security is the
+/** `ACME-KEY-V7KD31M9Q2XA`: organization prefix + 12 unambiguous random characters (~60 bits). Security is the
  * server-side hash lookup, not the format. */
 function organizationKey(slug: string) {
   const prefix = slug.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "ORG";

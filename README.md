@@ -113,8 +113,5 @@ least-privilege MinIO bucket, remain fail-closed when storage or clamd is
 unavailable, and are verified by `scripts/verify-asset-infrastructure.mjs`
 before a configured asset runtime is promoted.
 
-The `seed-master-house-demo` production workflow is a bounded administrative
-exception for the presentation fixture committed in `src/fixtures`. It creates
-an isolated organization, records the seed and accepted no-scan risk in the
-audit log, and is idempotent. It does not expose an upload endpoint, does not
-start the import worker, and must not be reused for arbitrary tenant files.
+The former one-time demo seed (checksum-bound June presentation fixture) was retired in Task Pack 12. Dataset ingestion happens only through the
+storage-backed, scanned import pipeline; no workflow, script or fixture creates presentation data any more.

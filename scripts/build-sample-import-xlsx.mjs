@@ -1,15 +1,15 @@
-// Builds a SYNTHETIC SHARK-shaped workbook for pipeline tests: no real company, port statistic or person.
-//   node scripts/build-shark-test-xlsx.mjs <out-dir>
-// Writes shark-test-data.xlsx plus shark-test-data.expected.json (SHA-256, row count and exact aggregates) so a run can
+// Builds a SYNTHETIC workbook for import-pipeline tests: no real company, port statistic or person.
+//   node scripts/build-sample-import-xlsx.mjs <out-dir>
+// Writes sample-import-data.xlsx plus sample-import-data.expected.json (SHA-256, row count and exact aggregates) so a run can
 // be verified against the source of truth. Deterministic: the same call always yields the same bytes' content.
-// The sheet is passive OOXML (no formulas, macros or links). Columns match src/features/shark/data/types.ts in NORTH.
+// The sheet is passive OOXML (no formulas, macros or links). Columns are generic text/number/date fields.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as XLSX from "xlsx";
 
 const out = process.argv[2];
-if (!out) throw new Error("Usage: node scripts/build-shark-test-xlsx.mjs <out-dir>");
+if (!out) throw new Error("Usage: node scripts/build-sample-import-xlsx.mjs <out-dir>");
 
 // Fictional entities only.
 const ports = ["Puerto Alfa", "Puerto Beta", "Puerto Gamma", "Puerto Delta"];
@@ -38,10 +38,10 @@ rows.push({ year: 2025, month: 3, port: ports[0], carrier: carriers[0], consigne
 const header = ["year", "month", "port", "carrier", "consignee", "country", "containers", "teus"];
 const sheet = XLSX.utils.json_to_sheet(rows, { header });
 const book = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(book, sheet, "Shark");
+XLSX.utils.book_append_sheet(book, sheet, "Sample");
 const bytes = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, "shark-test-data.xlsx"), bytes);
+writeFileSync(join(out, "sample-import-data.xlsx"), bytes);
 
 const sum = (list, key) => list.reduce((total, row) => total + row[key], 0);
 const by = (key) => Object.fromEntries([...new Set(rows.map((row) => row[key]))].sort().map((value) => {
@@ -49,10 +49,10 @@ const by = (key) => Object.fromEntries([...new Set(rows.map((row) => row[key]))]
   return [String(value), { rows: subset.length, containers: sum(subset, "containers"), teus: sum(subset, "teus") }];
 }));
 const expected = {
-  file: "shark-test-data.xlsx",
-  sha256: createHash("sha256").update(readFileSync(join(out, "shark-test-data.xlsx"))).digest("hex"),
+  file: "sample-import-data.xlsx",
+  sha256: createHash("sha256").update(readFileSync(join(out, "sample-import-data.xlsx"))).digest("hex"),
   bytes: bytes.byteLength,
-  sheet: "Shark",
+  sheet: "Sample",
   columns: header,
   rowCount: rows.length,
   nullConsigneeRows: rows.filter((row) => row.consignee === null).length,
@@ -61,5 +61,5 @@ const expected = {
   byPort: by("port"),
   byCarrier: by("carrier"),
 };
-writeFileSync(join(out, "shark-test-data.expected.json"), `${JSON.stringify(expected, null, 2)}\n`);
-console.info(`shark-test-data.xlsx: ${rows.length} rows, ${bytes.byteLength} bytes, sha256 ${expected.sha256}`);
+writeFileSync(join(out, "sample-import-data.expected.json"), `${JSON.stringify(expected, null, 2)}\n`);
+console.info(`sample-import-data.xlsx: ${rows.length} rows, ${bytes.byteLength} bytes, sha256 ${expected.sha256}`);

@@ -88,8 +88,7 @@ environment.
 
 ## Provisional materialization and query limits
 
-The current activation slice is deliberately bounded for the Master House
-demonstration: one mapped worksheet, at most 50,000 materialized rows and at
+The current activation slice is deliberately bounded: one mapped worksheet, at most 50,000 materialized rows and at
 most 64 MiB of materializer output. Formula cells are rejected. A failed or
 cancelled attempt cannot publish a partial batch or change the active revision;
 retryable failures keep the job durable and reuse the immutable mapping and
