@@ -281,7 +281,7 @@ async function modeMedia() {
   record("org icon: another tenant can neither change nor read it", [403, 404].includes(foreign.status) && [403, 404].includes(foreignRead.status), `${foreign.status}/${foreignRead.status}`);
   const inUse = await http("DELETE", `/v1/organizations/${w.orgId}/assets/${asset.json.asset.id}`, { cookie: w.owner.cookie });
   record("org icon: the asset in use cannot be deleted", inUse.status === 409, String(inUse.status));
-  const infected = Buffer.from("X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*", "ascii");
+  const infected = Buffer.from("X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*", "ascii");
   const bad = await http("POST", "/v1/me/avatar/uploads", { cookie: w.owner.cookie, body: { mime: "image/png", size: infected.byteLength, checksum: sha(infected) } });
   await putSigned(bad.json.upload, infected);
   const badConfirm = await http("POST", `/v1/me/avatar/${bad.json.avatar.id}/confirm`, { cookie: w.owner.cookie });
