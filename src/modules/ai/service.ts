@@ -85,6 +85,14 @@ function publicAIAction(action: { id: string; status: string; toolName: string; 
   return { id: action.id, status: action.status, toolName: action.toolName, expiresAt: action.expiresAt };
 }
 
+/**
+ * Earlier turns are replayed as plain user/assistant text. Stored TOOL rows are dropped: their matching function-call turn is not
+ * persisted, and a function response without its call is rejected by Gemini (so a second question after a tool use would fail).
+ */
+export function providerHistory<T extends { role: string }>(rows: T[]): T[] {
+  return rows.filter((row) => row.role !== "TOOL");
+}
+
 export function boundedAIHistory(messages: AIProviderMessage[], maxCharacters: number) {
   const selected: AIProviderMessage[] = [];
   let remaining = maxCharacters;
@@ -303,7 +311,7 @@ export class AIService {
       await repo.addEvent(runId, "run.started", { runId });
       await auditEvent({ actorId: run.userId, organizationId: run.organizationId, action: "ai.run.started", targetType: "AIRun", targetId: runId, metadata: { provider: run.provider, model: run.model } });
       const available = await this.registry.available(context);
-      const history: AIProviderMessage[] = (await repo.history(
+      const history: AIProviderMessage[] = providerHistory(await repo.history(
         run.conversationId,
         this.configuration.contextMaxMessages,
       )).map((message) => ({

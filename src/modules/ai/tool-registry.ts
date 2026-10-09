@@ -27,6 +27,11 @@ export function aiUserProfile(user: { id: string; email: string; name: string | 
   return { id: user.id, email: user.email, name: user.name };
 }
 
+/** The caller's own authorization summary: role and permission names only, never other members' data. */
+export function aiUserPermissions(tenant: { member: { role: string }; permissions: readonly string[] }) {
+  return { role: tenant.member.role, permissions: [...tenant.permissions] };
+}
+
 export function aiOrganization<T extends {
   id: string;
   name: string;
@@ -74,6 +79,18 @@ const tools: RegisteredAITool[] = [
     input: noInput,
     handler: async (context) =>
       aiOrganizationMembers(await tenants.members(context.userId, context.organizationId)),
+  },
+  {
+    name: "user.permissions",
+    description: "Read the authenticated user's own role and effective permissions in the active organization. Use it before explaining what the user can or cannot do.",
+    application: "north",
+    risk: "read",
+    requiredPermissions: ["organization.read"],
+    input: noInput,
+    handler: async (context) => {
+      const tenant = await authorizeAI(context.userId, context.organizationId, ["organization.read"]);
+      return aiUserPermissions(tenant);
+    },
   },
   {
     name: "user.me",
