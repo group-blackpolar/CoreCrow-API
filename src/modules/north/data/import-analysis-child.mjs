@@ -1,28 +1,37 @@
+// Sandboxed XLSX child (node --permission, empty env, no network/child-process/worker access).
+//   analyze     <file> analyze     -         <limits.json> <spillDir>   -> one small JSON document
+//   materialize <file> materialize <mapping> <limits.json> <spillDir>   -> NDJSON batches, then a final {"ok":true,"done":true} line
+//   count       <file> count       <mapping> <limits.json> <spillDir>   -> same validation and coercion, no rows, only the final line
+// stdout writes honor backpressure: the parent reads the pipe incrementally and the child pauses on a full pipe.
 import * as fs from "node:fs";
 import { Buffer } from "node:buffer";
 import process from "node:process";
-import * as XLSX from "xlsx";
+import { openWorkbook, XlsxReadError } from "./xlsx-stream-reader.mjs";
 
-XLSX.set_fs(fs);
+const PARSER_VERSION = "ooxml-stream-1";
+const BATCH_ROWS = 500;
+const BATCH_BYTES = 512 * 1024;
 
-const MAX_NON_EMPTY_CELLS = 2_000_000;
-const MAX_CELL_TEXT_BYTES = 16 * 1024;
-const MAX_MATERIALIZED_ROWS = 50_000;
+class ImportError extends Error {
+  constructor(code) { super(code); this.code = code; }
+}
+const fail = (code) => { throw new ImportError(code); };
 
-function fail(code) {
-  process.stdout.write(JSON.stringify({ ok: false, code }));
-  process.exit(2);
+function write(text) {
+  return new Promise((resolve, reject) => {
+    if (process.stdout.write(text, (error) => error && reject(error))) resolve();
+    else process.stdout.once("drain", resolve);
+  });
 }
 
-function profile(cell, value) {
-  if (cell.f) fail("IMPORT_SOURCE_FORMULA_REJECTED");
+function profile(cell, value, limits) {
   if (cell.t === "b") value.boolean = true;
   else if (cell.t === "d") value.date = true;
   else if (cell.t === "n") {
-    if (typeof cell.v === "number" && Number.isSafeInteger(cell.v)) value.integer = true;
+    if (Number.isSafeInteger(cell.v)) value.integer = true;
     else value.decimal = true;
-  } else if (cell.t === "s" || cell.t === "str") {
-    if (typeof cell.v === "string" && Buffer.byteLength(cell.v, "utf8") > MAX_CELL_TEXT_BYTES) fail("IMPORT_CELL_LIMIT_EXCEEDED");
+  } else {
+    if (Buffer.byteLength(cell.v, "utf8") > limits.maximumCellTextBytes) fail("IMPORT_CELL_LIMIT_EXCEEDED");
     value.text = true;
   }
 }
@@ -30,7 +39,8 @@ function profile(cell, value) {
 function inferred(value) {
   const kinds = Object.values(value).filter(Boolean).length;
   if (!kinds) return "EMPTY";
-  if (kinds > 1 || (value.integer && value.decimal)) return "MIXED";
+  if (value.integer && value.decimal && kinds === 2) return "DECIMAL";
+  if (kinds > 1) return "MIXED";
   if (value.integer) return "INTEGER";
   if (value.decimal) return "DECIMAL";
   if (value.boolean) return "BOOLEAN";
@@ -38,63 +48,51 @@ function inferred(value) {
   return "TEXT";
 }
 
-function workbook(path) {
-  const book = XLSX.readFile(path, {
-    dense: true, cellFormula: true, cellHTML: false, cellStyles: false, cellText: false,
-    cellDates: true, bookDeps: false, bookFiles: false, bookVBA: false, nodim: true, WTF: true,
-  });
-  if (book.SheetNames.length < 1 || book.SheetNames.length > 32) fail("IMPORT_WORKBOOK_LIMIT_EXCEEDED");
-  let nonEmptyCells = 0;
-  let visitedCells = 0;
-  const sheets = book.SheetNames.map((name, ordinal) => {
-    const sheet = book.Sheets[name];
-    const rows = sheet["!data"] ?? [];
-    const range = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : { e: { r: 0, c: -1 } };
-    const columnCount = range.e.c + 1;
-    if (columnCount > 150 || range.e.r + 1 > 250_000) fail("IMPORT_WORKBOOK_LIMIT_EXCEEDED");
-    visitedCells += (range.e.r + 1) * columnCount;
-    if (visitedCells > MAX_NON_EMPTY_CELLS) fail("IMPORT_WORKBOOK_LIMIT_EXCEEDED");
+async function analyze(book, limits) {
+  const sheets = [];
+  for (let ordinal = 0; ordinal < book.sheets.length; ordinal += 1) {
+    const counters = { cells: 0, maximumRowIndex: -1, maximumColumnIndex: -1 };
+    const headers = [];
+    const states = [];
+    const counts = [];
+    for await (const row of book.rows(ordinal, counters)) {
+      row.cells.forEach((cell, column) => {
+        if (!cell) return;
+        if (row.index === 0) {
+          const raw = cell.t === "d" ? cell.v.toISOString() : String(cell.v);
+          headers[column] = raw.trim().slice(0, 255) || null;
+          return;
+        }
+        states[column] ??= { text: false, integer: false, decimal: false, boolean: false, date: false };
+        counts[column] = (counts[column] ?? 0) + 1;
+        profile(cell, states[column], limits);
+      });
+    }
+    const columnCount = counters.maximumColumnIndex + 1;
+    const rowCount = counters.maximumRowIndex + 1;
     const columns = Array.from({ length: columnCount }, (_, sourceOrdinal) => {
-      const headerCell = rows[0]?.[sourceOrdinal];
-      if (headerCell?.f) fail("IMPORT_SOURCE_FORMULA_REJECTED");
-      const rawHeader = headerCell?.v;
-      if (typeof rawHeader === "string" && Buffer.byteLength(rawHeader, "utf8") > MAX_CELL_TEXT_BYTES) fail("IMPORT_CELL_LIMIT_EXCEEDED");
-      if (rawHeader !== undefined && rawHeader !== null && rawHeader !== "") {
-        nonEmptyCells += 1;
-        if (nonEmptyCells > MAX_NON_EMPTY_CELLS) fail("IMPORT_WORKBOOK_LIMIT_EXCEEDED");
-      }
-      const header = typeof rawHeader === "string" ? rawHeader.trim().slice(0, 255) || null : rawHeader == null ? null : String(rawHeader).slice(0, 255);
-      const state = { text: false, integer: false, decimal: false, boolean: false, date: false };
-      let nonEmptyCount = 0;
-      for (let row = 1; row <= range.e.r; row += 1) {
-        const cell = rows[row]?.[sourceOrdinal];
-        if (cell?.f) fail("IMPORT_SOURCE_FORMULA_REJECTED");
-        if (!cell || cell.v === undefined || cell.v === null || cell.v === "") continue;
-        nonEmptyCells += 1;
-        if (nonEmptyCells > MAX_NON_EMPTY_CELLS) fail("IMPORT_WORKBOOK_LIMIT_EXCEEDED");
-        nonEmptyCount += 1;
-        profile(cell, state);
-      }
-      return { ordinal: sourceOrdinal, header, inferredType: inferred(state), nonEmptyCount, nullable: nonEmptyCount < range.e.r };
+      const nonEmptyCount = counts[sourceOrdinal] ?? 0;
+      return {
+        ordinal: sourceOrdinal, header: headers[sourceOrdinal] ?? null,
+        inferredType: inferred(states[sourceOrdinal] ?? {}), nonEmptyCount, nullable: nonEmptyCount < Math.max(rowCount - 1, 0),
+      };
     });
-    return { ordinal, name: name.slice(0, 255), rowCount: range.e.r + 1, columnCount, columns };
-  });
+    sheets.push({ ordinal, name: book.sheets[ordinal].slice(0, 255), rowCount, columnCount, columns });
+  }
   return { sheets };
 }
 
-function empty(value) {
-  return value === undefined || value === null || value === "";
-}
+const empty = (value) => value === undefined || value === null || value === "";
 
-function coerce(cell, type, nullable) {
-  if (cell?.f) fail("IMPORT_SOURCE_FORMULA_REJECTED");
+function coerce(cell, type, nullable, limits) {
   if (!cell || empty(cell.v)) {
     if (!nullable) fail("IMPORT_REQUIRED_VALUE_MISSING");
     return null;
   }
+  if (cell.t === "e") fail("IMPORT_VALUE_TYPE_INVALID");
   if (type === "TEXT") {
-    const value = String(cell.v);
-    if (Buffer.byteLength(value, "utf8") > MAX_CELL_TEXT_BYTES) fail("IMPORT_CELL_LIMIT_EXCEEDED");
+    const value = cell.v instanceof Date ? cell.v.toISOString() : String(cell.v);
+    if (Buffer.byteLength(value, "utf8") > limits.maximumCellTextBytes) fail("IMPORT_CELL_LIMIT_EXCEEDED");
     return value;
   }
   if (type === "INTEGER") {
@@ -109,10 +107,7 @@ function coerce(cell, type, nullable) {
     return Number(value);
   }
   if (type === "DECIMAL") {
-    if (typeof cell.v === "number") {
-      if (!Number.isFinite(cell.v)) fail("IMPORT_VALUE_TYPE_INVALID");
-      return String(cell.v);
-    }
+    if (typeof cell.v === "number") return String(cell.v);
     const raw = String(cell.v).trim();
     if (!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw)) fail("IMPORT_VALUE_TYPE_INVALID");
     return raw;
@@ -138,42 +133,64 @@ function coerce(cell, type, nullable) {
   fail("IMPORT_VALUE_TYPE_INVALID");
 }
 
-function materialize(path, mappingPath) {
-  const mapping = JSON.parse(fs.readFileSync(mappingPath, "utf8"));
-  const book = XLSX.readFile(path, {
-    dense: true, cellFormula: true, cellHTML: false, cellStyles: false, cellText: false,
-    cellDates: true, bookDeps: false, bookFiles: false, bookVBA: false, nodim: true, WTF: true,
-  });
-  const name = book.SheetNames[mapping.sheetOrdinal];
-  if (!name) fail("IMPORT_MAPPING_INVALID");
-  const sheet = book.Sheets[name];
-  const rows = sheet["!data"] ?? [];
-  const range = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : { e: { r: 0, c: -1 } };
-  if (range.e.r > MAX_MATERIALIZED_ROWS) fail("IMPORT_ROW_LIMIT_EXCEEDED");
-  const output = [];
-  for (let rowIndex = mapping.headerRow; rowIndex <= range.e.r; rowIndex += 1) {
+async function materialize(book, mapping, limits, emit) {
+  if (!book.sheets[mapping.sheetOrdinal]) fail("IMPORT_MAPPING_INVALID");
+  const columns = mapping.columns.filter((column) => column.action !== "IGNORE");
+  let batch = [];
+  let batchBytes = 0;
+  let outputBytes = 0;
+  let rowCount = 0;
+  const flush = async () => {
+    if (!batch.length) return;
+    if (!emit) { batch = []; batchBytes = 0; return; }
+    const line = `${JSON.stringify({ rows: batch })}\n`;
+    outputBytes += Buffer.byteLength(line, "utf8");
+    if (outputBytes > limits.maximumOutputBytes) fail("IMPORT_MATERIALIZER_OUTPUT_LIMIT");
+    batch = []; batchBytes = 0;
+    await write(line);
+  };
+  for await (const row of book.rows(mapping.sheetOrdinal)) {
+    if (row.index < mapping.headerRow) continue;
     const values = {};
     let populated = false;
-    for (const column of mapping.columns) {
-      if (column.action === "IGNORE") continue;
-      const value = coerce(rows[rowIndex]?.[column.sourceOrdinal], column.canonicalType, column.nullable);
+    for (const column of columns) {
+      const value = coerce(row.cells[column.sourceOrdinal], column.canonicalType, column.nullable, limits);
       if (value !== null) populated = true;
       values[column.fieldId] = value;
     }
-    if (populated) output.push(values);
+    if (!populated) continue;
+    batch.push(values);
+    rowCount += 1;
+    batchBytes += 64 + Object.keys(values).length * 24;
+    if (batch.length >= BATCH_ROWS || batchBytes >= BATCH_BYTES) await flush();
   }
-  return { parserVersion: "sheetjs-ce-0.20.3", rows: output };
+  await flush();
+  return rowCount;
+}
+
+async function main() {
+  const [path, mode, mappingPath, limitsPath, spillDirectory] = process.argv.slice(2);
+  if (!path || !limitsPath || !spillDirectory) fail("IMPORT_ANALYZER_INVALID_INPUT");
+  const limits = JSON.parse(fs.readFileSync(limitsPath, "utf8"));
+  const book = await openWorkbook(path, limits, spillDirectory);
+  try {
+    if (mode === "materialize" || mode === "count") {
+      if (!mappingPath || mappingPath === "-") fail("IMPORT_ANALYZER_INVALID_INPUT");
+      const mapping = JSON.parse(fs.readFileSync(mappingPath, "utf8"));
+      const rowCount = await materialize(book, mapping, limits, mode === "materialize");
+      await write(`${JSON.stringify({ ok: true, done: true, parserVersion: PARSER_VERSION, rowCount, maxRssKiB: process.resourceUsage().maxRSS })}\n`);
+    } else {
+      await write(JSON.stringify({ ok: true, workbook: await analyze(book, limits), parserVersion: PARSER_VERSION, maxRssKiB: process.resourceUsage().maxRSS }));
+    }
+  } finally {
+    book.close();
+  }
 }
 
 try {
-  const path = process.argv[2];
-  if (!path) fail("IMPORT_ANALYZER_INVALID_INPUT");
-  if (process.argv[3] === "materialize") {
-    if (!process.argv[4]) fail("IMPORT_ANALYZER_INVALID_INPUT");
-    process.stdout.write(JSON.stringify({ ok: true, ...materialize(path, process.argv[4]) }));
-  } else {
-    process.stdout.write(JSON.stringify({ ok: true, workbook: workbook(path), parserVersion: "sheetjs-ce-0.20.3" }));
-  }
-} catch {
-  fail("IMPORT_WORKBOOK_INVALID");
+  await main();
+} catch (error) {
+  const code = error instanceof ImportError || error instanceof XlsxReadError ? error.code : "IMPORT_WORKBOOK_INVALID";
+  await write(`${JSON.stringify({ ok: false, code })}\n`);
+  process.exitCode = 2;
 }

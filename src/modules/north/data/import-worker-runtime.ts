@@ -4,12 +4,12 @@ import { SecureXlsxArchiveValidator } from "./import-archive-validator.js";
 import { datasetImportMalwareScannerFromEnvironment } from "./import-malware-scanner.js";
 import { datasetImportStorageFromEnvironment } from "./import-storage.js";
 import { NorthDatasetImportAnalysisWorker } from "./import-analysis-worker.js";
-import { SheetJsDatasetImportAnalyzer, type DatasetImportAnalyzer } from "./import-analysis-parser.js";
+import { StreamingDatasetImportAnalyzer, type DatasetImportAnalyzer } from "./import-analysis-parser.js";
 import type { ObjectStorage } from "../../../infrastructure/object-storage.js";
 import type { DatasetImportMalwareScanner } from "./import-malware-scanner.js";
 import type { DatasetImportArchiveValidator } from "./import-archive-validator.js";
 import { NorthDatasetImportMaterializationWorker } from "./import-materialization-worker.js";
-import { SheetJsDatasetImportMaterializer, type DatasetImportMaterializer } from "./import-materialization-parser.js";
+import { StreamingDatasetImportMaterializer, type DatasetImportMaterializer } from "./import-materialization-parser.js";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -148,12 +148,12 @@ export async function createDatasetImportWorkerRuntime(
   });
   const analysis = new NorthDatasetImportAnalysisWorker(
     configuration.workerId,
-    dependencies.analyzer ?? new SheetJsDatasetImportAnalyzer(storage),
+    dependencies.analyzer ?? new StreamingDatasetImportAnalyzer(storage),
     { leaseMilliseconds: configuration.worker.leaseMilliseconds, heartbeatMilliseconds: configuration.worker.heartbeatMilliseconds, retryDelayMilliseconds: configuration.worker.retryDelayMilliseconds },
   );
   const materialization = new NorthDatasetImportMaterializationWorker(
     configuration.workerId,
-    dependencies.materializer ?? new SheetJsDatasetImportMaterializer(storage),
+    dependencies.materializer ?? new StreamingDatasetImportMaterializer(storage),
     { leaseMilliseconds: configuration.worker.leaseMilliseconds, heartbeatMilliseconds: configuration.worker.heartbeatMilliseconds, retryDelayMilliseconds: configuration.worker.retryDelayMilliseconds },
   );
   return {

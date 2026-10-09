@@ -3,13 +3,14 @@ export type Transaction = Prisma.TransactionClient;
 // Serialize membership changes and commercial transitions; retry serialization conflicts.
 export async function transaction<T>(
   work: (tx: Transaction) => Promise<T>,
-  options: { retries?: number } = {},
+  options: { retries?: number; timeoutMilliseconds?: number; isolationLevel?: "Serializable" | "ReadCommitted" } = {},
 ): Promise<T> {
   const retries = options.retries ?? 3;
   for (let attempt = 0; ; attempt++) {
     try {
       return await prisma.$transaction(work, {
-        isolationLevel: "Serializable",
+        isolationLevel: options.isolationLevel ?? "Serializable",
+        ...(options.timeoutMilliseconds ? { timeout: options.timeoutMilliseconds, maxWait: 10_000 } : {}),
       });
     } catch (error) {
       if (

@@ -1,13 +1,9 @@
-import { createWriteStream } from "node:fs";
-import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
-import { pipeline } from "node:stream/promises";
+import { StringDecoder } from "node:string_decoder";
 import type { ObjectStorage } from "../../../infrastructure/object-storage.js";
 import { DomainError } from "../../../shared/errors.js";
 import type { NorthDatasetFieldType } from "../../../lib/database.js";
+import { datasetImportLimits, type DatasetImportLimits } from "./import-limits.js";
+import { createParserSandbox, type ParserSandbox } from "./import-parser-sandbox.js";
 
 export type MaterializationColumn = {
   sourceOrdinal: number;
@@ -17,69 +13,112 @@ export type MaterializationColumn = {
   nullable: boolean;
 };
 
-export type DatasetImportMaterializer = {
-  materialize(input: {
-    storageKey: string;
-    storageVersionId: string;
-    sheetOrdinal: number;
-    headerRow: number;
-    columns: MaterializationColumn[];
-    signal: AbortSignal;
-  }): Promise<{ parserVersion: string; rows: Array<Record<string, string | number | boolean | null>> }>;
+export type MaterializedRow = Record<string, string | number | boolean | null>;
+
+/**
+ * Two phases over the same pinned object version:
+ *  1. a validating pass that coerces every row and discards the output, so a bad workbook fails before anything is
+ *     written and the exact row count is known;
+ *  2. a streaming pass that delivers bounded batches, in source order, to `rows`. The next batch is not read until the
+ *     previous `rows` promise settles (the child blocks on a full pipe); a rejection stops the child.
+ * `begin` runs between the phases with the row count and parser version.
+ */
+export type DatasetImportMaterializationSink = {
+  begin(summary: { parserVersion: string; rowCount: number }): Promise<void>;
+  rows(batch: MaterializedRow[]): Promise<void>;
 };
 
-export class SheetJsDatasetImportMaterializer implements DatasetImportMaterializer {
-  constructor(private readonly storage: ObjectStorage, private readonly timeoutMilliseconds = 60_000, private readonly maxOldSpaceMiB = 384) {}
+export type DatasetImportMaterializer = {
+  materialize(
+    input: {
+      storageKey: string;
+      storageVersionId: string;
+      sheetOrdinal: number;
+      headerRow: number;
+      columns: MaterializationColumn[];
+      signal: AbortSignal;
+    },
+    sink: DatasetImportMaterializationSink,
+  ): Promise<{ parserVersion: string; rowCount: number; maxRssKiB?: number }>;
+};
 
-  async materialize(input: Parameters<DatasetImportMaterializer["materialize"]>[0]) {
-    const [major, minor] = process.versions.node.split(".").map(Number);
-    if (!(major! > 22 || (major === 22 && minor! >= 13)) || !process.allowedNodeEnvironmentFlags.has("--permission"))
-      throw new DomainError(503, "IMPORT_MATERIALIZER_SANDBOX_UNAVAILABLE", "Workbook materializer sandbox requires Node 22.13 or newer");
-    const directory = await mkdtemp(join(tmpdir(), "corecrow-xlsx-materialization-"));
-    await chmod(directory, 0o700);
-    const file = join(directory, "approved.xlsx");
-    const mappingFile = join(directory, "mapping.json");
-    try {
-      await pipeline(await this.storage.openPrivateRead(input.storageKey, input.storageVersionId), createWriteStream(file, { mode: 0o600 }), { signal: input.signal });
-      await writeFile(mappingFile, JSON.stringify({ sheetOrdinal: input.sheetOrdinal, headerRow: input.headerRow, columns: input.columns }), { mode: 0o600 });
-      const child = fileURLToPath(new URL("./import-analysis-child.mjs", import.meta.url));
-      const fsRead = [file, mappingFile, directory, dirname(child), await realpath(join(process.cwd(), "node_modules"))];
-      const permissionArgs = fsRead.flatMap((path) => [`--allow-fs-read=${path}`]);
-      return await new Promise<{ parserVersion: string; rows: Array<Record<string, string | number | boolean | null>> }>((resolve, reject) => {
-        const childProcess = spawn(process.execPath, ["--permission", ...permissionArgs, `--max-old-space-size=${this.maxOldSpaceMiB}`, child, file, "materialize", mappingFile], {
-          cwd: directory, env: {}, stdio: ["ignore", "pipe", "ignore"],
-        });
-        const output: Buffer[] = [];
-        let outputBytes = 0;
-        let outputExceeded = false;
-        const timeout = setTimeout(() => childProcess.kill("SIGKILL"), this.timeoutMilliseconds);
-        const abort = () => childProcess.kill("SIGKILL");
-        input.signal.addEventListener("abort", abort, { once: true });
-        childProcess.stdout.on("data", (chunk: Buffer) => {
-          outputBytes += chunk.byteLength;
-          if (outputBytes > 64 * 1024 * 1024) { outputExceeded = true; childProcess.kill("SIGKILL"); return; }
-          output.push(chunk);
-        });
-        childProcess.once("error", reject);
-        childProcess.once("close", (code: number | null) => {
-          clearTimeout(timeout);
-          input.signal.removeEventListener("abort", abort);
-          if (input.signal.aborted) return reject(input.signal.reason ?? new Error("materialization aborted"));
-          if (outputExceeded) return reject(new DomainError(422, "IMPORT_MATERIALIZER_OUTPUT_LIMIT", "Workbook materialization exceeded its output limit"));
-          try {
-            const parsed = JSON.parse(Buffer.concat(output).toString("utf8")) as { ok: boolean; code?: string; parserVersion?: string; rows?: Array<Record<string, string | number | boolean | null>> };
-            if (code === 0 && parsed.ok && parsed.parserVersion && Array.isArray(parsed.rows)) resolve({ parserVersion: parsed.parserVersion, rows: parsed.rows });
-            else reject(new DomainError(422, parsed.code ?? "IMPORT_MATERIALIZATION_FAILED", "Workbook materialization failed"));
-          } catch { reject(new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable")); }
-        });
-      });
-    } catch (error) {
-      if (error instanceof DomainError) throw error;
-      if (input.signal.aborted) throw error;
+type Summary = { parserVersion: string; rowCount: number; maxRssKiB?: number };
+const MAXIMUM_LINE_BYTES = 16 * 1024 * 1024;
+
+export class StreamingDatasetImportMaterializer implements DatasetImportMaterializer {
+  constructor(private readonly storage: ObjectStorage, private readonly limits: DatasetImportLimits = datasetImportLimits()) {}
+
+  async materialize(input: Parameters<DatasetImportMaterializer["materialize"]>[0], sink: DatasetImportMaterializationSink) {
+    const sandbox = await createParserSandbox(this.storage, input, this.limits, "materialization", "IMPORT_MATERIALIZER_SANDBOX_UNAVAILABLE").catch((error: unknown) => {
+      if (error instanceof DomainError || input.signal.aborted) throw error;
       throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
+    });
+    try {
+      const mappingPath = await sandbox.writeMapping({ sheetOrdinal: input.sheetOrdinal, headerRow: input.headerRow, columns: input.columns });
+      const counted = await this.run(sandbox, "count", mappingPath, input.signal, async () => {});
+      await sink.begin({ parserVersion: counted.parserVersion, rowCount: counted.rowCount });
+      const streamed = await this.run(sandbox, "materialize", mappingPath, input.signal, (rows) => sink.rows(rows));
+      if (streamed.rowCount !== counted.rowCount) throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
+      return streamed;
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await sandbox.cleanup();
     }
   }
-}
 
+  private async run(sandbox: ParserSandbox, mode: "count" | "materialize", mappingPath: string, signal: AbortSignal, onRows: (rows: MaterializedRow[]) => Promise<void>): Promise<Summary> {
+    const child = sandbox.start(mode, mappingPath);
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, this.limits.materializationTimeoutMilliseconds);
+    const abort = () => child.kill("SIGKILL");
+    signal.addEventListener("abort", abort, { once: true });
+    const closed = new Promise<number | null>((resolve) => { child.once("close", resolve); child.once("error", () => resolve(null)); });
+    let failureCode: string | undefined;
+    let summary: Summary | undefined;
+    let received = 0;
+    let rowCount = 0;
+    const outputCeiling = this.limits.maximumOutputBytes + MAXIMUM_LINE_BYTES;
+    try {
+      const decoder = new StringDecoder("utf8");
+      let carry = "";
+      const handle = async (line: string) => {
+        if (!line) return;
+        const message = JSON.parse(line) as { ok?: boolean; code?: string; done?: boolean; rows?: MaterializedRow[]; parserVersion?: string; rowCount?: number; maxRssKiB?: number };
+        if (message.ok === false) failureCode = message.code ?? "IMPORT_MATERIALIZATION_FAILED";
+        else if (message.done && message.parserVersion && typeof message.rowCount === "number") summary = { parserVersion: message.parserVersion, rowCount: message.rowCount, maxRssKiB: message.maxRssKiB };
+        else if (Array.isArray(message.rows)) {
+          rowCount += message.rows.length;
+          if (rowCount > this.limits.maximumRows) throw new DomainError(422, "IMPORT_ROW_LIMIT_EXCEEDED", "Workbook exceeds the allowed row count");
+          await onRows(message.rows);
+        }
+      };
+      for await (const chunk of child.stdout) {
+        received += (chunk as Buffer).byteLength;
+        if (received > outputCeiling) throw new DomainError(422, "IMPORT_MATERIALIZER_OUTPUT_LIMIT", "Workbook materialization exceeded its output limit");
+        carry += decoder.write(chunk as Buffer);
+        for (let newline = carry.indexOf("\n"); newline >= 0; newline = carry.indexOf("\n")) {
+          const line = carry.slice(0, newline);
+          carry = carry.slice(newline + 1);
+          await handle(line);
+        }
+        if (carry.length > MAXIMUM_LINE_BYTES) throw new DomainError(422, "IMPORT_MATERIALIZER_OUTPUT_LIMIT", "Workbook materialization exceeded its output limit");
+      }
+      await handle(carry + decoder.end());
+    } catch (error) {
+      child.kill("SIGKILL");
+      await closed;
+      if (signal.aborted) throw signal.reason ?? new Error("materialization aborted");
+      if (error instanceof SyntaxError) throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
+    }
+    const code = await closed;
+    if (signal.aborted) throw signal.reason ?? new Error("materialization aborted");
+    if (timedOut) throw new DomainError(422, "IMPORT_PARSE_TIMEOUT", "Workbook materialization exceeded its time limit");
+    if (failureCode) throw new DomainError(422, failureCode, "Workbook materialization failed");
+    const done = summary as Summary | undefined;
+    if (code !== 0 || !done || (mode === "materialize" && done.rowCount !== rowCount)) throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
+    return done;
+  }
+}
