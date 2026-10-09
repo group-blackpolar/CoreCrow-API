@@ -57,6 +57,11 @@ driver() { # driver <mode>
 status=0
 echo "=== phase 1: clean flow, authorization, hostile inputs, cancellation"
 driver clean || status=1
+psql() { docker exec corecrow-smoke-pg psql -U postgres -d corecrow_smoke_test -Atc "$1"; }
+echo "--- evidence (database of the isolated stack)"
+echo "imports by status: $(psql "select status||'='||count(*) from \"NorthDatasetImportJob\" group by status order by 1" | tr '\n' ' ')"
+echo "confirmed imports without a pinned storage version (must be 0 unless terminal): $(psql "select count(*) from \"NorthDatasetImportJob\" where \"confirmedAt\" is not null and \"storageVersionId\" is null and status not in ('SUCCEEDED','CANCELLED','REJECTED','FAILED','SECURITY_BLOCKED')")"
+echo "audit events recorded: $(psql "select count(*) from \"AuditLog\" where action ilike '%import%' or action ilike '%dataset%'")"
 echo "=== phase 2: worker stopped while an import is queued, then restarted"
 docker stop corecrow-smoke-worker >/dev/null
 driver enqueue || status=1
@@ -68,5 +73,12 @@ driver blocked || status=1
 docker start corecrow-clamav >/dev/null
 for _ in $(seq 1 60); do [[ "$(docker inspect -f '{{.State.Health.Status}}' corecrow-clamav)" == healthy ]] && break; sleep 5; done
 echo "clamav after restart: $(docker inspect -f '{{.State.Health.Status}}' corecrow-clamav)"
+echo "--- secrets must not appear in service logs"
+for key in AWS_SECRET_ACCESS_KEY BETTER_AUTH_SECRET; do
+  value="$(grep "^$key=" "$dir/smoke.env" | cut -d= -f2-)"
+  hits=$(( $(docker logs corecrow-smoke-api 2>&1 | grep -cF -- "$value") + $(docker logs corecrow-smoke-worker 2>&1 | grep -cF -- "$value") ))
+  echo "$key occurrences in API/worker logs: $hits"
+  [[ "$hits" == 0 ]] || status=1
+done
 echo "=== smoke exit status: $status"
 exit "$status"

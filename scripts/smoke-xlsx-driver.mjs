@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { SMTPServer } from "smtp-server";
 import * as XLSX from "xlsx";
+import { ZipFile } from "yazl";
 
 const API = process.env.SMOKE_API ?? "http://corecrow-smoke-api:4000";
 const ORIGIN = process.env.SMOKE_ORIGIN ?? "http://smoke.test";
@@ -70,8 +71,16 @@ async function prepare(who, orgId, datasetId, bytes, { filename = "smoke.xlsx", 
   const { upload } = prepared.json;
   const put = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: bytes });
   if (!put.ok) throw new Error(`upload to object storage -> ${put.status}`);
+  lastUpload = upload;
   return prepared.json.import.id;
 }
+let lastUpload = null;
+const zipOf = (entries) => new Promise((resolve) => {
+  const zip = new ZipFile(); const chunks = [];
+  for (const [name, data] of entries) zip.addBuffer(data, name);
+  zip.outputStream.on("data", (c) => chunks.push(c)).on("end", () => resolve(Buffer.concat(chunks)));
+  zip.end();
+});
 const confirmImport = (who, orgId, datasetId, importId) => http("POST", `/v1/organizations/${orgId}/datasets/${datasetId}/imports/${importId}/confirm`, { cookie: who.cookie });
 const readImport = async (who, orgId, datasetId, importId) => (await http("GET", `/v1/organizations/${orgId}/datasets/${datasetId}/imports/${importId}`, { cookie: who.cookie })).json;
 
@@ -125,11 +134,14 @@ async function modeClean() {
   record("upload to private versioned storage via signed URL", true, `sha256 ${w.expected.sha256.slice(0, 12)}…`);
   const confirmed = await confirmImport(w.owner, w.orgId, w.datasetId, importId);
   record("confirm queues fail-closed security checks (202)", confirmed.status === 202, String(confirmed.status));
+  // The signed upload is bound to the declared checksum: replaying it with different bytes must not be accepted.
+  const replay = await fetch(lastUpload.url, { method: lastUpload.method, headers: lastUpload.headers, body: Buffer.concat([w.fixture, Buffer.from("tampered")]) });
+  record("replaying the signed upload with different bytes is refused by object storage", !replay.ok, `HTTP ${replay.status}`);
   const analyzed = await waitFor(w.owner, w.orgId, w.datasetId, importId, (c) => c.status === "AWAITING_MAPPING" || terminal.has(c.status), { label: "analysis" });
   record("pipeline reaches AWAITING_MAPPING (ClamAV approved, OOXML valid, analysed)", analyzed.current.status === "AWAITING_MAPPING" && analyzed.current.scanStatus === "APPROVED", analyzed.seen.join(" > "));
   const analysis = await http("GET", `/v1/organizations/${w.orgId}/datasets/${w.datasetId}/imports/${importId}/analysis`, { cookie: w.owner.cookie });
   const sheet = analysis.json.workbook.sheets[0];
-  record("analysis matches the fixture (sheet, rows, columns)", sheet.name === w.expected.sheet && sheet.rowCount === w.expected.rowCount && sheet.columns.map((c) => c.header).join() === w.expected.columns.join(), `${sheet.rowCount} rows`);
+  record("analysis matches the fixture (sheet, rows, columns)", sheet.name === w.expected.sheet && sheet.rowCount === w.expected.rowCount + 1 /* header row */ && sheet.columns.map((c) => c.header).join() === w.expected.columns.join(), `${sheet.rowCount} rows incl. header`);
   const done = await mapAndActivate(w, importId, createColumns(sheet.columns));
   record("mapping + activation materialize an immutable revision", done.current.status === "SUCCEEDED", done.seen.join(" > "));
 
@@ -170,6 +182,15 @@ async function modeClean() {
   await hostile("plain text declared as XLSX", Buffer.from("this is not a workbook\n".repeat(50)), { filename: "fake.xlsx" });
   const eicar = Buffer.from("X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*", "ascii");
   await hostile("EICAR test string declared as XLSX", eicar, { filename: "eicar.xlsx" });
+  // A ZIP that passes the magic-byte gate but carries the EICAR test file: ClamAV must quarantine it before any parsing.
+  const infectedZip = await zipOf([["[Content_Types].xml", Buffer.from("<Types/>")], ["eicar.com", eicar]]);
+  {
+    const dataset = await http("POST", `/v1/organizations/${w.orgId}/datasets`, { cookie: w.owner.cookie, body: { name: { es: "zip eicar", en: "zip eicar" }, slug: `z-${prefix}` } });
+    const zipImport = await prepare(w.owner, w.orgId, dataset.json.id, infectedZip, { filename: "infected.xlsx" });
+    await confirmImport(w.owner, w.orgId, dataset.json.id, zipImport);
+    const result = await waitFor(w.owner, w.orgId, dataset.json.id, zipImport, (c) => terminal.has(c.status) || c.status === "AWAITING_MAPPING", { timeoutMs: 120_000, label: "infected zip" });
+    record("EICAR inside a valid-looking ZIP is quarantined by ClamAV before parsing", result.current.scanStatus === "QUARANTINED" && result.current.status === "SECURITY_BLOCKED", result.seen.join(" > "));
+  }
 
   // Cancellation: confirm then cancel immediately.
   const cancelDataset = await http("POST", `/v1/organizations/${w.orgId}/datasets`, { cookie: w.owner.cookie, body: { name: { es: "cancelacion", en: "cancel" }, slug: `c-${prefix}` } });
