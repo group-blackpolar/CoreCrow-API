@@ -51,8 +51,12 @@ objects; an object-store backup alone cannot restore import state.
 1. On the replacement VPS, copy
    [`../deploy/dataset-services.env.example`](../deploy/dataset-services.env.example)
    to `/etc/blackpolar/corecrow-dataset.env`, generate distinct high-entropy
-   values for all four MinIO credentials, set persistent paths, and set reviewed
-   image digests for `MINIO_IMAGE`, `MC_IMAGE`, and `CLAMAV_IMAGE`.
+   values for all four MinIO credentials (alphanumeric, unquoted: `docker run --env-file`
+   keeps quotes literally), set persistent paths, and set reviewed immutable images.
+   MinIO no longer publishes images, so build `MINIO_IMAGE` and `MC_IMAGE` from the
+   pinned official source with `bash scripts/build-minio-images.sh` (it prints the
+   `sha256:<id>` values; see [ADR-023](decisions/023-object-storage-sourcing-and-backups.md)).
+   `CLAMAV_IMAGE` is the official `clamav/clamav` image pinned by digest.
 2. Set ownership to `root:root` and permissions to `0600`. Never put this file
    in a repository, release directory, GitHub secret value, or client bundle.
 3. From an immutable release directory, run:
@@ -65,6 +69,14 @@ objects; an object-store backup alone cannot restore import state.
    bucket, enables bucket versioning, creates the application identity and
    attaches the narrow bucket policy. It does not read or print the API runtime
    secrets and does not enable the worker.
+
+## Backups
+
+`scripts/backup-vps.sh` runs daily from `deploy/systemd/corecrow-backup.timer` (install the script as
+`/usr/local/sbin/corecrow-backup` and the two units under `/etc/systemd/system`). It writes a verified PostgreSQL custom-format
+dump with a SHA-256 manifest and mirrors both buckets under `/var/backups/blackpolar/scheduled`. These are on-host copies:
+configure an off-host destination (pull or push to a separate provider) before relying on them for disaster recovery. Restore
+check: `pg_restore` the newest dump into a scratch database and compare counts.
 
 If a service must be recreated, retain the MinIO data and ClamAV database paths.
 Recreating the MinIO data path loses immutable source files and prevents import
