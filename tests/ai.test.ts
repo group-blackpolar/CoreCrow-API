@@ -50,10 +50,14 @@ test("Gemini provider enforces its timeout", async () => {
     generateContentStream: async () => { throw new Error("unused"); },
   } as never;
   const provider = new GeminiProvider("test", 5, "https://example.invalid", models);
-  await assert.rejects(
-    provider.generate({ model: "test", systemInstruction: "test", messages: [{ role: "user", content: "hi" }], tools: [] }),
-    (error: unknown) => error instanceof DomainError && error.code === "AI_PROVIDER_TIMEOUT",
-  );
+  // AbortSignal.timeout() timers are unref'd; without a ref'd handle the runner can see an empty event loop first (flaky cancellation).
+  const keepAlive = setTimeout(() => undefined, 5_000);
+  try {
+    await assert.rejects(
+      provider.generate({ model: "test", maxOutputTokens: 16, systemInstruction: "test", messages: [{ role: "user", content: "hi" }], tools: [] }),
+      (error: unknown) => error instanceof DomainError && error.code === "AI_PROVIDER_TIMEOUT",
+    );
+  } finally { clearTimeout(keepAlive); }
 });
 
 test("AI tenant authorization rejects platform actors and grants without membership", async () => {
