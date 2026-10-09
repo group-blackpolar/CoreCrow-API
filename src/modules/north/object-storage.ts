@@ -14,6 +14,7 @@ export function objectStorageFromEnvironment(): ObjectStorage {
     bucket,
     region,
     endpoint: process.env.NORTH_ASSET_S3_ENDPOINT,
+    publicEndpoint: process.env.NORTH_ASSET_S3_PUBLIC_ENDPOINT?.trim() || undefined,
     forcePathStyle: process.env.NORTH_ASSET_S3_FORCE_PATH_STYLE === "true",
     // Deleted or rejected assets and avatars must not keep their bytes as hidden noncurrent versions.
     purgeVersions: true,

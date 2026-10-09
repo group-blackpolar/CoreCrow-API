@@ -12,6 +12,7 @@ export function datasetImportStorageFromEnvironment(): ObjectStorage {
     bucket,
     region,
     endpoint: process.env.NORTH_DATA_IMPORT_S3_ENDPOINT,
+    publicEndpoint: process.env.NORTH_DATA_IMPORT_S3_PUBLIC_ENDPOINT?.trim() || undefined,
     forcePathStyle: process.env.NORTH_DATA_IMPORT_S3_FORCE_PATH_STYLE === "true",
   });
 }

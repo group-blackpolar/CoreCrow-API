@@ -40,6 +40,12 @@ export type S3ObjectStorageConfiguration = {
   bucket: string;
   region: string;
   endpoint?: string;
+  /**
+   * Host browsers use for presigned URLs (for example `https://api.blackpolar.org`, proxied by nginx to the private store).
+   * Presigning is a local computation, so it needs no network path from the API to this address; every server-side call
+   * (inspect, scan, delete) keeps using the private `endpoint`.
+   */
+  publicEndpoint?: string;
   forcePathStyle?: boolean;
   /**
    * `delete` permanently removes every version and delete marker of the key (needs s3:ListBucketVersions and
@@ -53,7 +59,12 @@ const hexToBase64 = (hex: string) => Buffer.from(hex, "hex").toString("base64");
 const base64ToHex = (base64: string) => Buffer.from(base64, "base64").toString("hex");
 
 export class S3ObjectStorage implements ObjectStorage {
-  constructor(private readonly client: S3Client, private readonly bucket: string, private readonly purgeVersions = false) {}
+  constructor(
+    private readonly client: S3Client,
+    private readonly bucket: string,
+    private readonly purgeVersions = false,
+    private readonly signer: S3Client = client,
+  ) {}
 
   async signedPut(input: { key: string; mime: string; size: number; checksum: string; ttlSeconds: number }) {
     const checksum = hexToBase64(input.checksum);
@@ -65,7 +76,7 @@ export class S3ObjectStorage implements ObjectStorage {
       ChecksumSHA256: checksum,
     });
     return {
-      url: await getSignedUrl(this.client, command, { expiresIn: input.ttlSeconds }),
+      url: await getSignedUrl(this.signer, command, { expiresIn: input.ttlSeconds }),
       method: "PUT" as const,
       headers: {
         "content-type": input.mime,
@@ -86,7 +97,7 @@ export class S3ObjectStorage implements ObjectStorage {
       ResponseContentDisposition: `attachment; filename="${safeFilename}"`,
     });
     return {
-      url: await getSignedUrl(this.client, command, { expiresIn: input.ttlSeconds }),
+      url: await getSignedUrl(this.signer, command, { expiresIn: input.ttlSeconds }),
       method: "GET" as const,
       headers: {},
       expiresAt: expiresAt(input.ttlSeconds),
@@ -186,11 +197,14 @@ export class UnavailableObjectStorage implements ObjectStorage {
 }
 
 export function createS3ObjectStorage(configuration: S3ObjectStorageConfiguration): ObjectStorage {
-  return new S3ObjectStorage(new S3Client({
+  const client = (endpoint?: string) => new S3Client({
     region: configuration.region,
-    ...(configuration.endpoint ? { endpoint: configuration.endpoint } : {}),
+    ...(endpoint ? { endpoint } : {}),
     forcePathStyle: configuration.forcePathStyle === true,
-  }), configuration.bucket, configuration.purgeVersions === true);
+  });
+  const internal = client(configuration.endpoint);
+  const signer = configuration.publicEndpoint ? client(configuration.publicEndpoint) : internal;
+  return new S3ObjectStorage(internal, configuration.bucket, configuration.purgeVersions === true, signer);
 }
 
 export class FakeObjectStorage implements ObjectStorage {

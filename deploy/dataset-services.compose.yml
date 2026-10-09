@@ -15,7 +15,9 @@ services:
     networks:
       corecrow:
         aliases: [corecrow-minio]
-    # No host port: only CoreCrow's private Docker network can reach MinIO.
+    # Loopback only: nginx proxies presigned object URLs (deploy/nginx). 9000/9001 are never published on a public interface.
+    ports:
+      - "127.0.0.1:9000:9000"
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null"]
       interval: 15s

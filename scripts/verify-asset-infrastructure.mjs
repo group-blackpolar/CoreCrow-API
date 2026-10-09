@@ -62,13 +62,35 @@ try {
     if (replaced.putVersionId === cleanObject.putVersionId) throw new Error("overwrite did not create a new version");
     const signed = await storage.signedGet({ key: cleanObject.key, versionId: cleanObject.putVersionId, filename: "probe.txt", mime: "text/plain", ttlSeconds: 60 });
     if (new URL(signed.url).searchParams.get("versionId") !== cleanObject.putVersionId) throw new Error("signed URL is not version-pinned");
-    const body = Buffer.from(await (await fetch(signed.url)).arrayBuffer());
+    const response = await fetch(signed.url);
+    if (!response.ok) throw new Error(`pinned signed URL answered HTTP ${response.status}`);
+    const body = Buffer.from(await response.arrayBuffer());
     if (sha256(body) !== cleanObject.checksum) throw new Error("pinned signed URL did not serve the scanned bytes");
     const verdict = await malwareScannerFromEnvironment(storage, { maximumBytes: clean.byteLength }).scan({
       storageKey: cleanObject.key, storageVersionId: cleanObject.putVersionId, mime: "text/plain", size: clean.byteLength, checksum: cleanObject.checksum,
     });
     if (verdict !== "APPROVED") throw new Error(`pinned version was ${verdict} after the overwrite`);
   });
+  if (process.env.NORTH_ASSET_S3_PUBLIC_ENDPOINT?.trim()) {
+    // What a browser does: the public, presigned path must work, and nothing unsigned or off-prefix may be served.
+    await step("public endpoint: unsigned, off-prefix and wrong-method requests are refused before reaching storage", async () => {
+      const publicBase = process.env.NORTH_ASSET_S3_PUBLIC_ENDPOINT.trim().replace(new RegExp("/+$"), "");
+      const unsigned = await fetch(`${publicBase}/${bucket}/${cleanObject.key}`);
+      if (unsigned.status !== 403) throw new Error(`unsigned read answered HTTP ${unsigned.status}`);
+      const offPrefix = await fetch(`${publicBase}/${bucket}/secrets/x?X-Amz-Signature=00`);
+      if (offPrefix.status === 200) throw new Error("off-prefix path was served");
+      const wrongMethod = await fetch(`${publicBase}/${bucket}/${cleanObject.key}?X-Amz-Signature=00`, { method: "DELETE" });
+      if (wrongMethod.status !== 405) throw new Error(`DELETE answered HTTP ${wrongMethod.status}`);
+    });
+    await step("public endpoint: CORS preflight allows NORTH only", async () => {
+      const publicBase = process.env.NORTH_ASSET_S3_PUBLIC_ENDPOINT.trim().replace(new RegExp("/+$"), "");
+      const url = `${publicBase}/${bucket}/${cleanObject.key}?X-Amz-Signature=00`;
+      const allowed = await fetch(url, { method: "OPTIONS", headers: { origin: "https://north.blackpolar.org", "access-control-request-method": "PUT" } });
+      if (allowed.status !== 204 || allowed.headers.get("access-control-allow-origin") !== "https://north.blackpolar.org") throw new Error(`NORTH preflight answered HTTP ${allowed.status}`);
+      const denied = await fetch(url, { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "PUT" } });
+      if (denied.headers.get("access-control-allow-origin")) throw new Error("a foreign origin was allowed by CORS");
+    });
+  }
   await step("ClamAV INSTREAM approves the clean object (pinned version)", async () => {
     const verdict = await malwareScannerFromEnvironment(storage, { maximumBytes: clean.byteLength }).scan({
       storageKey: cleanObject.key, storageVersionId: cleanObject.putVersionId, mime: "text/plain", size: clean.byteLength, checksum: cleanObject.checksum,
