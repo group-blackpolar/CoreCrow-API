@@ -1,0 +1,10 @@
+[Unit]
+Description=CoreCrow on-host backups (PostgreSQL dump and MinIO mirror)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/corecrow-backup
+Nice=10
+IOSchedulingClass=idle
