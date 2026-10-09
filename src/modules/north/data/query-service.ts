@@ -49,12 +49,17 @@ function filterValue(field: Field, value: Exclude<Scalar, null>): Prisma.Sql {
 
 function filterSql(filter: Filter, field: Field) {
   const expression = typed(field);
+  if (filter.operator === "IN") {
+    if (!Array.isArray(filter.value)) fail(422, "DATASET_QUERY_FILTER_INVALID", "IN requires a list value");
+    return Prisma.sql`${expression} IN (${Prisma.join(filter.value.map((item) => filterValue(field, item)))})`;
+  }
+  if (Array.isArray(filter.value)) fail(422, "DATASET_QUERY_FILTER_INVALID", "Only IN accepts a list value");
   if (filter.operator === "CONTAINS") {
     if (field.canonicalType !== "TEXT" || typeof filter.value !== "string") fail(422, "DATASET_QUERY_FILTER_INVALID", "CONTAINS requires a text field and value");
     return Prisma.sql`${expression} ILIKE ${`%${filter.value.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`} ESCAPE '\\'`;
   }
   if (filter.value === null) return filter.operator === "EQ" ? Prisma.sql`${expression} IS NULL` : filter.operator === "NE" ? Prisma.sql`${expression} IS NOT NULL` : fail(422, "DATASET_QUERY_FILTER_INVALID", "Null supports only EQ or NE");
-  const operator = ({ EQ: "=", NE: "<>", GT: ">", GTE: ">=", LT: "<", LTE: "<=" } as const)[filter.operator];
+  const operator = ({ EQ: "=", NE: "<>", GT: ">", GTE: ">=", LT: "<", LTE: "<=" } as const)[filter.operator as "EQ"];
   return Prisma.sql`${expression} ${Prisma.raw(operator)} ${filterValue(field, filter.value)}`;
 }
 

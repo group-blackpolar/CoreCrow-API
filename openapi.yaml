@@ -9190,13 +9190,24 @@ paths:
                               - LT
                               - LTE
                               - CONTAINS
+                              - IN
                           value:
                             anyOf:
-                              - type: string
-                                maxLength: 4096
-                                nullable: true
-                              - type: number
-                              - type: boolean
+                              - anyOf:
+                                  - type: string
+                                    maxLength: 4096
+                                    nullable: true
+                                  - type: number
+                                  - type: boolean
+                              - type: array
+                                items:
+                                  anyOf:
+                                    - type: string
+                                      maxLength: 4096
+                                    - type: number
+                                    - type: boolean
+                                minItems: 1
+                                maxItems: 100
                         required:
                           - fieldId
                           - operator
@@ -9293,13 +9304,24 @@ paths:
                               - LT
                               - LTE
                               - CONTAINS
+                              - IN
                           value:
                             anyOf:
-                              - type: string
-                                maxLength: 4096
-                                nullable: true
-                              - type: number
-                              - type: boolean
+                              - anyOf:
+                                  - type: string
+                                    maxLength: 4096
+                                    nullable: true
+                                  - type: number
+                                  - type: boolean
+                              - type: array
+                                items:
+                                  anyOf:
+                                    - type: string
+                                      maxLength: 4096
+                                    - type: number
+                                    - type: boolean
+                                minItems: 1
+                                maxItems: 100
                         required:
                           - fieldId
                           - operator
@@ -9576,13 +9598,24 @@ paths:
                                       - LT
                                       - LTE
                                       - CONTAINS
+                                      - IN
                                   value:
                                     anyOf:
-                                      - type: string
-                                        maxLength: 4096
-                                        nullable: true
-                                      - type: number
-                                      - type: boolean
+                                      - anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                            nullable: true
+                                          - type: number
+                                          - type: boolean
+                                      - type: array
+                                        items:
+                                          anyOf:
+                                            - type: string
+                                              maxLength: 4096
+                                            - type: number
+                                            - type: boolean
+                                        minItems: 1
+                                        maxItems: 100
                                 required:
                                   - fieldId
                                   - operator
@@ -9679,13 +9712,24 @@ paths:
                                       - LT
                                       - LTE
                                       - CONTAINS
+                                      - IN
                                   value:
                                     anyOf:
-                                      - type: string
-                                        maxLength: 4096
-                                        nullable: true
-                                      - type: number
-                                      - type: boolean
+                                      - anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                            nullable: true
+                                          - type: number
+                                          - type: boolean
+                                      - type: array
+                                        items:
+                                          anyOf:
+                                            - type: string
+                                              maxLength: 4096
+                                            - type: number
+                                            - type: boolean
+                                        minItems: 1
+                                        maxItems: 100
                                 required:
                                   - fieldId
                                   - operator
@@ -9740,8 +9784,9 @@ paths:
                                 - LT
                                 - LTE
                                 - CONTAINS
+                                - IN
                             minItems: 1
-                            maxItems: 7
+                            maxItems: 8
                         required:
                           - fieldId
                           - operators
@@ -9882,13 +9927,24 @@ paths:
                                   - LT
                                   - LTE
                                   - CONTAINS
+                                  - IN
                               value:
                                 anyOf:
-                                  - type: string
-                                    maxLength: 4096
-                                    nullable: true
-                                  - type: number
-                                  - type: boolean
+                                  - anyOf:
+                                      - type: string
+                                        maxLength: 4096
+                                        nullable: true
+                                      - type: number
+                                      - type: boolean
+                                  - type: array
+                                    items:
+                                      anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                        - type: number
+                                        - type: boolean
+                                    minItems: 1
+                                    maxItems: 100
                             required:
                               - fieldId
                               - operator
@@ -9985,13 +10041,24 @@ paths:
                                   - LT
                                   - LTE
                                   - CONTAINS
+                                  - IN
                               value:
                                 anyOf:
-                                  - type: string
-                                    maxLength: 4096
-                                    nullable: true
-                                  - type: number
-                                  - type: boolean
+                                  - anyOf:
+                                      - type: string
+                                        maxLength: 4096
+                                        nullable: true
+                                      - type: number
+                                      - type: boolean
+                                  - type: array
+                                    items:
+                                      anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                        - type: number
+                                        - type: boolean
+                                    minItems: 1
+                                    maxItems: 100
                             required:
                               - fieldId
                               - operator
@@ -10046,8 +10113,9 @@ paths:
                             - LT
                             - LTE
                             - CONTAINS
+                            - IN
                         minItems: 1
-                        maxItems: 7
+                        maxItems: 8
                     required:
                       - fieldId
                       - operators
@@ -10138,13 +10206,24 @@ paths:
                                     - LT
                                     - LTE
                                     - CONTAINS
+                                    - IN
                                 value:
                                   anyOf:
-                                    - type: string
-                                      maxLength: 4096
-                                      nullable: true
-                                    - type: number
-                                    - type: boolean
+                                    - anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                          nullable: true
+                                        - type: number
+                                        - type: boolean
+                                    - type: array
+                                      items:
+                                        anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                          - type: number
+                                          - type: boolean
+                                      minItems: 1
+                                      maxItems: 100
                               required:
                                 - fieldId
                                 - operator
@@ -10241,13 +10320,24 @@ paths:
                                     - LT
                                     - LTE
                                     - CONTAINS
+                                    - IN
                                 value:
                                   anyOf:
-                                    - type: string
-                                      maxLength: 4096
-                                      nullable: true
-                                    - type: number
-                                    - type: boolean
+                                    - anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                          nullable: true
+                                        - type: number
+                                        - type: boolean
+                                    - type: array
+                                      items:
+                                        anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                          - type: number
+                                          - type: boolean
+                                      minItems: 1
+                                      maxItems: 100
                               required:
                                 - fieldId
                                 - operator
@@ -10302,8 +10392,9 @@ paths:
                               - LT
                               - LTE
                               - CONTAINS
+                              - IN
                           minItems: 1
-                          maxItems: 7
+                          maxItems: 8
                       required:
                         - fieldId
                         - operators
@@ -10445,13 +10536,24 @@ paths:
                                   - LT
                                   - LTE
                                   - CONTAINS
+                                  - IN
                               value:
                                 anyOf:
-                                  - type: string
-                                    maxLength: 4096
-                                    nullable: true
-                                  - type: number
-                                  - type: boolean
+                                  - anyOf:
+                                      - type: string
+                                        maxLength: 4096
+                                        nullable: true
+                                      - type: number
+                                      - type: boolean
+                                  - type: array
+                                    items:
+                                      anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                        - type: number
+                                        - type: boolean
+                                    minItems: 1
+                                    maxItems: 100
                             required:
                               - fieldId
                               - operator
@@ -10548,13 +10650,24 @@ paths:
                                   - LT
                                   - LTE
                                   - CONTAINS
+                                  - IN
                               value:
                                 anyOf:
-                                  - type: string
-                                    maxLength: 4096
-                                    nullable: true
-                                  - type: number
-                                  - type: boolean
+                                  - anyOf:
+                                      - type: string
+                                        maxLength: 4096
+                                        nullable: true
+                                      - type: number
+                                      - type: boolean
+                                  - type: array
+                                    items:
+                                      anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                        - type: number
+                                        - type: boolean
+                                    minItems: 1
+                                    maxItems: 100
                             required:
                               - fieldId
                               - operator
@@ -10609,8 +10722,9 @@ paths:
                             - LT
                             - LTE
                             - CONTAINS
+                            - IN
                         minItems: 1
-                        maxItems: 7
+                        maxItems: 8
                     required:
                       - fieldId
                       - operators
@@ -10708,13 +10822,24 @@ paths:
                                     - LT
                                     - LTE
                                     - CONTAINS
+                                    - IN
                                 value:
                                   anyOf:
-                                    - type: string
-                                      maxLength: 4096
-                                      nullable: true
-                                    - type: number
-                                    - type: boolean
+                                    - anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                          nullable: true
+                                        - type: number
+                                        - type: boolean
+                                    - type: array
+                                      items:
+                                        anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                          - type: number
+                                          - type: boolean
+                                      minItems: 1
+                                      maxItems: 100
                               required:
                                 - fieldId
                                 - operator
@@ -10811,13 +10936,24 @@ paths:
                                     - LT
                                     - LTE
                                     - CONTAINS
+                                    - IN
                                 value:
                                   anyOf:
-                                    - type: string
-                                      maxLength: 4096
-                                      nullable: true
-                                    - type: number
-                                    - type: boolean
+                                    - anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                          nullable: true
+                                        - type: number
+                                        - type: boolean
+                                    - type: array
+                                      items:
+                                        anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                          - type: number
+                                          - type: boolean
+                                      minItems: 1
+                                      maxItems: 100
                               required:
                                 - fieldId
                                 - operator
@@ -10872,8 +11008,9 @@ paths:
                               - LT
                               - LTE
                               - CONTAINS
+                              - IN
                           minItems: 1
-                          maxItems: 7
+                          maxItems: 8
                       required:
                         - fieldId
                         - operators
@@ -10991,13 +11128,24 @@ paths:
                           - LT
                           - LTE
                           - CONTAINS
+                          - IN
                       value:
                         anyOf:
-                          - type: string
-                            maxLength: 4096
-                            nullable: true
-                          - type: number
-                          - type: boolean
+                          - anyOf:
+                              - type: string
+                                maxLength: 4096
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                          - type: array
+                            items:
+                              anyOf:
+                                - type: string
+                                  maxLength: 4096
+                                - type: number
+                                - type: boolean
+                            minItems: 1
+                            maxItems: 100
                     required:
                       - fieldId
                       - operator
@@ -11145,8 +11293,9 @@ paths:
                               - LT
                               - LTE
                               - CONTAINS
+                              - IN
                           minItems: 1
-                          maxItems: 7
+                          maxItems: 8
                       required:
                         - fieldId
                         - key
@@ -11166,6 +11315,208 @@ paths:
                   - executedAt
                   - bindingId
                   - filterDefinitions
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/panels/{panelId}/analytics-bindings/{bindingId}/facets:
+    post:
+      summary: List the distinct values (with counts) of one allowlisted binding
+        filter field for a published panel; the field's own selection is
+        excluded from the counts
+      tags:
+        - NORTH analytics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fieldId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                search:
+                  type: string
+                  maxLength: 200
+                filters:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fieldId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      operator:
+                        type: string
+                        enum:
+                          - EQ
+                          - NE
+                          - GT
+                          - GTE
+                          - LT
+                          - LTE
+                          - CONTAINS
+                          - IN
+                      value:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                maxLength: 4096
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                          - type: array
+                            items:
+                              anyOf:
+                                - type: string
+                                  maxLength: 4096
+                                - type: number
+                                - type: boolean
+                            minItems: 1
+                            maxItems: 100
+                    required:
+                      - fieldId
+                      - operator
+                      - value
+                    additionalProperties: false
+                  maxItems: 10
+                  default: []
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 50
+              required:
+                - fieldId
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: panelId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: bindingId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bindingId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  fieldId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  values:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          anyOf:
+                            - type: string
+                            - type: number
+                            - type: boolean
+                          nullable: true
+                        count:
+                          type: integer
+                          minimum: 0
+                      required:
+                        - value
+                        - count
+                      additionalProperties: false
+                    maxItems: 100
+                  truncated:
+                    type: boolean
+                  executedAt:
+                    type: string
+                    format: date-time
+                required:
+                  - bindingId
+                  - fieldId
+                  - values
+                  - truncated
+                  - executedAt
                 additionalProperties: false
         4XX:
           description: Default Response
@@ -31742,13 +32093,24 @@ paths:
                           - LT
                           - LTE
                           - CONTAINS
+                          - IN
                       value:
                         anyOf:
-                          - type: string
-                            maxLength: 4096
-                            nullable: true
-                          - type: number
-                          - type: boolean
+                          - anyOf:
+                              - type: string
+                                maxLength: 4096
+                                nullable: true
+                              - type: number
+                              - type: boolean
+                          - type: array
+                            items:
+                              anyOf:
+                                - type: string
+                                  maxLength: 4096
+                                - type: number
+                                - type: boolean
+                            minItems: 1
+                            maxItems: 100
                     required:
                       - fieldId
                       - operator
@@ -31895,8 +32257,9 @@ paths:
                               - LT
                               - LTE
                               - CONTAINS
+                              - IN
                           minItems: 1
-                          maxItems: 7
+                          maxItems: 8
                       required:
                         - fieldId
                         - key

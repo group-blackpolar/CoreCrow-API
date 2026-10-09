@@ -290,7 +290,7 @@ export const northAnalyticsBinding = z.object({
   query: datasetQuerySchema,
   allowedFilters: z.array(z.object({
     fieldId: id,
-    operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+    operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS", "IN"])).min(1).max(8),
   }).strict()).max(10),
   createdBy: id,
   createdAt: date,
@@ -301,7 +301,14 @@ export const northAnalyticsBindingFilterDefinition = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
   displayName: localizedText,
   type: northDatasetFieldType,
-  operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+  operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS", "IN"])).min(1).max(8),
+}).strict();
+export const northAnalyticsFacetResult = z.object({
+  bindingId: id,
+  fieldId: id,
+  values: z.array(z.object({ value: z.union([z.string(), z.number(), z.boolean()]).nullable(), count: z.number().int().nonnegative() }).strict()).max(100),
+  truncated: z.boolean(),
+  executedAt: date,
 }).strict();
 export const northAnalyticsBindingResult = northDatasetQueryResult.extend({
   bindingId: id,

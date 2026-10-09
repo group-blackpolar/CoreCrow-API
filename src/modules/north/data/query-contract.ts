@@ -2,11 +2,17 @@ import { z } from "zod";
 
 const queryFieldId = z.string().min(1).max(128);
 export const datasetQueryScalar = z.union([z.string().max(4096).nullable(), z.number(), z.boolean()]);
+// IN carries a bounded list of non-null scalars (multi-select facets); every other operator takes a single scalar.
+export const datasetQueryListValue = z.array(z.union([z.string().max(4096), z.number(), z.boolean()])).min(1).max(100);
+export const datasetQueryOperator = z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS", "IN"]);
 export const datasetQueryFilter = z.object({
   fieldId: queryFieldId,
-  operator: z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"]),
-  value: datasetQueryScalar,
-}).strict();
+  operator: datasetQueryOperator,
+  value: z.union([datasetQueryScalar, datasetQueryListValue]),
+}).strict().superRefine((filter, context) => {
+  if ((filter.operator === "IN") !== Array.isArray(filter.value))
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "IN requires a list value and every other operator a single value" });
+});
 export const datasetQuerySchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("ROWS"), fields: z.array(queryFieldId).min(1).max(20),
@@ -45,7 +51,7 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
 });
 export const allowedBindingFilterSchema = z.object({
   fieldId: queryFieldId,
-  operators: z.array(z.enum(["EQ", "NE", "GT", "GTE", "LT", "LTE", "CONTAINS"])).min(1).max(7),
+  operators: z.array(datasetQueryOperator).min(1).max(8),
 }).strict().superRefine((value, context) => {
   if (new Set(value.operators).size !== value.operators.length)
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["operators"], message: "Allowed filter operators must be unique" });

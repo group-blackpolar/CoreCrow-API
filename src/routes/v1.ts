@@ -298,6 +298,17 @@ export async function v1Routes(app: FastifyInstance) {
     run: ({ user, params, body }) => northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, body.filters),
   });
   contract(app, {
+    method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/facets", tag: "NORTH analytics",
+    summary: "List the distinct values (with counts) of one allowlisted binding filter field for a published panel; the field's own selection is excluded from the counts",
+    params: panelBindingDetailParams,
+    body: z.object({
+      fieldId: s.id, search: z.string().trim().max(200).optional(),
+      filters: z.array(datasetQueryFilter).max(10).default([]), limit: z.number().int().min(1).max(100).default(50),
+    }).strict(),
+    response: s.northAnalyticsFacetResult, rateLimit: 60,
+    run: ({ user, params, body }) => northAnalyticsBindings.facets(user.id, params.organizationId, params.panelId, params.bindingId, body),
+  });
+  contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",
     summary: "Reserve quota and request a checksum-bound signed asset upload", params: s.orgParams,
     body: z.object({
