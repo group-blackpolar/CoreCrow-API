@@ -71,6 +71,15 @@ function jsonScalar(value: unknown): Scalar {
   return String(value);
 }
 
+/** PostgreSQL cancels a query that exceeds the statement timeout (SQLSTATE 57014): report it as a retryable, stable error. */
+async function bounded<T>(work: Promise<T>): Promise<T> {
+  try { return await work; } catch (error) {
+    const meta = (error as { meta?: { code?: string; message?: string } }).meta;
+    if (meta?.code === "57014" || /statement timeout|canceling statement/i.test(String(meta?.message ?? (error as Error).message))) fail(503, "DATASET_QUERY_TIMEOUT", "The query took too long; narrow the filters or try again");
+    throw error;
+  }
+}
+
 export const northDatasetQuery = {
   execute(userId: string, organizationId: string, datasetId: string, query: DatasetQuery) {
     return transaction(async (tx) => {
@@ -85,9 +94,15 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       if (!dataset?.activeRevision) fail(409, "DATASET_REVISION_NOT_ACTIVE", "Dataset has no active revision");
       const revision = dataset.activeRevision;
       const fields = new Map(revision.schemaVersion.fields.filter((field) => field.status === "ACTIVE").map((field) => [field.datasetFieldId, field]));
-      const requested = query.mode === "ROWS" ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId)] : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => item.fieldId ? [item.fieldId] : []), ...(query.filters ?? []).map((item) => item.fieldId)];
+      const searchFields = query.search?.fieldIds ?? [];
+      const requested = query.mode === "ROWS" ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields] : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => item.fieldId ? [item.fieldId] : []), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields];
       if (requested.some((id) => !fields.has(id))) fail(422, "DATASET_QUERY_FIELD_INVALID", "Query references a field outside the active schema");
+      if (searchFields.some((id) => fields.get(id)!.canonicalType !== "TEXT")) fail(422, "DATASET_QUERY_SEARCH_INVALID", "Search is only available on text fields");
       const filters = (query.filters ?? []).map((item) => filterSql(item, fields.get(item.fieldId)!));
+      if (query.search) {
+        const pattern = `%${query.search.text.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+        filters.push(Prisma.sql`(${Prisma.join(searchFields.map((id) => Prisma.sql`${typed(fields.get(id)!)} ILIKE ${pattern} ESCAPE '\\'`), " OR ")})`);
+      }
       const where = Prisma.sql`rb."revisionId" = ${revision.id} AND rb."organizationId" = ${organizationId} AND rb."datasetId" = ${datasetId}${filters.length ? Prisma.sql` AND ${Prisma.join(filters, " AND ")}` : Prisma.empty}`;
       await tx.$executeRaw`SET LOCAL statement_timeout = '5000ms'`;
       if (query.mode === "ROWS") {
@@ -96,17 +111,25 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         ordering.push(Prisma.sql`r."ordinal" ASC`, Prisma.sql`r."id" ASC`);
         const limit = query.limit ?? 100;
         const offset = query.offset ?? 0;
-        const rows = await tx.$queryRaw<Array<{ data: Record<string, Scalar> }>>(Prisma.sql`
-          SELECT jsonb_build_object(${Prisma.join(pairs)}) AS data
+        const rows = await bounded(tx.$queryRaw<Array<{ data: Record<string, Scalar>; total?: bigint }>>(Prisma.sql`
+          SELECT jsonb_build_object(${Prisma.join(pairs)}) AS data${query.includeTotal ? Prisma.sql`, COUNT(*) OVER() AS total` : Prisma.empty}
           FROM "NorthDatasetRevisionBatch" rb
           JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
           WHERE ${where}
-          ORDER BY ${Prisma.join(ordering)} LIMIT ${limit} OFFSET ${offset}`);
+          ORDER BY ${Prisma.join(ordering)} LIMIT ${limit} OFFSET ${offset}`));
         const columns: ResultColumn[] = query.fields.map((fieldId) => ({ key: fieldId, fieldId, type: fields.get(fieldId)!.canonicalType }));
-        return { mode: "ROWS" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows: rows.map((row) => row.data), rowCount: rows.length, executedAt: new Date() };
+        return { mode: "ROWS" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows: rows.map((row) => row.data), rowCount: rows.length, ...(query.includeTotal ? { totalRows: rows.length ? Number(rows[0]!.total) : offset === 0 ? 0 : await countRows(tx, where) } : {}), executedAt: new Date() };
       }
       const groups = query.groupBy ?? [];
-      const groupExpressions = groups.map((id) => typed(fields.get(id)!));
+      const granularity = query.granularity ?? {};
+      const groupExpressions = groups.map((id) => {
+        const field = fields.get(id)!;
+        const unit = granularity[id];
+        if (!unit) return typed(field);
+        if (field.canonicalType !== "DATE" && field.canonicalType !== "DATETIME") fail(422, "DATASET_QUERY_GRANULARITY_INVALID", "Granularity requires a date or datetime field");
+        const bucket = Prisma.sql`date_trunc(${({ DAY: "day", MONTH: "month", QUARTER: "quarter", YEAR: "year" } as const)[unit]}, ${typed(field)})`;
+        return field.canonicalType === "DATE" ? Prisma.sql`${bucket}::date` : bucket;
+      });
       const groupPositions = groups.map((_, index) => Prisma.raw(String(index + 1)));
       const selects: Prisma.Sql[] = groupExpressions.map((expression, index) => Prisma.sql`${expression} AS ${Prisma.raw(`"g${index}"`)}`);
       for (const [index, measure] of query.measures.entries()) {
@@ -123,19 +146,24 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         }
       }
       const limit = query.limit ?? 100;
+      const offset = query.offset ?? 0;
+      const withTotal = Boolean(query.includeTotal) && groups.length > 0;
+      if (withTotal) selects.push(Prisma.sql`COUNT(*) OVER() AS "__total"`);
       const outputAliases = new Map<string, string>([
         ...groups.map((key, index) => [key, `"g${index}"`] as [string, string]),
         ...query.measures.map((measure, index) => [measure.alias, `"m${index}"`] as [string, string]),
       ]);
       const ordering = (query.orderBy ?? []).map((item) => Prisma.sql`${Prisma.raw(outputAliases.get(item.key)!)} ${Prisma.raw(item.direction)}`);
-      const rawRows = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+      // Group columns break ties so offset pagination is stable between pages.
+      if (groups.length) for (const [index] of groups.entries()) ordering.push(Prisma.sql`${Prisma.raw(`"g${index}"`)} ASC`);
+      const rawRows = await bounded(tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
         SELECT ${Prisma.join(selects)}
         FROM "NorthDatasetRevisionBatch" rb
         JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
         WHERE ${where}
         ${groupPositions.length ? Prisma.sql`GROUP BY ${Prisma.join(groupPositions)}` : Prisma.empty}
         ${ordering.length ? Prisma.sql`ORDER BY ${Prisma.join(ordering)}` : Prisma.empty}
-        LIMIT ${limit}`);
+        LIMIT ${limit} OFFSET ${offset}`));
       const columns: ResultColumn[] = [
         ...groups.map((fieldId) => ({ key: fieldId, fieldId, type: fields.get(fieldId)!.canonicalType })),
         ...query.measures.map((measure) => ({
@@ -147,5 +175,16 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         })),
       ];
       const rows = rawRows.map((row) => Object.fromEntries([...groups.map((id, index) => [id, jsonScalar(row[`g${index}`])]), ...query.measures.map((measure, index) => [measure.alias, jsonScalar(row[`m${index}`])])]));
-      return { mode: "AGGREGATE" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows, rowCount: rows.length, executedAt: new Date() };
+      return { mode: "AGGREGATE" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows, rowCount: rows.length, ...(withTotal ? { totalRows: rawRows.length ? Number(rawRows[0]!["__total"]) : offset === 0 ? 0 : await countGroups(tx, where, groupExpressions) } : {}), executedAt: new Date() };
+}
+
+const FROM_ROWS = Prisma.sql`FROM "NorthDatasetRevisionBatch" rb JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"`;
+// A page past the end carries no window total; recount so the caller can still render "page x of y".
+async function countRows(tx: Transaction, where: Prisma.Sql) {
+  const [row] = await tx.$queryRaw<Array<{ n: bigint }>>(Prisma.sql`SELECT COUNT(*) AS n ${FROM_ROWS} WHERE ${where}`);
+  return Number(row?.n ?? 0);
+}
+async function countGroups(tx: Transaction, where: Prisma.Sql, groups: Prisma.Sql[]) {
+  const [row] = await tx.$queryRaw<Array<{ n: bigint }>>(Prisma.sql`SELECT COUNT(*) AS n FROM (SELECT 1 ${FROM_ROWS} WHERE ${where} GROUP BY ${Prisma.join(groups)}) g`);
+  return Number(row?.n ?? 0);
 }

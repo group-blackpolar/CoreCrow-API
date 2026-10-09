@@ -85,7 +85,7 @@ export const northDatasetImportAnalysis = {
       try {
         mapping = await repo.createMapping(tx, {
           organizationId, datasetId, importId, version: (next._max.version ?? 0) + 1,
-          sheetOrdinal: input.sheetOrdinal, headerRow: input.headerRow, definition: { columns: input.columns }, createdBy: userId,
+          sheetOrdinal: input.sheetOrdinal, headerRow: input.headerRow, definition: { columns: input.columns, duplicates: input.duplicates ?? "KEEP" }, createdBy: userId,
         });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")

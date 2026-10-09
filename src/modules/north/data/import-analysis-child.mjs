@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import { Buffer } from "node:buffer";
 import process from "node:process";
+import { createHash } from "node:crypto";
 import { openWorkbook, XlsxReadError } from "./xlsx-stream-reader.mjs";
 
 const PARSER_VERSION = "ooxml-stream-1";
@@ -140,6 +141,8 @@ async function materialize(book, mapping, limits, emit) {
   let batchBytes = 0;
   let outputBytes = 0;
   let rowCount = 0;
+  let skipped = 0;
+  const seen = mapping.duplicates === "SKIP_EXACT" ? new Set() : null;
   const flush = async () => {
     if (!batch.length) return;
     if (!emit) { batch = []; batchBytes = 0; return; }
@@ -159,13 +162,19 @@ async function materialize(book, mapping, limits, emit) {
       values[column.fieldId] = value;
     }
     if (!populated) continue;
+    if (seen) {
+      // 128-bit digests keep memory at ~40 bytes per distinct row; rows are bounded by maximumRows.
+      const digest = createHash("md5").update(JSON.stringify(values)).digest("base64");
+      if (seen.has(digest)) { skipped += 1; continue; }
+      seen.add(digest);
+    }
     batch.push(values);
     rowCount += 1;
     batchBytes += 64 + Object.keys(values).length * 24;
     if (batch.length >= BATCH_ROWS || batchBytes >= BATCH_BYTES) await flush();
   }
   await flush();
-  return rowCount;
+  return { rowCount, skipped };
 }
 
 async function main() {
@@ -177,8 +186,8 @@ async function main() {
     if (mode === "materialize" || mode === "count") {
       if (!mappingPath || mappingPath === "-") fail("IMPORT_ANALYZER_INVALID_INPUT");
       const mapping = JSON.parse(fs.readFileSync(mappingPath, "utf8"));
-      const rowCount = await materialize(book, mapping, limits, mode === "materialize");
-      await write(`${JSON.stringify({ ok: true, done: true, parserVersion: PARSER_VERSION, rowCount, maxRssKiB: process.resourceUsage().maxRSS })}\n`);
+      const { rowCount, skipped } = await materialize(book, mapping, limits, mode === "materialize");
+      await write(`${JSON.stringify({ ok: true, done: true, parserVersion: PARSER_VERSION, rowCount, skippedDuplicates: skipped, maxRssKiB: process.resourceUsage().maxRSS })}\n`);
     } else {
       await write(JSON.stringify({ ok: true, workbook: await analyze(book, limits), parserVersion: PARSER_VERSION, maxRssKiB: process.resourceUsage().maxRSS }));
     }

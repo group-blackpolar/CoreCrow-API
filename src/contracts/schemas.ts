@@ -26,6 +26,8 @@ export const org = z.object({
   iconData: z.string().nullable().optional(),
   iconAssetId: id.nullable().optional(),
   description: z.string().nullable().optional(),
+  brandPrimary: z.string().nullable().optional(),
+  brandAccent: z.string().nullable().optional(),
 });
 export const user = z.object({
   id,
@@ -261,7 +263,7 @@ export const northDatasetImportMapping = z.object({
   version: z.number().int().min(1),
   sheetOrdinal: z.number().int().nonnegative(),
   headerRow: z.number().int().min(1),
-  definition: z.object({ columns: z.array(northDatasetImportMappingColumn).max(150) }),
+  definition: z.object({ columns: z.array(northDatasetImportMappingColumn).max(150), duplicates: z.enum(["KEEP", "SKIP_EXACT"]).optional() }),
   createdBy: id,
   createdAt: date,
 });
@@ -277,8 +279,10 @@ export const northDatasetQueryResult = z.object({
   activeRevisionId: id,
   schemaVersionId: id,
   columns: z.array(northDatasetQueryColumn).max(20),
-  rows: z.array(z.record(northDatasetQueryScalar)).max(200),
-  rowCount: z.number().int().nonnegative().max(200),
+  rows: z.array(z.record(northDatasetQueryScalar)).max(1_000),
+  rowCount: z.number().int().nonnegative().max(1_000),
+  /** Present when the query asked for `includeTotal`: rows (ROWS) or groups (AGGREGATE) matching before paging. */
+  totalRows: z.number().int().nonnegative().optional(),
   executedAt: date,
 });
 export const northAnalyticsBinding = z.object({
@@ -306,13 +310,23 @@ export const northAnalyticsBindingFilterDefinition = z.object({
 export const northAnalyticsFacetResult = z.object({
   bindingId: id,
   fieldId: id,
-  values: z.array(z.object({ value: z.union([z.string(), z.number(), z.boolean()]).nullable(), count: z.number().int().nonnegative() }).strict()).max(100),
+  // `.nullable()` on a union serializes as `anyOf + nullable`, which the response serializer rejects (500 on first use).
+  values: z.array(z.object({ value: z.union([z.string().nullable(), z.number(), z.boolean()]), count: z.number().int().nonnegative() }).strict()).max(100),
   truncated: z.boolean(),
+  /** Distinct values matching the search and the other filters (before paging). */
+  total: z.number().int().nonnegative().optional(),
   executedAt: date,
 }).strict();
+const northComparisonPeriod = z.object({ from: z.string(), to: z.string() }).strict();
 export const northAnalyticsBindingResult = northDatasetQueryResult.extend({
   bindingId: id,
   filterDefinitions: z.array(northAnalyticsBindingFilterDefinition).max(10),
+  /** Same query over the immediately preceding period; only when the binding declares `compareBy` and the reader selected a closed date range. */
+  comparison: z.object({
+    period: northComparisonPeriod,
+    previousPeriod: northComparisonPeriod,
+    rows: z.array(z.record(northDatasetQueryScalar)).max(1_000),
+  }).strict().optional(),
 });
 export const northAssetStatus = z.enum(["UPLOADING", "PROCESSING", "READY", "REJECTED", "QUARANTINED"]);
 export const northAsset = z.object({

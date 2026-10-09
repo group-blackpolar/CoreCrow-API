@@ -46,7 +46,7 @@ import { northDatasetQuery } from "../modules/north/data/query-service.js";
 import { northAnalyticsBindings } from "../modules/north/data/binding-service.js";
 import { northShowcase } from "../modules/north/showcase-service.js";
 import { documentRoutes } from "./documents.js";
-import { allowedBindingFilterSchema, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
+import { allowedBindingFilterSchema, bindingRuntimeOptions, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
 import { aiRoutes } from "./ai.js";
 
 export async function v1Routes(app: FastifyInstance) {
@@ -94,6 +94,8 @@ export async function v1Routes(app: FastifyInstance) {
     sheetOrdinal: z.number().int().nonnegative().max(31),
     headerRow: z.literal(1),
     columns: z.array(s.northDatasetImportMappingColumn).min(1).max(150),
+    // SKIP_EXACT drops source rows whose mapped values are identical to an earlier row; the count is audited.
+    duplicates: z.enum(["KEEP", "SKIP_EXACT"]).default("KEEP"),
   }).strict();
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
@@ -293,9 +295,9 @@ export async function v1Routes(app: FastifyInstance) {
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH analytics",
     summary: "Resolve only a binding referenced by this exact published panel and apply allowlisted runtime filters", params: panelBindingDetailParams,
-    body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).strict(),
-    response: s.northAnalyticsBindingResult, rateLimit: 30,
-    run: ({ user, params, body }) => northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, body.filters),
+    body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).merge(bindingRuntimeOptions).strict(),
+    response: s.northAnalyticsBindingResult, rateLimit: 300,
+    run: ({ user, params, body }) => { const { filters, ...options } = body; return northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, filters, options); },
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/facets", tag: "NORTH analytics",
@@ -303,9 +305,10 @@ export async function v1Routes(app: FastifyInstance) {
     params: panelBindingDetailParams,
     body: z.object({
       fieldId: s.id, search: z.string().trim().max(200).optional(),
-      filters: z.array(datasetQueryFilter).max(10).default([]), limit: z.number().int().min(1).max(100).default(50),
+      filters: z.array(datasetQueryFilter).max(10).default([]), limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(100_000).default(0),
+      granularity: z.enum(["DAY", "MONTH", "QUARTER", "YEAR"]).optional(),
     }).strict(),
-    response: s.northAnalyticsFacetResult, rateLimit: 60,
+    response: s.northAnalyticsFacetResult, rateLimit: 180,
     run: ({ user, params, body }) => northAnalyticsBindings.facets(user.id, params.organizationId, params.panelId, params.bindingId, body),
   });
   contract(app, {
@@ -934,7 +937,7 @@ export async function v1Routes(app: FastifyInstance) {
     method: "PATCH",
     url: "/organizations/:organizationId",
     tag: "Multi-tenancy",
-    summary: "Update an active organization's name, normalized slug or icon",
+    summary: "Update an active organization's name, normalized slug, icon or brand colors",
     params: s.orgParams,
     body: z
       .object({
@@ -943,6 +946,8 @@ export async function v1Routes(app: FastifyInstance) {
         iconData: z.string().max(400_000).nullable().optional(),
         iconAssetId: s.id.nullable().optional(),
         description: z.string().max(500).nullable().optional(),
+        brandPrimary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
+        brandAccent: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
       })
       .strict()
       .refine((value) => Object.keys(value).length > 0),

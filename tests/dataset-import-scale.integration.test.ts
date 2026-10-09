@@ -94,6 +94,42 @@ test("streamed import of ~183k rows is atomic, idempotent and bounded in memory"
   const ordinals = await prisma.$queryRaw<Array<{ min: number; max: number; distinct: bigint }>>`SELECT MIN("ordinal")::int AS min, MAX("ordinal")::int AS max, COUNT(DISTINCT "ordinal") AS distinct FROM "NorthDatasetRow" WHERE "batchId" = ${batch.id}`;
   assert.deepEqual([ordinals[0]!.min, ordinals[0]!.max, Number(ordinals[0]!.distinct)], [0, expectedRows - 1, expectedRows], "ordinals are contiguous and unique");
 
+  // 2b. query contract: paging with totals, date buckets and text search over the generated workbook (closed-form expectations)
+  if (!real) {
+    const { executeDatasetQuery } = await import("../src/modules/north/data/query-service.js");
+    const fields = await prisma.northDatasetField.findMany({ where: { datasetId: dataset.id } });
+    const id = (key: string) => fields.find((field) => field.key === key)!.id;
+    const run = (query: unknown) => prisma.$transaction((tx) => executeDatasetQuery(tx as never, organization.id, dataset.id, query as never));
+    const consignee = id("consignee"); const day = id("day"); const weight = id("weight");
+
+    const page = await run({ mode: "AGGREGATE", groupBy: [consignee], measures: [{ operation: "COUNT", alias: "n" }], orderBy: [{ key: "n", direction: "DESC" }], limit: 20, offset: 20, includeTotal: true });
+    assert.equal(page.totalRows, 1_000, "1,000 distinct consignees before paging");
+    assert.equal(page.rowCount, 20);
+    const names = page.rows.map((row) => String(row[consignee]));
+    const everything = await run({ mode: "AGGREGATE", groupBy: [consignee], measures: [{ operation: "COUNT", alias: "n" }], orderBy: [{ key: "n", direction: "DESC" }], limit: 1_000 });
+    assert.deepEqual(names, everything.rows.slice(20, 40).map((row) => String(row[consignee])), "offset pages are stable and contiguous");
+    const past = await run({ mode: "AGGREGATE", groupBy: [consignee], measures: [{ operation: "COUNT", alias: "n" }], limit: 20, offset: 2_000, includeTotal: true });
+    assert.deepEqual([past.rowCount, past.totalRows], [0, 1_000], "a page past the end still reports the total");
+
+    const monthly = await run({ mode: "AGGREGATE", groupBy: [day], granularity: { [day]: "MONTH" }, measures: [{ operation: "COUNT", alias: "n" }], orderBy: [{ key: day, direction: "ASC" }], limit: 100 });
+    const expected = new Map<string, number>();
+    for (let n = 0; n < expectedRows; n += 1) {
+      const key = new Date(Date.UTC(2024, 0, 1 + (n % 900))).toISOString().slice(0, 7);
+      expected.set(key, (expected.get(key) ?? 0) + 1);
+    }
+    assert.deepEqual(monthly.rows.map((row) => [String(row[day]).slice(0, 7), Number(row.n)]), [...expected.entries()].sort(([a], [b]) => a.localeCompare(b)));
+    assert.ok(monthly.rows.every((row) => String(row[day]).endsWith("-01T00:00:00.000Z")), "bucket value is the first day of the month");
+
+    const searched = await run({ mode: "AGGREGATE", groupBy: [consignee], measures: [{ operation: "COUNT", alias: "n" }], search: { fieldIds: [consignee], text: "consignee 99" }, includeTotal: true, limit: 50 });
+    assert.equal(searched.totalRows, 11, "CONSIGNEE 99 and 990-999");
+    const escaped = await run({ mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "n" }], search: { fieldIds: [consignee], text: "100%" } });
+    assert.equal(escaped.rows[0]!.n, "0", "LIKE wildcards in the search text are literal");
+    await assert.rejects(run({ mode: "AGGREGATE", groupBy: [consignee], granularity: { [consignee]: "MONTH" }, measures: [{ operation: "COUNT", alias: "n" }] }), /Granularity requires a date/);
+    await assert.rejects(run({ mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "n" }], search: { fieldIds: [weight], text: "1" } }), /text fields/);
+    const rowsPage = await run({ mode: "ROWS", fields: [consignee], orderBy: [{ fieldId: weight, direction: "DESC" }], limit: 5, offset: 10, includeTotal: true });
+    assert.deepEqual([rowsPage.rowCount, rowsPage.totalRows], [5, expectedRows]);
+  }
+
   // 3. re-running the worker is a no-op: one batch, same rows, same active revision
   assert.equal(await worker.runOnce(), "IDLE");
   assert.equal(await prisma.northDatasetImportBatch.count({ where: { datasetId: dataset.id } }), 1);

@@ -224,3 +224,25 @@ test("real-world workbook (set SHARK_XLSX_FIXTURE to run)", { skip: !real || !ex
   console.log(`# real workbook: ${rows} rows in ${((Date.now() - started) / 1000).toFixed(1)}s, child peak RSS ${((result.maxRssKiB ?? 0) / 1024).toFixed(0)} MiB`);
   assert.equal(rows, result.rowCount);
 });
+
+test("SKIP_EXACT drops rows identical to an earlier one, reports the count, and KEEP keeps them", async () => {
+  const cell = (ref: string, text: string) => `<c r="${ref}" t="inlineStr"><is><t>${text}</t></is></c>`;
+  const rows = ["A", "B", "A", "A", "C", "B"].map((value, index) => `<row r="${index + 2}">${cell(`A${index + 2}`, value)}</row>`).join("");
+  const path = await write("dupes.xlsx", baseParts({ sheetXml: `<?xml version="1.0"?><worksheet ${NS}><sheetData><row r="1">${cell("A1", "Value")}</row>${rows}</sheetData></worksheet>` }));
+  const columns = [{ sourceOrdinal: 0, action: "CREATE" as const, fieldId: "v", canonicalType: "TEXT" as const, nullable: false }];
+  const run = async (duplicates: "KEEP" | "SKIP_EXACT") => {
+    const seen: string[] = [];
+    let announced = { rowCount: -1, skippedDuplicates: -1 };
+    const result = await new StreamingDatasetImportMaterializer(storageFor(path)).materialize(
+      { storageKey: "k", storageVersionId: "v", sheetOrdinal: 0, headerRow: 1, columns, duplicates, signal: new AbortController().signal },
+      { async begin(summary) { announced = summary; }, async rows(batch) { seen.push(...batch.map((row) => String(row["v"]))); } },
+    );
+    return { seen, announced, result };
+  };
+  const kept = await run("KEEP");
+  assert.deepEqual(kept.seen, ["A", "B", "A", "A", "C", "B"]);
+  assert.equal(kept.announced.skippedDuplicates, 0);
+  const skipped = await run("SKIP_EXACT");
+  assert.deepEqual(skipped.seen, ["A", "B", "C"], "first occurrences keep their source order");
+  assert.deepEqual([skipped.announced.rowCount, skipped.announced.skippedDuplicates, skipped.result.rowCount], [3, 3, 3]);
+});

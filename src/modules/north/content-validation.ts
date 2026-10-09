@@ -23,6 +23,8 @@ export type BindingFacts = { id: string; datasetId: string; query: unknown };
 export type DatasetFacts = { id: string; available: boolean; accessible: boolean };
 
 const CHART_TYPES = new Set(["bar_chart", "line_chart", "donut_chart"]);
+// Components that read several named bindings; their mapped keys are checked against the union of those bindings' outputs.
+const ANALYTICS_TYPES = new Set(["kpi_card", "data_grid", "geo_map", "insights"]);
 const DEVICES = ["desktop", "tablet", "mobile"] as const;
 
 const isRecord = (value: unknown): value is Json => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -43,6 +45,9 @@ export function bindingOutputKeys(query: unknown): Set<string> {
 function mappedKeys(type: string, props: Json): string[] {
   const keys: string[] = [];
   if (type === "metric" && typeof props.fieldKey === "string") keys.push(props.fieldKey);
+  if (type === "kpi_card" && typeof props.valueKey === "string") keys.push(props.valueKey);
+  if (type === "geo_map") for (const key of [props.regionKey, props.valueKey, props.secondaryKey]) if (typeof key === "string") keys.push(key);
+  if (type === "data_grid") for (const column of list(props.columns)) if (isRecord(column) && typeof column.key === "string" && column.kind !== "sparkline" && column.kind !== "actions") keys.push(column.key);
   if (CHART_TYPES.has(type)) {
     if (typeof props.categoryKey === "string") keys.push(props.categoryKey);
     if (typeof props.valueKey === "string") keys.push(props.valueKey);
@@ -81,6 +86,8 @@ export function buildDraftReport(input: {
       const props = isRecord(component.props) ? component.props : {};
       const references = Object.values(isRecord(component.bindings) ? component.bindings : {}).filter(isRecord)
         .filter((reference) => reference.sourceType === "dataset" && typeof reference.sourceId === "string");
+      if (ANALYTICS_TYPES.has(type) && references.length === 0)
+        issues.push({ severity: "error", code: "BINDING_REQUIRED", message: "This analytics component needs a data binding to render anything", sectionId, componentId });
       if (CHART_TYPES.has(type) && references.length === 0)
         issues.push({ severity: "error", code: "BINDING_REQUIRED", message: "A chart needs a data binding to render anything", sectionId, componentId });
       if (type === "metric" && typeof props.fieldKey === "string" && references.length === 0)
@@ -106,11 +113,26 @@ export function buildDraftReport(input: {
           continue;
         }
         depend("dataset", binding.datasetId, "ok", componentId);
-        const available = bindingOutputKeys(binding.query);
-        const stale = mappedKeys(type, props).filter((key) => !available.has(key));
-        if (stale.length)
-          issues.push({ severity: "error", code: "FIELD_NOT_IN_BINDING", message: `Mapped fields are not returned by the binding: ${stale.slice(0, 5).join(", ")}`, sectionId, componentId });
       }
+    }
+    // Mapped keys are checked against the union of ALL the component's bindings (a chart can carry a `total` binding too).
+    for (const component of components) {
+      const type = typeof component.type === "string" ? component.type : "";
+      const props = isRecord(component.props) ? component.props : {};
+      const references = Object.values(isRecord(component.bindings) ? component.bindings : {}).filter(isRecord)
+        .filter((reference) => reference.sourceType === "dataset" && typeof reference.sourceId === "string");
+      const union = new Set<string>();
+      let resolved = 0;
+      for (const reference of references) {
+        const binding = input.bindings.get(String(reference.sourceId));
+        if (!binding) continue;
+        resolved += 1;
+        for (const key of bindingOutputKeys(binding.query)) union.add(key);
+      }
+      if (!resolved) continue;
+      const stale = mappedKeys(type, props).filter((key) => !union.has(key));
+      if (stale.length)
+        issues.push({ severity: "error", code: "FIELD_NOT_IN_BINDING", message: `Mapped fields are not returned by the component's bindings: ${stale.slice(0, 5).join(", ")}`, sectionId: typeof rawSection.id === "string" ? rawSection.id : undefined, componentId: typeof component.id === "string" ? component.id : "" });
     }
     for (const device of DEVICES) {
       const cells = components.map((component) => ({ id: component.id, cell: isRecord(component.layout) ? component.layout[device] : null }))
