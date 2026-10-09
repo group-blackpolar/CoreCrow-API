@@ -74,9 +74,10 @@ docker start corecrow-clamav >/dev/null
 for _ in $(seq 1 60); do [[ "$(docker inspect -f '{{.State.Health.Status}}' corecrow-clamav)" == healthy ]] && break; sleep 5; done
 echo "clamav after restart: $(docker inspect -f '{{.State.Health.Status}}' corecrow-clamav)"
 echo "--- secrets must not appear in service logs"
+logcount() { docker logs "$1" 2>&1 | grep -cF -- "$2" || true; }
 for key in AWS_SECRET_ACCESS_KEY BETTER_AUTH_SECRET; do
   value="$(grep "^$key=" "$dir/smoke.env" | cut -d= -f2-)"
-  hits=$(( $(docker logs corecrow-smoke-api 2>&1 | grep -cF -- "$value") + $(docker logs corecrow-smoke-worker 2>&1 | grep -cF -- "$value") ))
+  hits=$(( $(logcount corecrow-smoke-api "$value") + $(logcount corecrow-smoke-worker "$value") ))
   echo "$key occurrences in API/worker logs: $hits"
   [[ "$hits" == 0 ]] || status=1
 done
