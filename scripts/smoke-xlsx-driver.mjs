@@ -99,15 +99,15 @@ async function waitFor(who, orgId, datasetId, importId, accept, { timeoutMs = 18
 const terminal = new Set(["SECURITY_BLOCKED", "ANALYSIS_BLOCKED", "REJECTED", "FAILED", "CANCELLED"]);
 
 async function world() {
-  const fixture = readFileSync(`${FIXTURES}/shark-test-data.xlsx`);
-  const expected = JSON.parse(readFileSync(`${FIXTURES}/shark-test-data.expected.json`, "utf8"));
+  const fixture = readFileSync(`${FIXTURES}/sample-import-data.xlsx`);
+  const expected = JSON.parse(readFileSync(`${FIXTURES}/sample-import-data.expected.json`, "utf8"));
   if (sha(fixture) !== expected.sha256) throw new Error("fixture checksum differs from its manifest");
   const state = loadState();
   if (state.owner) return { fixture, expected, ...state };
   const owner = await account("owner"); const outsider = await account("outsider");
   const org = await http("POST", "/v1/organizations", { cookie: owner.cookie, body: { name: `Smoke ${prefix}` } });
   const otherOrg = await http("POST", "/v1/organizations", { cookie: outsider.cookie, body: { name: `Other ${prefix}` } });
-  const dataset = await http("POST", `/v1/organizations/${org.json.id}/datasets`, { cookie: owner.cookie, body: { name: { es: "Shark prueba", en: "Shark test" }, slug: `shark-${prefix}` } });
+  const dataset = await http("POST", `/v1/organizations/${org.json.id}/datasets`, { cookie: owner.cookie, body: { name: { es: "Importación de prueba", en: "Import test" }, slug: `sample-${prefix}` } });
   if (dataset.status !== 201) throw new Error(`dataset -> ${dataset.status}`);
   saveState({ owner, outsider, orgId: org.json.id, otherOrgId: otherOrg.json.id, datasetId: dataset.json.id });
   return { fixture, expected, ...loadState() };
@@ -131,7 +131,7 @@ async function query(w, body) { const r = await http("POST", `/v1/organizations/
 
 async function modeClean() {
   const w = await world();
-  const importId = await prepare(w.owner, w.orgId, w.datasetId, w.fixture, { filename: "shark-test-data.xlsx" });
+  const importId = await prepare(w.owner, w.orgId, w.datasetId, w.fixture, { filename: "sample-import-data.xlsx" });
   record("upload to private versioned storage via signed URL", true, `sha256 ${w.expected.sha256.slice(0, 12)}…`);
   const confirmed = await confirmImport(w.owner, w.orgId, w.datasetId, importId);
   record("confirm queues fail-closed security checks (202)", confirmed.status === 202, String(confirmed.status));

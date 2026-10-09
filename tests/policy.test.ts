@@ -57,9 +57,9 @@ async function xlsxArchive(extra: Record<string, string> = {}) {
 test("XLSX declarations and uploaded bytes remain behind the security gate", () => {
   const checksum = "a".repeat(64);
   const declared = validateDatasetImportDeclaration({
-    filename: " Master House.XLSX ", mime: XLSX_MIME, size: 4, checksum: checksum.toUpperCase(),
+    filename: " Sample Report.XLSX ", mime: XLSX_MIME, size: 4, checksum: checksum.toUpperCase(),
   }, { maximumBytes: 1024, uploadUrlTtlSeconds: 60 });
-  assert.equal(declared.filename, "Master House.XLSX");
+  assert.equal(declared.filename, "Sample Report.XLSX");
   assert.equal(declared.checksum, checksum);
   assert.doesNotThrow(() => validateUploadedDatasetImport({
     declaredMime: XLSX_MIME, declaredSize: 4n, declaredChecksum: checksum,
@@ -237,7 +237,7 @@ test("ClamAV INSTREAM scanner frames private bytes and maps clean and infected r
     chunkBytes: 5,
   });
   const scanInput = () => ({
-    filename: "Master House.xlsx",
+    filename: "Sample Report.xlsx",
     mime: XLSX_MIME,
     size: expected.byteLength,
     checksum: "a".repeat(64),
@@ -271,7 +271,7 @@ test("secure XLSX validation accepts passive OOXML and rejects active or unsafe 
   const validator = new SecureXlsxArchiveValidator();
   const valid = await xlsxArchive();
   const input = (bytes: Buffer) => ({
-    filename: "Master House.xlsx",
+    filename: "Sample Report.xlsx",
     size: bytes.byteLength,
     checksum: "a".repeat(64),
     openPrivateRead: async () => Readable.from([bytes]),

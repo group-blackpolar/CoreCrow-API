@@ -1093,9 +1093,9 @@ test(
 
         const dataset = expect(
           await call("POST", `/v1/organizations/${organizationId}/datasets`, owner.cookie, {
-            name: { en: "Master House" },
+            name: { en: "Sample Report" },
             description: { en: "Tenant import dataset" },
-            slug: "master-house",
+            slug: "sample-report",
           }),
           201,
         );
@@ -1120,7 +1120,7 @@ test(
         const workbook = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
         const workbookChecksum = createHash("sha256").update(workbook).digest("hex");
         const importBody = {
-          filename: "master-house.xlsx",
+          filename: "sample-report.xlsx",
           mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           size: workbook.byteLength,
           checksum: workbookChecksum,
@@ -1129,7 +1129,7 @@ test(
           "idempotency-key": `${prefix}-readonly-import`,
         }), 403);
         const prepared = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
-          "idempotency-key": `${prefix}-master-import`,
+          "idempotency-key": `${prefix}-sample-import`,
         }), 201);
         assert.equal(prepared.import.status, "AWAITING_UPLOAD");
         assert.equal(prepared.import.scanStatus, "PENDING");
@@ -1137,12 +1137,12 @@ test(
         assert.equal("storageKey" in prepared.import, false);
         assert.match(prepared.upload.url, /^https:\/\/storage\.invalid\/upload\//);
         const replay = expect(await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, importBody, {
-          "idempotency-key": `${prefix}-master-import`,
+          "idempotency-key": `${prefix}-sample-import`,
         }), 201);
         assert.equal(replay.import.id, prepared.import.id);
         const conflict = await call("POST", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports`, owner.cookie, {
           ...importBody, filename: "different.xlsx",
-        }, { "idempotency-key": `${prefix}-master-import` });
+        }, { "idempotency-key": `${prefix}-sample-import` });
         assert.equal(conflict.statusCode, 409);
         assert.equal(conflict.json().error.code, "IDEMPOTENCY_CONFLICT");
         expect(await call("GET", `/v1/organizations/${organizationId}/datasets/${dataset.id}/imports/${prepared.import.id}`, outsider.cookie), 404);
@@ -1342,7 +1342,7 @@ test(
             return {
               parserVersion: "test-parser",
               workbook: { sheets: [{
-                ordinal: 0, name: "Master House", rowCount: 3, columnCount: 2,
+                ordinal: 0, name: "Sample Report", rowCount: 3, columnCount: 2,
                 columns: [
                   { ordinal: 0, header: "Duplicate", inferredType: "INTEGER", nonEmptyCount: 2, nullable: false },
                   { ordinal: 1, header: "Duplicate", inferredType: "TEXT", nonEmptyCount: 1, nullable: true },
@@ -1428,7 +1428,7 @@ test(
 
         const analyticsCategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories`, owner.cookie, { name: { en: "Analytics" }, slug: "analytics-demo" }), 201);
         const analyticsSubcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${analyticsCategory.id}/subcategories`, owner.cookie, { name: { en: "Reports" }, slug: "analytics-reports" }), 201);
-        const analyticsPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Master House" }, slug: "master-house-demo" }), 201);
+        const analyticsPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Sample Report" }, slug: "sample-report-demo" }), 201);
         const otherPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Other" }, slug: "other-analytics" }), 201);
         const analyticsBinding = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, owner.cookie, {
           name: "Filtered record count", datasetId: dataset.id,

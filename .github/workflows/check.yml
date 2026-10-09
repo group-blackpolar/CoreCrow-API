@@ -36,7 +36,6 @@ jobs:
       - run: pnpm db:migrate:deploy
       - run: pnpm build
       - run: pnpm lint
-      - run: pnpm validate:tenant-demo
       - run: pnpm test
       - run: pnpm openapi
       - run: git diff --exit-code -- openapi.json openapi.yaml

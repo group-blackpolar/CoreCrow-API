@@ -1,6 +1,6 @@
 # Master House report pages and demo viewers
 
-- Status: Accepted (demonstration scope)
+- Status: Retired in Task Pack 12 (2026-10). The provisional seed, fixture and report pages were removed from the codebase; production data is untouched and handled by a separate, authorized runbook (docs/task-pack-12/LEGACY_CLEANUP.md in the NORTH repository).
 - Date: 2026-10-05
 - Scope: CORECROW trusted demo seed
 

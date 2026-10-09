@@ -12,10 +12,9 @@ on:
         options:
           - deploy
           - audit-dataset-infrastructure
-          - seed-master-house-demo
           - provision-documents-organization
       demo_account_email:
-        description: Existing verified account that will own the isolated demo organization
+        description: Existing verified account that will own the provisioned organization
         required: false
         type: string
       documents_organization_name:
@@ -32,10 +31,6 @@ on:
         description: Human reference prefix (2-6 capital letters) for provision-documents-organization
         required: false
         default: SEM
-        type: string
-      viewer_emails:
-        description: Optional comma-separated existing verified accounts to add as read-only VIEWER members of the demo organization
-        required: false
         type: string
 permissions:
   contents: read
@@ -138,31 +133,6 @@ jobs:
                 END { print "env_" key "=" (present ? "present" : "missing") }
               ' "$runtime"
             done
-  seed-master-house-demo:
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'seed-master-house-demo'
-    runs-on: ubuntu-latest
-    env:
-      DEMO_ACCOUNT_EMAIL: ${{ inputs.demo_account_email }}
-      VIEWER_EMAILS: ${{ inputs.viewer_emails }}
-    steps:
-      - name: Seed isolated Master House demo
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 10m
-          envs: DEMO_ACCOUNT_EMAIL,VIEWER_EMAILS
-          script: |
-            set -eu
-            test -n "$DEMO_ACCOUNT_EMAIL"
-            sudo -n docker exec corecrow-v1 node dist/seed-tenant-demo.js \
-              --email "$DEMO_ACCOUNT_EMAIL" \
-              --organization-slug shark \
-              --organization-name "SHARK" \
-              --public-showcase=true \
-              ${VIEWER_EMAILS:+--viewer-emails "$VIEWER_EMAILS"}
-
   provision-documents-organization:
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'provision-documents-organization'
     runs-on: ubuntu-latest

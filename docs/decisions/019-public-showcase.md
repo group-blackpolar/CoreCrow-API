@@ -1,4 +1,6 @@
-# Public showcase and the SHARK demo
+# Public showcase (demo provisioning retired)
+
+> Task Pack 12 removed the provisional SHARK demo seed from the codebase. The showcase *feature* below is generic and remains; the demo organization it was provisioned on must not be re-created by code (see the NORTH repository: docs/task-pack-12/LEGACY_CLEANUP.md).
 
 - Status: Accepted (demonstration scope)
 - Date: 2026-10-05
