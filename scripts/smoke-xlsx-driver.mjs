@@ -135,7 +135,8 @@ async function modeClean() {
   const confirmed = await confirmImport(w.owner, w.orgId, w.datasetId, importId);
   record("confirm queues fail-closed security checks (202)", confirmed.status === 202, String(confirmed.status));
   // The signed upload is bound to the declared checksum: replaying it with different bytes must not be accepted.
-  const replay = await fetch(lastUpload.url, { method: lastUpload.method, headers: lastUpload.headers, body: Buffer.concat([w.fixture, Buffer.from("tampered")]) });
+  const tampered = Buffer.from(w.fixture); tampered[tampered.length - 1] ^= 0xff; // same length, different content
+  const replay = await fetch(lastUpload.url, { method: lastUpload.method, headers: lastUpload.headers, body: tampered }).catch((error) => ({ ok: false, status: `network error: ${error.cause?.code ?? error.message}` }));
   record("replaying the signed upload with different bytes is refused by object storage", !replay.ok, `HTTP ${replay.status}`);
   const analyzed = await waitFor(w.owner, w.orgId, w.datasetId, importId, (c) => c.status === "AWAITING_MAPPING" || terminal.has(c.status), { label: "analysis" });
   record("pipeline reaches AWAITING_MAPPING (ClamAV approved, OOXML valid, analysed)", analyzed.current.status === "AWAITING_MAPPING" && analyzed.current.scanStatus === "APPROVED", analyzed.seen.join(" > "));
