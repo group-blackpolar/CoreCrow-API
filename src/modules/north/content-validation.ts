@@ -113,16 +113,11 @@ export function buildDraftReport(input: {
           continue;
         }
         depend("dataset", binding.datasetId, "ok", componentId);
-        const available = bindingOutputKeys(binding.query);
-        if (ANALYTICS_TYPES.has(type)) continue;
-        const stale = mappedKeys(type, props).filter((key) => !available.has(key));
-        if (stale.length)
-          issues.push({ severity: "error", code: "FIELD_NOT_IN_BINDING", message: `Mapped fields are not returned by the binding: ${stale.slice(0, 5).join(", ")}`, sectionId, componentId });
       }
     }
+    // Mapped keys are checked against the union of ALL the component's bindings (a chart can carry a `total` binding too).
     for (const component of components) {
       const type = typeof component.type === "string" ? component.type : "";
-      if (!ANALYTICS_TYPES.has(type)) continue;
       const props = isRecord(component.props) ? component.props : {};
       const references = Object.values(isRecord(component.bindings) ? component.bindings : {}).filter(isRecord)
         .filter((reference) => reference.sourceType === "dataset" && typeof reference.sourceId === "string");
@@ -137,7 +132,7 @@ export function buildDraftReport(input: {
       if (!resolved) continue;
       const stale = mappedKeys(type, props).filter((key) => !union.has(key));
       if (stale.length)
-        issues.push({ severity: "error", code: "FIELD_NOT_IN_BINDING", message: `Mapped fields are not returned by any binding of this component: ${stale.slice(0, 5).join(", ")}`, sectionId: typeof rawSection.id === "string" ? rawSection.id : undefined, componentId: typeof component.id === "string" ? component.id : "" });
+        issues.push({ severity: "error", code: "FIELD_NOT_IN_BINDING", message: `Mapped fields are not returned by the component's bindings: ${stale.slice(0, 5).join(", ")}`, sectionId: typeof rawSection.id === "string" ? rawSection.id : undefined, componentId: typeof component.id === "string" ? component.id : "" });
     }
     for (const device of DEVICES) {
       const cells = components.map((component) => ({ id: component.id, cell: isRecord(component.layout) ? component.layout[device] : null }))

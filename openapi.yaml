@@ -9311,7 +9311,7 @@ paths:
                         type: string
                         minLength: 1
                         maxLength: 128
-                      maxItems: 3
+                      maxItems: 4
                     granularity:
                       type: object
                       additionalProperties:
@@ -9801,7 +9801,7 @@ paths:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
-                              maxItems: 3
+                              maxItems: 4
                             granularity:
                               type: object
                               additionalProperties:
@@ -10209,7 +10209,7 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
-                          maxItems: 3
+                          maxItems: 4
                         granularity:
                           type: object
                           additionalProperties:
@@ -10567,7 +10567,7 @@ paths:
                               type: string
                               minLength: 1
                               maxLength: 128
-                            maxItems: 3
+                            maxItems: 4
                           granularity:
                             type: object
                             additionalProperties:
@@ -10976,7 +10976,7 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
-                          maxItems: 3
+                          maxItems: 4
                         granularity:
                           type: object
                           additionalProperties:
@@ -11341,7 +11341,7 @@ paths:
                               type: string
                               minLength: 1
                               maxLength: 128
-                            maxItems: 3
+                            maxItems: 4
                           granularity:
                             type: object
                             additionalProperties:
@@ -11680,6 +11680,8 @@ paths:
                   minLength: 1
                   maxLength: 200
                 compare:
+                  type: boolean
+                fresh:
                   type: boolean
               additionalProperties: false
       parameters:
@@ -12021,6 +12023,13 @@ paths:
                   minimum: 0
                   maximum: 100000
                   default: 0
+                granularity:
+                  type: string
+                  enum:
+                    - DAY
+                    - MONTH
+                    - QUARTER
+                    - YEAR
               required:
                 - fieldId
               additionalProperties: false
@@ -12072,9 +12081,9 @@ paths:
                         value:
                           anyOf:
                             - type: string
+                              nullable: true
                             - type: number
                             - type: boolean
-                          nullable: true
                         count:
                           type: integer
                           minimum: 0

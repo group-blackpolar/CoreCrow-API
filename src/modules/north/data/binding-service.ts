@@ -41,6 +41,25 @@ async function validateAllowedFilters(tx: Transaction, organizationId: string, d
   return parsed;
 }
 
+/**
+ * Dashboards fan out one request per component and re-ask on every filter tweak. Identical requests inside a few seconds
+ * are served from memory. Authorization has ALREADY run for this caller when a lookup happens, and the key carries the
+ * tenant, panel, binding, caller and the dataset's active revision, so a re-import or another identity can never read it.
+ */
+const RESULT_TTL_MS = 20_000;
+const RESULT_CACHE_LIMIT = 300;
+const resultCache = new Map<string, { at: number; value: unknown }>();
+function cached<T>(key: string): T | undefined {
+  const hit = resultCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > RESULT_TTL_MS) { resultCache.delete(key); return undefined; }
+  return hit.value as T;
+}
+function remember(key: string, value: unknown) {
+  if (resultCache.size >= RESULT_CACHE_LIMIT) resultCache.delete(resultCache.keys().next().value as string);
+  resultCache.set(key, { at: Date.now(), value });
+}
+
 const outputKeys = (query: DatasetQuery) => query.mode === "ROWS" ? query.fields : [...(query.groupBy ?? []), ...query.measures.map((measure) => measure.alias)];
 
 /** Declarations that only make sense against the dataset schema: the comparison date and the searchable text fields. */
@@ -144,6 +163,11 @@ export const northAnalyticsBindings = {
   results(userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[], options: BindingRuntimeOptions = {}) {
     return transaction(async (tx) => {
       const { binding, query, allowed } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, runtimeFilters);
+      const revision = (await tx.northDataset.findFirst({ where: { id: binding.datasetId, organizationId }, select: { activeRevisionId: true } }))?.activeRevisionId ?? "none";
+      const { fresh, ...requested } = options;
+      const cacheKey = JSON.stringify([organizationId, panelId, bindingId, userId, revision, runtimeFilters, requested]);
+      const hit = fresh ? undefined : cached<Awaited<ReturnType<typeof executeDatasetQuery>> & { filterDefinitions: unknown; comparison?: unknown; bindingId: string }>(cacheKey);
+      if (hit) return hit;
       const withOptions = (filters: DatasetQueryFilter[]): DatasetQuery => {
         const effective = { ...query, filters: [...(query.filters ?? []), ...filters] } as DatasetQuery;
         if ((effective.filters?.length ?? 0) > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
@@ -183,10 +207,12 @@ export const northAnalyticsBindings = {
         if (!field) fail(422, "BINDING_FILTER_INVALID", "An allowed filter field no longer exists");
         return { fieldId: field.id, key: field.key, displayName: field.displayName, type: field.canonicalType, operators: policy.operators };
       });
-      return { bindingId, filterDefinitions, ...result, ...(comparison ? { comparison } : {}) };
+      const payload = { bindingId, filterDefinitions, ...result, ...(comparison ? { comparison } : {}) };
+      remember(cacheKey, payload);
+      return payload;
     });
   },
-  facets(userId: string, organizationId: string, panelId: string, bindingId: string, input: { fieldId: string; search?: string; filters: DatasetQueryFilter[]; limit: number; offset?: number }) {
+  facets(userId: string, organizationId: string, panelId: string, bindingId: string, input: { fieldId: string; search?: string; filters: DatasetQueryFilter[]; limit: number; offset?: number; granularity?: "DAY" | "MONTH" | "QUARTER" | "YEAR" }) {
     return transaction(async (tx) => {
       const { binding, query, allowed } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, input.filters);
       if (!allowed.some((item) => item.fieldId === input.fieldId)) fail(422, "BINDING_FILTER_NOT_ALLOWED", "Facet values are only available for fields this binding allows as filters");
@@ -197,9 +223,12 @@ export const northAnalyticsBindings = {
       const filters: DatasetQueryFilter[] = [...(query.filters ?? []), ...others, ...(search ? [{ fieldId: input.fieldId, operator: "CONTAINS" as const, value: search }] : [])];
       if (filters.length > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
       const limit = Math.min(input.limit, 100);
+      // Date buckets (month/year) list the periods that actually hold data, newest first; they ignore text search.
+      const bucketed = input.granularity ? { granularity: { [input.fieldId]: input.granularity } } : {};
       const result = await executeDatasetQuery(tx, organizationId, binding.datasetId, {
-        mode: "AGGREGATE", groupBy: [input.fieldId], measures: [{ operation: "COUNT", alias: "count" }],
-        filters, orderBy: [{ key: "count", direction: "DESC" }], limit, offset: input.offset ?? 0, includeTotal: true,
+        mode: "AGGREGATE", groupBy: [input.fieldId], ...bucketed, measures: [{ operation: "COUNT", alias: "count" }],
+        filters: input.granularity ? filters.filter((item) => !(item.fieldId === input.fieldId && item.operator === "CONTAINS")) : filters,
+        orderBy: input.granularity ? [{ key: input.fieldId, direction: "DESC" }] : [{ key: "count", direction: "DESC" }], limit, offset: input.offset ?? 0, includeTotal: true,
       });
       const values = result.rows.map((row) => ({ value: (row[input.fieldId] ?? null) as string | number | boolean | null, count: Number(row.count) }));
       const total = result.totalRows ?? values.length;

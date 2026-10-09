@@ -71,6 +71,15 @@ function jsonScalar(value: unknown): Scalar {
   return String(value);
 }
 
+/** PostgreSQL cancels a query that exceeds the statement timeout (SQLSTATE 57014): report it as a retryable, stable error. */
+async function bounded<T>(work: Promise<T>): Promise<T> {
+  try { return await work; } catch (error) {
+    const meta = (error as { meta?: { code?: string; message?: string } }).meta;
+    if (meta?.code === "57014" || /statement timeout|canceling statement/i.test(String(meta?.message ?? (error as Error).message))) fail(503, "DATASET_QUERY_TIMEOUT", "The query took too long; narrow the filters or try again");
+    throw error;
+  }
+}
+
 export const northDatasetQuery = {
   execute(userId: string, organizationId: string, datasetId: string, query: DatasetQuery) {
     return transaction(async (tx) => {
@@ -102,12 +111,12 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         ordering.push(Prisma.sql`r."ordinal" ASC`, Prisma.sql`r."id" ASC`);
         const limit = query.limit ?? 100;
         const offset = query.offset ?? 0;
-        const rows = await tx.$queryRaw<Array<{ data: Record<string, Scalar>; total?: bigint }>>(Prisma.sql`
+        const rows = await bounded(tx.$queryRaw<Array<{ data: Record<string, Scalar>; total?: bigint }>>(Prisma.sql`
           SELECT jsonb_build_object(${Prisma.join(pairs)}) AS data${query.includeTotal ? Prisma.sql`, COUNT(*) OVER() AS total` : Prisma.empty}
           FROM "NorthDatasetRevisionBatch" rb
           JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
           WHERE ${where}
-          ORDER BY ${Prisma.join(ordering)} LIMIT ${limit} OFFSET ${offset}`);
+          ORDER BY ${Prisma.join(ordering)} LIMIT ${limit} OFFSET ${offset}`));
         const columns: ResultColumn[] = query.fields.map((fieldId) => ({ key: fieldId, fieldId, type: fields.get(fieldId)!.canonicalType }));
         return { mode: "ROWS" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows: rows.map((row) => row.data), rowCount: rows.length, ...(query.includeTotal ? { totalRows: rows.length ? Number(rows[0]!.total) : offset === 0 ? 0 : await countRows(tx, where) } : {}), executedAt: new Date() };
       }
@@ -147,14 +156,14 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       const ordering = (query.orderBy ?? []).map((item) => Prisma.sql`${Prisma.raw(outputAliases.get(item.key)!)} ${Prisma.raw(item.direction)}`);
       // Group columns break ties so offset pagination is stable between pages.
       if (groups.length) for (const [index] of groups.entries()) ordering.push(Prisma.sql`${Prisma.raw(`"g${index}"`)} ASC`);
-      const rawRows = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+      const rawRows = await bounded(tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
         SELECT ${Prisma.join(selects)}
         FROM "NorthDatasetRevisionBatch" rb
         JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
         WHERE ${where}
         ${groupPositions.length ? Prisma.sql`GROUP BY ${Prisma.join(groupPositions)}` : Prisma.empty}
         ${ordering.length ? Prisma.sql`ORDER BY ${Prisma.join(ordering)}` : Prisma.empty}
-        LIMIT ${limit} OFFSET ${offset}`);
+        LIMIT ${limit} OFFSET ${offset}`));
       const columns: ResultColumn[] = [
         ...groups.map((fieldId) => ({ key: fieldId, fieldId, type: fields.get(fieldId)!.canonicalType })),
         ...query.measures.map((measure) => ({

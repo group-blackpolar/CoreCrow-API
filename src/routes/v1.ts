@@ -296,7 +296,7 @@ export async function v1Routes(app: FastifyInstance) {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH analytics",
     summary: "Resolve only a binding referenced by this exact published panel and apply allowlisted runtime filters", params: panelBindingDetailParams,
     body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).merge(bindingRuntimeOptions).strict(),
-    response: s.northAnalyticsBindingResult, rateLimit: 60,
+    response: s.northAnalyticsBindingResult, rateLimit: 300,
     run: ({ user, params, body }) => { const { filters, ...options } = body; return northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, filters, options); },
   });
   contract(app, {
@@ -306,8 +306,9 @@ export async function v1Routes(app: FastifyInstance) {
     body: z.object({
       fieldId: s.id, search: z.string().trim().max(200).optional(),
       filters: z.array(datasetQueryFilter).max(10).default([]), limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(100_000).default(0),
+      granularity: z.enum(["DAY", "MONTH", "QUARTER", "YEAR"]).optional(),
     }).strict(),
-    response: s.northAnalyticsFacetResult, rateLimit: 60,
+    response: s.northAnalyticsFacetResult, rateLimit: 180,
     run: ({ user, params, body }) => northAnalyticsBindings.facets(user.id, params.organizationId, params.panelId, params.bindingId, body),
   });
   contract(app, {

@@ -310,7 +310,8 @@ export const northAnalyticsBindingFilterDefinition = z.object({
 export const northAnalyticsFacetResult = z.object({
   bindingId: id,
   fieldId: id,
-  values: z.array(z.object({ value: z.union([z.string(), z.number(), z.boolean()]).nullable(), count: z.number().int().nonnegative() }).strict()).max(100),
+  // `.nullable()` on a union serializes as `anyOf + nullable`, which the response serializer rejects (500 on first use).
+  values: z.array(z.object({ value: z.union([z.string().nullable(), z.number(), z.boolean()]), count: z.number().int().nonnegative() }).strict()).max(100),
   truncated: z.boolean(),
   /** Distinct values matching the search and the other filters (before paging). */
   total: z.number().int().nonnegative().optional(),

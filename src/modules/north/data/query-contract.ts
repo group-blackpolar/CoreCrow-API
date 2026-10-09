@@ -25,7 +25,7 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
     search: datasetQuerySearch.optional(), searchFieldIds: z.array(queryFieldId).min(1).max(5).optional(), includeTotal: z.boolean().optional(), compareBy: queryFieldId.optional(),
   }).strict(),
   z.object({
-    mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(3).optional(),
+    mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(4).optional(),
     // DATE/DATETIME group fields may be truncated to a calendar bucket (the group value is the first day of the bucket).
     granularity: z.record(queryFieldId, datasetDateGranularity).optional(),
     measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: queryFieldId.optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(8),
@@ -73,6 +73,8 @@ export const bindingRuntimeOptions = z.object({
   limit: z.number().int().min(1).max(1_000).optional(),
   search: z.string().trim().min(1).max(200).optional(),
   compare: z.boolean().optional(),
+  /** Skip the short-lived result cache (explicit refresh). */
+  fresh: z.boolean().optional(),
 }).strict();
 
 export type DatasetQuery = z.infer<typeof datasetQuerySchema>;

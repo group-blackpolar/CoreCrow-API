@@ -93,7 +93,7 @@ const catalog = {
   metric: z.object({ label: localized, value: z.union([z.string().max(500), z.number()]).optional(), fieldKey: resultKey.optional(), format: z.enum(["number", "currency", "percent", "duration", "text"]).optional(), variant: commonVariant.optional() }).strict(),
   bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional(), showValues: z.boolean().optional(), valueFormat: valueFormat.optional() }).strict(),
   line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional() }).strict(),
-  donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional(), centerLabel: localized.optional(), showTotal: z.boolean().optional(), legend: z.enum(["right", "bottom", "none"]).optional() }).strict(),
+  donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, maxSlices: z.number().int().min(2).max(12).optional(), totalKey: resultKey.optional(), color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional(), centerLabel: localized.optional(), showTotal: z.boolean().optional(), legend: z.enum(["right", "bottom", "none"]).optional() }).strict(),
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
   document_workspace: z.object({ typeKey: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/), title: localized.optional() }).strict(),
@@ -140,6 +140,8 @@ const catalog = {
     tone: tone.optional(),
     height: chartHeight.optional(),
   }).strict(),
+  // Places the page's filter bar (selectors, period, chips) at this spot instead of the default top position.
+  filter_bar: z.object({ title: localized.optional() }).strict(),
   // Deterministic findings computed from binding results (no generative text).
   insights: z.object({ title: localized.optional(), items: z.array(insightRule).min(1).max(6) }).strict(),
 } as const;

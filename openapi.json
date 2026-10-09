@@ -13283,7 +13283,7 @@
                           "minLength": 1,
                           "maxLength": 128
                         },
-                        "maxItems": 3
+                        "maxItems": 4
                       },
                       "granularity": {
                         "type": "object",
@@ -13988,7 +13988,7 @@
                                   "minLength": 1,
                                   "maxLength": 128
                                 },
-                                "maxItems": 3
+                                "maxItems": 4
                               },
                               "granularity": {
                                 "type": "object",
@@ -14569,7 +14569,7 @@
                               "minLength": 1,
                               "maxLength": 128
                             },
-                            "maxItems": 3
+                            "maxItems": 4
                           },
                           "granularity": {
                             "type": "object",
@@ -15079,7 +15079,7 @@
                                 "minLength": 1,
                                 "maxLength": 128
                               },
-                              "maxItems": 3
+                              "maxItems": 4
                             },
                             "granularity": {
                               "type": "object",
@@ -15661,7 +15661,7 @@
                               "minLength": 1,
                               "maxLength": 128
                             },
-                            "maxItems": 3
+                            "maxItems": 4
                           },
                           "granularity": {
                             "type": "object",
@@ -16181,7 +16181,7 @@
                                 "minLength": 1,
                                 "maxLength": 128
                               },
-                              "maxItems": 3
+                              "maxItems": 4
                             },
                             "granularity": {
                               "type": "object",
@@ -16669,6 +16669,9 @@
                     "maxLength": 200
                   },
                   "compare": {
+                    "type": "boolean"
+                  },
+                  "fresh": {
                     "type": "boolean"
                   }
                 },
@@ -17159,6 +17162,15 @@
                     "minimum": 0,
                     "maximum": 100000,
                     "default": 0
+                  },
+                  "granularity": {
+                    "type": "string",
+                    "enum": [
+                      "DAY",
+                      "MONTH",
+                      "QUARTER",
+                      "YEAR"
+                    ]
                   }
                 },
                 "required": [
@@ -17232,7 +17244,8 @@
                           "value": {
                             "anyOf": [
                               {
-                                "type": "string"
+                                "type": "string",
+                                "nullable": true
                               },
                               {
                                 "type": "number"
@@ -17240,8 +17253,7 @@
                               {
                                 "type": "boolean"
                               }
-                            ],
-                            "nullable": true
+                            ]
                           },
                           "count": {
                             "type": "integer",
