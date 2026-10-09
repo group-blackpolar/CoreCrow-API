@@ -13,7 +13,8 @@ async function estimate(
   tx: Parameters<typeof repo.profile>[0],
   organizationId: string,
 ) {
-  const profile = await repo.profile(tx, organizationId);
+  // Callers have already authorized the actor for this organization, so creating the default profile is safe.
+  const profile = await repo.profile(tx, organizationId) ?? (await repo.ensureProfile(tx, organizationId), await repo.profile(tx, organizationId));
   if (!profile) fail(404, "BILLING_PROFILE_NOT_FOUND", "Billing profile not found");
   const { organization, ...publicProfile } = profile;
   const estimateEligible =
@@ -50,9 +51,7 @@ export const billing = {
   ) {
     return transaction(async (tx) => {
       await authorize(tx, actorId, organizationId, "billing.manage");
-      const current = await repo.profile(tx, organizationId);
-      if (!current)
-        fail(404, "BILLING_PROFILE_NOT_FOUND", "Billing profile not found");
+      const current = await repo.ensureProfile(tx, organizationId);
       await repo.updateEmail(
         tx,
         organizationId,
@@ -76,9 +75,7 @@ export const billing = {
   ) {
     await requireOperator(actorId, true);
     return transaction(async (tx) => {
-      const current = await repo.profile(tx, organizationId);
-      if (!current)
-        fail(404, "BILLING_PROFILE_NOT_FOUND", "Billing profile not found");
+      const current = await repo.ensureProfile(tx, organizationId);
       await repo.updateStatus(tx, organizationId, status);
       await audit.append(tx, {
         actorId,

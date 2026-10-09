@@ -66,7 +66,7 @@ async function provision(options: Options) {
     let organization = await tx.organization.findUnique({ where: { slug: options.organizationSlug } });
     let created = false;
     if (!organization) {
-      organization = await tx.organization.create({ data: { slug: options.organizationSlug, name: options.organizationName } });
+      organization = await tx.organization.create({ data: { slug: options.organizationSlug, name: options.organizationName, billingProfile: { create: {} } } });
       await tx.membership.create({ data: { organizationId: organization.id, userId: user.id, role: "OWNER" } });
       created = true;
     } else {

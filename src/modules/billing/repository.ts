@@ -8,6 +8,10 @@ export const billingRepository = {
       include: { organization: { select: { status: true } } },
     });
   },
+  /** Organizations created outside the normal flow (provisioning scripts, seeds) may lack a profile: create the defaults once. */
+  ensureProfile(tx: Transaction, organizationId: string) {
+    return tx.organizationBillingProfile.upsert({ where: { organizationId }, create: { organizationId }, update: {} });
+  },
   billableMembers(tx: Transaction, organizationId: string) {
     return tx.membership.count({
       where: { organizationId, user: { status: "ACTIVE" } },
