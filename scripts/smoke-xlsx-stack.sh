@@ -34,7 +34,14 @@ for _ in $(seq 1 30); do docker exec corecrow-smoke-pg pg_isready -U postgres -d
   echo 'MAIL_FROM=smoke@smoke.test'
   echo 'NODE_ENV=development'  # production insists on an HTTPS BETTER_AUTH_URL; this stack is private and isolated
   echo 'PORT=4000'
-  echo 'AI_ENABLED=false'
+  if [[ " ${SMOKE_PHASES:-xlsx media} " == *" ai "* ]]; then
+    # Cuervo against the real model: the key is copied from the runtime file into this 0600 file, never printed.
+    grep -E '^(GEMINI_API_KEY|AI_THINKING_LEVEL)=' "$runtime"
+    echo 'AI_ENABLED=true'
+    echo "AI_DEFAULT_MODEL=${SMOKE_AI_MODEL:-gemini-3.5-flash}"
+  else
+    echo 'AI_ENABLED=false'
+  fi
 } > "$dir/smoke.env"
 chmod 0600 "$dir/smoke.env"
 
@@ -59,6 +66,10 @@ PHASES="${SMOKE_PHASES:-xlsx media}"
 if [[ " $PHASES " == *" media "* ]]; then
   echo "=== phase 0: avatars and organization icons through the public presigned path"
   driver media || status=1
+fi
+if [[ " $PHASES " == *" ai "* ]]; then
+  echo "=== phase AI: Cuervo (CoreCrow AI) against the real model"
+  driver ai || status=1
 fi
 if [[ " $PHASES " != *" xlsx "* ]]; then echo "=== smoke exit status: $status"; exit "$status"; fi
 echo "=== phase 1: clean flow, authorization, hostile inputs, cancellation"

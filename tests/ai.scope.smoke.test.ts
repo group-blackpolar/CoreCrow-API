@@ -8,6 +8,9 @@ import type { AIProviderMessage, AIProviderRequest } from "../src/modules/ai/pro
 // Language-model behavior is probabilistic, so each case asserts an observable property (a forbidden artifact is absent, a
 // required topic is present) instead of exact wording.
 const enabled = process.env.AI_REAL_GEMINI_SMOKE === "true" && Boolean(process.env.GEMINI_API_KEY);
+// AbortSignal.timeout() timers are unref'd: keep the loop alive while real requests (and rate-limit waits) are pending.
+const keepAlive = enabled ? setInterval(() => undefined, 1_000) : undefined;
+test.after(() => { if (keepAlive) clearInterval(keepAlive); });
 const provider = () => new GeminiProvider(process.env.GEMINI_API_KEY ?? "", 60_000, process.env.AI_GEMINI_BASE_URL ?? "https://generativelanguage.googleapis.com");
 const thinkingLevel = (process.env.AI_THINKING_LEVEL as AIProviderRequest["thinkingLevel"]) || undefined;
 const tools = [
@@ -15,13 +18,24 @@ const tools = [
   { name: "organization.current", description: "Read the active organization.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
 ];
 
+// The API key may be on a low per-minute quota: wait and retry only on the normalized rate-limit error.
+async function withRateLimitRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await run(); }
+    catch (error) {
+      if ((error as { code?: string }).code !== "AI_PROVIDER_RATE_LIMITED" || attempt >= 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+    }
+  }
+}
+
 async function ask(content: string, toolResults: Record<string, unknown> = {}) {
   const messages: AIProviderMessage[] = [{ role: "user", content }];
   for (let round = 0; round < 3; round++) {
-    const response = await provider().generate({
+    const response = await withRateLimitRetry(() => provider().generate({
       model: process.env.AI_DEFAULT_MODEL ?? "gemini-3.8-flash", maxOutputTokens: 2048, thinkingLevel, messages, tools,
       systemInstruction: systemInstructions("north", tools.map((tool) => tool.name)),
-    });
+    }));
     if (!response.toolCalls.length) return { text: response.text, calledTools: messages.filter((m) => m.role === "tool").map((m) => m.toolName) };
     messages.push({ role: "assistant", content: response.text, toolCalls: response.toolCalls });
     for (const call of response.toolCalls)
