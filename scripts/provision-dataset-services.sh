@@ -110,6 +110,8 @@ policy_file="$(mktemp)"
 cleanup() { rm -f "$policy_file"; }
 trap cleanup EXIT
 sed -e "s/__DATASET_BUCKET__/${MINIO_BUCKET}/g" -e "s/__ASSET_BUCKET__/${MINIO_ASSET_BUCKET}/g" "$policy_template" > "$policy_file"
+# The policy holds no secrets; the unprivileged (uid 10001) mc container must be able to read the bind mount.
+chmod 0644 "$policy_file"
 
 # MinIO is initialized with a separate application user and only the bucket
 # actions required by the version-pinned import lifecycle.
