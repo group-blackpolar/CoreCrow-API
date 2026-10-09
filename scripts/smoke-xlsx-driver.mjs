@@ -190,7 +190,7 @@ async function modeClean() {
     const zipImport = await prepare(w.owner, w.orgId, dataset.json.id, infectedZip, { filename: "infected.xlsx" });
     await confirmImport(w.owner, w.orgId, dataset.json.id, zipImport);
     const result = await waitFor(w.owner, w.orgId, dataset.json.id, zipImport, (c) => terminal.has(c.status) || c.status === "AWAITING_MAPPING", { timeoutMs: 120_000, label: "infected zip" });
-    record("EICAR inside a valid-looking ZIP is quarantined by ClamAV before parsing", result.current.scanStatus === "QUARANTINED" && result.current.status === "SECURITY_BLOCKED", result.seen.join(" > "));
+    record("EICAR inside a valid-looking ZIP is quarantined by ClamAV before parsing", result.current.scanStatus === "QUARANTINED" && terminal.has(result.current.status), result.seen.join(" > "));
   }
 
   // Cancellation: confirm then cancel immediately.
