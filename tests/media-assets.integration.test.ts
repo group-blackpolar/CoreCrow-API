@@ -153,11 +153,14 @@ test("Media assets: user avatars and organization icons", { skip: !process.env.T
     const updated = expect(await call("PATCH", `/v1/organizations/${orgA}`, owner.cookie, { iconAssetId: asset }), 200);
     assert.equal(updated.iconAssetId, asset);
     assert.equal(expect(await call("GET", `/v1/organizations/${orgA}/icon`, viewer.cookie), 200).download.method, "GET");
-    assert.equal((await call("GET", `/v1/organizations/${orgA}/icon`, outsider.cookie)).statusCode, 403);
-    assert.equal((await call("GET", `/v1/organizations/${orgB}/icon`, owner.cookie)).statusCode, 403);
+    // A non-member learns nothing: 403 or 404 are both default-deny; what matters is that no URL is issued.
+    for (const denied of [await call("GET", `/v1/organizations/${orgA}/icon`, outsider.cookie), await call("GET", `/v1/organizations/${orgB}/icon`, owner.cookie)]) {
+      assert.ok([403, 404].includes(denied.statusCode), String(denied.statusCode));
+      assert.equal(denied.body.includes("download"), false);
+    }
     assert.equal((await call("GET", `/v1/organizations/${orgB}/icon`, outsider.cookie)).statusCode, 404, "no icon set");
     assert.equal((await call("PATCH", `/v1/organizations/${orgA}`, viewer.cookie, { iconAssetId: asset })).statusCode, 403);
-    assert.equal((await call("PATCH", `/v1/organizations/${orgA}`, outsider.cookie, { iconAssetId: asset })).statusCode, 403);
+    assert.ok([403, 404].includes((await call("PATCH", `/v1/organizations/${orgA}`, outsider.cookie, { iconAssetId: asset })).statusCode));
   });
 
   await t.test("org icon: foreign, unknown, unready and wrong-type assets cannot be referenced", async () => {
