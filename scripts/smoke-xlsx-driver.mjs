@@ -1,7 +1,8 @@
 // XLSX pipeline smoke DRIVER. It talks only to an ISOLATED CoreCrow stack (its own PostgreSQL, throwaway accounts and tenant,
 // fixture data only) that shares the real private MinIO and ClamAV. It never prints credentials, signed URLs or object keys.
-// Orchestrated by scripts/smoke-xlsx-stack.sh. Modes: clean | enqueue | await | blocked
+// Orchestrated by scripts/smoke-xlsx-stack.sh. Modes: clean | enqueue | await | blocked | media
 import { createHash, randomUUID } from "node:crypto";
+import { deflateSync, crc32 } from "node:zlib";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { SMTPServer } from "smtp-server";
 import * as XLSX from "xlsx";
@@ -233,9 +234,64 @@ async function modeBlocked() {
   saveState({ blockedDatasetId: dataset.json.id, blockedImportId: importId });
 }
 
+// A real, tiny PNG (not just a signature) so the avatar/icon path is exercised with decodable image bytes.
+function png(seed) {
+  const chunk = (type, data) => { const body = Buffer.concat([Buffer.from(type), data]); const out = Buffer.alloc(8 + data.length + 4); out.writeUInt32BE(data.length, 0); body.copy(out, 4); out.writeUInt32BE(crc32(body) >>> 0, 8 + data.length); return out; };
+  const size = 16; const raw = Buffer.alloc((size * 3 + 1) * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { const o = y * (size * 3 + 1); raw[o] = 0; raw.writeUInt8((x * 16 + seed) & 255, o + 1 + x * 3); raw.writeUInt8((y * 16) & 255, o + 2 + x * 3); raw.writeUInt8(seed & 255, o + 3 + x * 3); }
+  const header = Buffer.alloc(13); header.writeUInt32BE(size, 0); header.writeUInt32BE(size, 4); header[8] = 8; header[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+async function putSigned(upload, bytes) { const r = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: bytes }); if (!r.ok) throw new Error(`presigned PUT -> ${r.status}`); }
+async function readSigned(download) { const r = await fetch(download.url); if (!r.ok) throw new Error(`presigned GET -> ${r.status}`); return Buffer.from(await r.arrayBuffer()); }
+
+async function modeMedia() {
+  const w = await world();
+  const first = png(1), second = png(2);
+  const request = (bytes) => ({ mime: "image/png", size: bytes.byteLength, checksum: sha(bytes) });
+  // Avatar: upload through the public presigned path, confirm (ClamAV), read back the exact bytes, replace, delete.
+  const up1 = await http("POST", "/v1/me/avatar/uploads", { cookie: w.owner.cookie, body: request(first) });
+  await putSigned(up1.json.upload, first);
+  const ready1 = await http("POST", `/v1/me/avatar/${up1.json.avatar.id}/confirm`, { cookie: w.owner.cookie });
+  record("avatar: upload via presigned URL, ClamAV scan and READY", up1.status === 201 && ready1.status === 200 && ready1.json.status === "READY", `${up1.status}/${ready1.status}`);
+  const read1 = await http("GET", "/v1/me/avatar", { cookie: w.owner.cookie });
+  record("avatar: the pinned signed read returns the exact uploaded bytes", sha(await readSigned(read1.json.download)) === sha(first));
+  const up2 = await http("POST", "/v1/me/avatar/uploads", { cookie: w.owner.cookie, body: request(second) });
+  await putSigned(up2.json.upload, second);
+  await http("POST", `/v1/me/avatar/${up2.json.avatar.id}/confirm`, { cookie: w.owner.cookie });
+  const read2 = await http("GET", "/v1/me/avatar", { cookie: w.owner.cookie });
+  record("avatar: replacing keeps one live avatar and serves the new bytes", read2.json.avatar.id === up2.json.avatar.id && sha(await readSigned(read2.json.download)) === sha(second));
+  const other = await http("GET", "/v1/me/avatar", { cookie: w.outsider.cookie });
+  record("avatar: another user sees no avatar of yours", other.status === 200 && other.json.avatar === null);
+  const del = await http("DELETE", "/v1/me/avatar", { cookie: w.owner.cookie });
+  const gone = await http("GET", "/v1/me/avatar", { cookie: w.owner.cookie });
+  record("avatar: delete removes it", del.status === 200 && gone.json.avatar === null);
+
+  // Organization icon: asset -> reference -> member read; tenant and in-use protections.
+  const iconBytes = png(3);
+  const asset = await http("POST", `/v1/organizations/${w.orgId}/assets/uploads`, { cookie: w.owner.cookie, body: { filename: "icon.png", ...request(iconBytes) } });
+  await putSigned(asset.json.upload, iconBytes);
+  const confirmed = await http("POST", `/v1/organizations/${w.orgId}/assets/${asset.json.asset.id}/confirm`, { cookie: w.owner.cookie });
+  record("org icon: asset uploaded via presigned URL and scanned READY", confirmed.status === 200 && confirmed.json.status === "READY", String(confirmed.status));
+  const linked = await http("PATCH", `/v1/organizations/${w.orgId}`, { cookie: w.owner.cookie, body: { iconAssetId: asset.json.asset.id } });
+  const iconRead = await http("GET", `/v1/organizations/${w.orgId}/icon`, { cookie: w.owner.cookie });
+  record("org icon: linked and served as the exact uploaded bytes", linked.status === 200 && sha(await readSigned(iconRead.json.download)) === sha(iconBytes));
+  const foreign = await http("PATCH", `/v1/organizations/${w.orgId}`, { cookie: w.outsider.cookie, body: { iconAssetId: asset.json.asset.id } });
+  const foreignRead = await http("GET", `/v1/organizations/${w.orgId}/icon`, { cookie: w.outsider.cookie });
+  record("org icon: another tenant can neither change nor read it", [403, 404].includes(foreign.status) && [403, 404].includes(foreignRead.status), `${foreign.status}/${foreignRead.status}`);
+  const inUse = await http("DELETE", `/v1/organizations/${w.orgId}/assets/${asset.json.asset.id}`, { cookie: w.owner.cookie });
+  record("org icon: the asset in use cannot be deleted", inUse.status === 409, String(inUse.status));
+  const infected = Buffer.from("X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*", "ascii");
+  const bad = await http("POST", "/v1/me/avatar/uploads", { cookie: w.owner.cookie, body: { mime: "image/png", size: infected.byteLength, checksum: sha(infected) } });
+  await putSigned(bad.json.upload, infected);
+  const badConfirm = await http("POST", `/v1/me/avatar/${bad.json.avatar.id}/confirm`, { cookie: w.owner.cookie });
+  const none = await http("GET", "/v1/me/avatar", { cookie: w.owner.cookie });
+  record("avatar: a non-image or infected upload never becomes READY", badConfirm.status >= 400 && none.json.avatar === null, String(badConfirm.status));
+}
+
 const mode = process.argv[2] ?? "clean";
 try {
-  await { clean: modeClean, enqueue: modeEnqueue, await: modeAwait, blocked: modeBlocked }[mode]();
+  await { clean: modeClean, enqueue: modeEnqueue, await: modeAwait, blocked: modeBlocked, media: modeMedia }[mode]();
 } catch (error) {
   record(`${mode}: unexpected failure`, false, String(error.message ?? error));
 }

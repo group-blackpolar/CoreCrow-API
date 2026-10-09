@@ -55,6 +55,12 @@ driver() { # driver <mode>
   docker start -a corecrow-smoke-driver
 }
 status=0
+PHASES="${SMOKE_PHASES:-xlsx media}"
+if [[ " $PHASES " == *" media "* ]]; then
+  echo "=== phase 0: avatars and organization icons through the public presigned path"
+  driver media || status=1
+fi
+if [[ " $PHASES " != *" xlsx "* ]]; then echo "=== smoke exit status: $status"; exit "$status"; fi
 echo "=== phase 1: clean flow, authorization, hostile inputs, cancellation"
 driver clean || status=1
 psql() { docker exec corecrow-smoke-pg psql -U postgres -d corecrow_smoke_test -Atc "$1"; }
