@@ -43,9 +43,12 @@ required=(MINIO_IMAGE MC_IMAGE CLAMAV_IMAGE MINIO_DATA_DIR CLAMAV_DATABASE_DIR M
 for name in "${required[@]}"; do
   [[ -n "${!name:-}" ]] || { echo "Missing required dataset service setting: $name" >&2; exit 1; }
 done
-[[ "$MINIO_IMAGE" == *@sha256:* ]] || { echo 'MINIO_IMAGE must be pinned by digest' >&2; exit 1; }
-[[ "$MC_IMAGE" == *@sha256:* ]] || { echo 'MC_IMAGE must be pinned by digest' >&2; exit 1; }
-[[ "$CLAMAV_IMAGE" == *@sha256:* ]] || { echo 'CLAMAV_IMAGE must be pinned by digest' >&2; exit 1; }
+# MinIO no longer publishes images: they are built locally from pinned official source (deploy/minio-from-source) and
+# pinned by immutable local image ID. Registry images must still be pinned by digest.
+immutable_image() { [[ "$1" == *@sha256:* || "$1" =~ ^sha256:[0-9a-f]{64}$ ]]; }
+immutable_image "$MINIO_IMAGE" || { echo 'MINIO_IMAGE must be pinned by digest or local image ID' >&2; exit 1; }
+immutable_image "$MC_IMAGE" || { echo 'MC_IMAGE must be pinned by digest or local image ID' >&2; exit 1; }
+immutable_image "$CLAMAV_IMAGE" || { echo 'CLAMAV_IMAGE must be pinned by digest' >&2; exit 1; }
 [[ "$MINIO_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || {
   echo 'MINIO_BUCKET must be a DNS-compatible bucket name' >&2
   exit 1
@@ -77,6 +80,8 @@ runtime_network="${runtime_network:-corecrow-api_default}"
 }
 sudo -n docker network inspect "$CORECROW_DOCKER_NETWORK" >/dev/null
 sudo -n install -d -m 0700 "$MINIO_DATA_DIR" "$CLAMAV_DATABASE_DIR"
+# The locally built MinIO image runs as uid 10001 (not root); keep the directory private to it.
+sudo -n chown 10001:10001 "$MINIO_DATA_DIR"
 
 sudo -n docker compose --project-name corecrow-dataset --env-file "$dataset_runtime" -f "$compose_file" up -d
 
