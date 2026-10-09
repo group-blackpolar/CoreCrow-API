@@ -20,8 +20,8 @@ CORECROW needs a private, versioned, S3-compatible store (assets, avatars, datas
   (provisioning accepts `sha256:<id>` for locally built images and still requires a digest for registry images). The server runs as uid 10001.
 - **ClamAV** uses the pinned official image and `CLAMD_CONF_*` environment settings (verified effective in the running container):
   `StreamMaxLength`/`MaxFileSize` 256M, `MaxScanSize` 512M, `AlertExceedsMax yes`.
-- **Nothing is published to the host.** MinIO (9000/9001) and clamd (3310) live only on the private `corecrow-api_default` Docker network; CPU, memory
-  and PID limits and `no-new-privileges` are set in the compose file.
+- **No public ports.** clamd (3310) and the MinIO console (9001) live only on the private `corecrow-api_default` Docker network; the MinIO API is
+  published on `127.0.0.1:9000` solely for the nginx proxy below. CPU, memory and PID limits and `no-new-privileges` are set in the compose file.
 - **Versioning everywhere.** Both buckets are versioned. Assets and avatars are pinned to the scanned VersionId; CoreCrow purges every version of a
   deleted or rejected object (policy: `DeleteObjectVersion` on the asset prefixes). No lifecycle expiry is configured, because one could delete the
   pinned version of a live object after an overwrite.
