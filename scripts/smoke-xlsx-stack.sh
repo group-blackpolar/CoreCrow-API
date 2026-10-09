@@ -32,7 +32,7 @@ for _ in $(seq 1 30); do docker exec corecrow-smoke-pg pg_isready -U postgres -d
   echo 'TRUSTED_ORIGINS=http://smoke.test'
   echo 'SMTP_URL=smtp://corecrow-smoke-driver:5525?ignoreTLS=true'
   echo 'MAIL_FROM=smoke@smoke.test'
-  echo 'NODE_ENV=production'
+  echo 'NODE_ENV=development'  # production insists on an HTTPS BETTER_AUTH_URL; this stack is private and isolated
   echo 'PORT=4000'
   echo 'AI_ENABLED=false'
 } > "$dir/smoke.env"
