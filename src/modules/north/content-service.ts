@@ -12,6 +12,8 @@ import {
 } from "./content-schema.js";
 import { northContentRepository as repo } from "./content-repository.js";
 import { cloneNorthPanelDocument } from "./clone-document.js";
+import { buildDraftReport } from "./content-validation.js";
+import { gatherDraftFacts } from "./content-facts.js";
 
 type RevisionInput = {
   document: unknown;
@@ -167,6 +169,26 @@ export const northContent = {
         metadata: { field: "draft", revisionNumber: revision.revisionNumber },
       });
       return revisionView(revision);
+    });
+  },
+
+  /** Read-only pre-publish check of the current draft: schema + references + data bindings. Never mutates. */
+  validateDraft(userId: string, organizationId: string, panelId: string) {
+    return transaction(async (tx) => {
+      const { panel, target } = await panelContext(tx, organizationId, panelId);
+      await authorizeNorth(tx, userId, "north.panel.preview", target);
+      const draft = panel.draftRevision;
+      if (!draft) fail(409, "DRAFT_REQUIRED", "Panel has no draft to validate");
+      let schemaError: { code: string; message: string } | null = null;
+      try {
+        await validateNorthPanelDocument(draft.document, { organizationId, actorId: userId, tx, panelId, ...referenceResolvers });
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        schemaError = { code: error.code, message: error.message };
+      }
+      const facts = await gatherDraftFacts(tx, userId, organizationId, panelId, draft.document);
+      const report = buildDraftReport({ document: draft.document, schemaError, ...facts });
+      return { revisionId: draft.id, revisionNumber: draft.revisionNumber, etag: draft.etag, checkedAt: new Date(), ...report };
     });
   },
 

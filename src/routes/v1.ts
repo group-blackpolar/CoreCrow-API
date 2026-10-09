@@ -1473,6 +1473,17 @@ export async function v1Routes(app: FastifyInstance) {
     },
   });
   contract(app, {
+    method: "POST", url: "/organizations/:organizationId/panels/:panelId/draft/validate", tag: "NORTH content",
+    summary: "Validate the current draft before publishing (schema, references, data bindings, layout); read-only", params: panelParams,
+    response: z.object({
+      revisionId: s.id, revisionNumber: z.number().int().min(1), etag: z.string(), checkedAt: s.date, valid: z.boolean(),
+      issues: z.array(z.object({ severity: z.enum(["error", "warning"]), code: z.string(), message: z.string(), sectionId: z.string().optional(), componentId: z.string().optional() }).strict()),
+      dependencies: z.array(z.object({ kind: z.enum(["binding", "dataset"]), id: z.string(), status: z.enum(["ok", "missing", "unavailable", "forbidden"]), componentIds: z.array(z.string()) }).strict()),
+    }).strict(),
+    rateLimit: 60,
+    run: ({ user, params }) => northContent.validateDraft(user.id, params.organizationId, params.panelId),
+  });
+  contract(app, {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/publish", tag: "NORTH content",
     summary: "Publish the exact current draft revision", params: panelParams, response: panelRevision,
     headers: { properties: { "if-match": { type: "string", description: "Strong ETag of the current draft" } }, required: ["if-match"] },
