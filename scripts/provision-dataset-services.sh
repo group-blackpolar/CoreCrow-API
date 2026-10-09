@@ -119,9 +119,8 @@ sudo -n docker run --rm --network "$CORECROW_DOCKER_NETWORK" \
     mc version enable "corecrow/$MINIO_BUCKET"
     # Assets and avatars are pinned to the exact version that was scanned, so this bucket must be versioned too.
     mc version enable "corecrow/$MINIO_ASSET_BUCKET"
-    # Deleting an object only adds a delete marker in a versioned bucket; expire the retained versions so deleted
-    # avatars and assets do not live forever (7 days leaves room for rollback).
-    mc ilm rule add --noncurrent-expire-days 7 "corecrow/$MINIO_ASSET_BUCKET" || true
+    # No lifecycle expiry on purpose: CoreCrow purges every version of a deleted or rejected object itself, and an
+    # expiry rule could delete the pinned (scanned) version of a live asset after an overwrite.
     mc admin policy create corecrow corecrow-dataset-import /policy.json
     mc admin user add corecrow "$MINIO_APP_ACCESS_KEY" "$MINIO_APP_SECRET_KEY"
     mc admin policy attach corecrow corecrow-dataset-import --user "$MINIO_APP_ACCESS_KEY"

@@ -141,12 +141,22 @@ export async function scanClamAvInstream(
     });
   });
   void reply.catch(() => undefined);
+  // Every wait below is raced against this: whatever ends the socket (idle timeout, deadline, caller abort, remote close)
+  // unblocks connect, writes and the verdict wait, so no await can outlive the connection.
+  const closed = new Promise<never>((_, reject) => {
+    socket.once("close", () => reject(unavailable("ClamAV connection closed")));
+  });
+  void closed.catch(() => undefined);
+  const guard = <T>(work: Promise<T>) => Promise.race([work, closed]);
 
   try {
-    await once(socket, "connect");
-    await writeWithBackpressure(socket, Buffer.from("zINSTREAM\0"));
+    await guard(once(socket, "connect"));
+    await guard(writeWithBackpressure(socket, Buffer.from("zINSTREAM\0")));
     let streamed = 0;
-    const stream = await input.openPrivateRead();
+    const stream = await guard(input.openPrivateRead());
+    // A stalled or slow object read must not outlive the connection: closing the socket ends the read.
+    const endRead = () => stream.destroy();
+    socket.once("close", endRead);
     try {
       for await (const value of stream) {
         if (stop.aborted) throw input.signal.reason ?? unavailable("ClamAV scan deadline exceeded");
@@ -158,17 +168,18 @@ export async function scanClamAvInstream(
           const part = chunk.subarray(offset, offset + configuration.chunkBytes);
           const length = Buffer.allocUnsafe(4);
           length.writeUInt32BE(part.byteLength);
-          await writeWithBackpressure(socket, length);
-          await writeWithBackpressure(socket, part);
+          await guard(writeWithBackpressure(socket, length));
+          await guard(writeWithBackpressure(socket, part));
         }
       }
     } finally {
+      socket.off("close", endRead);
       stream.destroy();
     }
     if (streamed !== input.size)
       throw new ClamAvInstreamError("SIZE_MISMATCH", "Object size does not match its declaration");
-    await writeWithBackpressure(socket, Buffer.alloc(4));
-    const result = await reply;
+    await guard(writeWithBackpressure(socket, Buffer.alloc(4)));
+    const result = await guard(reply);
     if (/^stream:\s+OK$/i.test(result)) return "CLEAN";
     if (/^stream:\s+.+\s+FOUND$/i.test(result)) return "INFECTED";
     throw unavailable("ClamAV returned an invalid result");

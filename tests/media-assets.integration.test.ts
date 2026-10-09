@@ -183,4 +183,49 @@ test("Media assets: user avatars and organization icons", { skip: !process.env.T
     expect(await call("DELETE", `/v1/organizations/${orgA}/assets/${current}`, owner.cookie), 200);
     assert.equal((await call("GET", `/v1/organizations/${orgA}/icon`, owner.cookie)).statusCode, 404);
   });
+
+  await t.test("version pinning: READY records the scanned VersionId, reads stay pinned after an overwrite, and the database requires it", async () => {
+    const asset = await readyIconAsset(owner.cookie, orgA, png(20));
+    const row = await prisma.northAsset.findUniqueOrThrow({ where: { id: asset } });
+    assert.ok(row.storageVersionId && row.storageVersionId !== "null", "READY stores the scanned version");
+    // A replayed signed PUT writes a new, unscanned version of the same key.
+    storage.put(row.storageKey, { bytes: png(21), mime: "image/png", checksum: sha(png(21)) });
+    const read = expect(await call("GET", `/v1/organizations/${orgA}/assets/${asset}/read`, owner.cookie), 200);
+    assert.ok(read.download.url.includes(encodeURIComponent(row.storageVersionId)), "the signed read targets the scanned version");
+    await assert.rejects(prisma.northAsset.update({ where: { id: asset }, data: { storageVersionId: null } }), "a READY asset cannot lose its version");
+    await prisma.northAsset.update({ where: { id: asset }, data: { deletedAt: new Date() } });
+    const mine = await uploadAvatar(owner.cookie, png(22));
+    expect(await call("POST", `/v1/me/avatar/${mine.id}/confirm`, owner.cookie), 200);
+    const avatar = await prisma.userAvatar.findUniqueOrThrow({ where: { id: mine.id } });
+    assert.ok(avatar.storageVersionId);
+    storage.put(mine.key, { bytes: png(23), mime: "image/png", checksum: sha(png(23)) });
+    assert.ok(expect(await call("GET", "/v1/me/avatar", owner.cookie), 200).download.url.includes(encodeURIComponent(avatar.storageVersionId!)));
+    await assert.rejects(prisma.userAvatar.update({ where: { id: mine.id }, data: { storageVersionId: null } }));
+    expect(await call("DELETE", "/v1/me/avatar", owner.cookie), 200);
+    assert.equal(storage.objects.has(mine.key), false, "delete purges the object");
+  });
+
+  await t.test("unversioned storage fails closed: confirmation is a retryable 503 and nothing becomes READY", async () => {
+    const unversioned = new FakeObjectStorage(false);
+    configureNorthAssetService(new NorthAssetService({ storage: unversioned, scanner, config }));
+    configureUserAvatarService(new UserAvatarService({ storage: unversioned, scanner, config }));
+    try {
+      const bytes = png(30);
+      const requested = expect(await call("POST", "/v1/me/avatar/uploads", owner.cookie, { mime: "image/png", size: bytes.length, checksum: sha(bytes) }), 201);
+      const row = await prisma.userAvatar.findUniqueOrThrow({ where: { id: requested.avatar.id } });
+      unversioned.put(row.storageKey, { bytes, mime: "image/png", checksum: sha(bytes) });
+      const refused = await call("POST", `/v1/me/avatar/${row.id}/confirm`, owner.cookie);
+      assert.equal(refused.statusCode, 503);
+      assert.equal(refused.json().error.code, "ASSET_STORAGE_IMMUTABILITY_UNAVAILABLE");
+      assert.equal((await prisma.userAvatar.findUniqueOrThrow({ where: { id: row.id } })).status, "PROCESSING");
+      const asset = expect(await call("POST", `/v1/organizations/${orgA}/assets/uploads`, owner.cookie, { filename: "u.png", mime: "image/png", size: bytes.length, checksum: sha(bytes) }), 201);
+      const assetRow = await prisma.northAsset.findUniqueOrThrow({ where: { id: asset.asset.id } });
+      unversioned.put(assetRow.storageKey, { bytes, mime: "image/png", checksum: sha(bytes) });
+      assert.equal((await call("POST", `/v1/organizations/${orgA}/assets/${assetRow.id}/confirm`, owner.cookie)).statusCode, 503);
+      assert.notEqual((await prisma.northAsset.findUniqueOrThrow({ where: { id: assetRow.id } })).status, "READY");
+    } finally {
+      configureNorthAssetService(new NorthAssetService({ storage, scanner, config }));
+      configureUserAvatarService(new UserAvatarService({ storage, scanner, config }));
+    }
+  });
 });

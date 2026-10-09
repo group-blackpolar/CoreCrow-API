@@ -244,3 +244,45 @@ test("factories: unconfigured without an endpoint, ClamAV with one (assets and i
     Object.assign(process.env, saved);
   }
 });
+
+test("a stalled object read cannot outlive the idle timeout or the deadline (no hung scan, read stream destroyed)", async () => {
+  const clamd = await fakeClamd("clean");
+  try {
+    let destroyed = false;
+    const stalled = async () => {
+      const stream = new Readable({ read() { /* never produces data */ } });
+      stream.once("close", () => { destroyed = true; });
+      return stream;
+    };
+    const started = Date.now();
+    const result = await Promise.race([
+      kind(scanClamAvInstream(configuration(clamd.port, { timeoutMilliseconds: 200, deadlineMilliseconds: 3_000 }), { size: 1000, openPrivateRead: stalled, signal: new AbortController().signal })),
+      new Promise((resolve) => setTimeout(() => resolve("HUNG"), 5_000)),
+    ]);
+    assert.equal(result, "UNAVAILABLE");
+    assert.ok(Date.now() - started < 4_000);
+    assert.equal(destroyed, true, "the object stream is released");
+  } finally { await clamd.close(); }
+});
+
+test("a blackholed scanner fails within the timeout instead of hanging in connect", async () => {
+  const started = Date.now();
+  const result = await Promise.race([
+    kind(scanClamAvInstream(configuration(3310, { endpoint: { host: "192.0.2.1", port: 3310 }, timeoutMilliseconds: 200, deadlineMilliseconds: 3_000 }), { size: 10, openPrivateRead: open(bytes(10)), signal: new AbortController().signal })),
+    new Promise((resolve) => setTimeout(() => resolve("HUNG"), 5_000)),
+  ]);
+  assert.equal(result, "UNAVAILABLE");
+  assert.ok(Date.now() - started < 4_500);
+});
+
+test("an object read that never opens is bounded by the deadline", async () => {
+  const clamd = await fakeClamd("clean");
+  try {
+    const never = () => new Promise<Readable>(() => undefined);
+    const result = await Promise.race([
+      kind(scanClamAvInstream(configuration(clamd.port, { timeoutMilliseconds: 200, deadlineMilliseconds: 3_000 }), { size: 10, openPrivateRead: never, signal: new AbortController().signal })),
+      new Promise((resolve) => setTimeout(() => resolve("HUNG"), 5_000)),
+    ]);
+    assert.equal(result, "UNAVAILABLE");
+  } finally { await clamd.close(); }
+});

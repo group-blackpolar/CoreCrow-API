@@ -3,8 +3,9 @@
 //   node scripts/verify-asset-infrastructure.mjs
 // It never prints credentials, object keys or file contents. It checks, against the real services:
 //   private bucket access with the application identity, versioning (exact VersionId), PUT/HEAD/GET checksum,
-//   pinned-version reads, signed-URL read of the pinned version, ClamAV INSTREAM on a clean object (APPROVED) and on the
-//   standard EICAR test string (QUARANTINED), and that every probe object version is removed afterwards.
+//   that overwriting a key leaves the pinned version readable and byte-identical through a pinned signed URL, ClamAV INSTREAM
+//   on a clean object (APPROVED) and on the EICAR test string (QUARANTINED), that delete purges every version, and that
+//   every probe object version is removed afterwards.
 import { createHash, randomUUID } from "node:crypto";
 import {
   DeleteObjectCommand, ListObjectVersionsCommand, PutObjectCommand, S3Client,
@@ -56,9 +57,17 @@ try {
     const pinned = await storage.inspect(cleanObject.key, cleanObject.putVersionId);
     if (pinned.versionId !== cleanObject.putVersionId) throw new Error("pinned inspection mismatch");
   });
-  await step("signed GET is pinned to the exact version", async () => {
+  await step("overwriting the key leaves the pinned version readable, scannable and byte-identical", async () => {
+    const replaced = await put("clean.txt", Buffer.from("replacement bytes written after the scan\n", "utf8"), "text/plain");
+    if (replaced.putVersionId === cleanObject.putVersionId) throw new Error("overwrite did not create a new version");
     const signed = await storage.signedGet({ key: cleanObject.key, versionId: cleanObject.putVersionId, filename: "probe.txt", mime: "text/plain", ttlSeconds: 60 });
-    if (!new URL(signed.url).searchParams.has("versionId")) throw new Error("signed URL is not version-pinned");
+    if (new URL(signed.url).searchParams.get("versionId") !== cleanObject.putVersionId) throw new Error("signed URL is not version-pinned");
+    const body = Buffer.from(await (await fetch(signed.url)).arrayBuffer());
+    if (sha256(body) !== cleanObject.checksum) throw new Error("pinned signed URL did not serve the scanned bytes");
+    const verdict = await malwareScannerFromEnvironment(storage, { maximumBytes: clean.byteLength }).scan({
+      storageKey: cleanObject.key, storageVersionId: cleanObject.putVersionId, mime: "text/plain", size: clean.byteLength, checksum: cleanObject.checksum,
+    });
+    if (verdict !== "APPROVED") throw new Error(`pinned version was ${verdict} after the overwrite`);
   });
   await step("ClamAV INSTREAM approves the clean object (pinned version)", async () => {
     const verdict = await malwareScannerFromEnvironment(storage, { maximumBytes: clean.byteLength }).scan({
@@ -72,6 +81,11 @@ try {
       storageKey: infected.key, storageVersionId: infected.putVersionId, mime: "application/octet-stream", size: eicar.byteLength, checksum: infected.checksum,
     });
     if (verdict !== "QUARANTINED") throw new Error(`EICAR was ${verdict}`);
+  });
+  await step("delete purges every version of the key (no hidden noncurrent bytes)", async () => {
+    await storage.delete(cleanObject.key);
+    const left = await client.send(new ListObjectVersionsCommand({ Bucket: bucket, Prefix: cleanObject.key }));
+    if ([...(left.Versions ?? []), ...(left.DeleteMarkers ?? [])].some((item) => item.Key === cleanObject.key)) throw new Error("versions remained after delete");
   });
   console.info(results.join("\n"));
   console.info("Asset infrastructure probe passed: private versioned storage and ClamAV are working.");

@@ -10,6 +10,12 @@ import { AVATAR_MAX_BYTES, validateAvatarDeclaration } from "./avatar-policy.js"
 
 export type AvatarDependencies = { storage: ObjectStorage; scanner: MalwareScanner; config: AssetConfiguration };
 
+/** A READY avatar always has the scanned version recorded; refuse to serve unpinned bytes if it somehow does not. */
+function pinnedVersion(row: { storageVersionId: string | null }) {
+  if (!row.storageVersionId) fail(503, "ASSET_STORAGE_IMMUTABILITY_UNAVAILABLE", "Avatar has no recorded storage version");
+  return row.storageVersionId;
+}
+
 const view = (row: { id: string; mime: string; size: number; status: string; confirmedAt: Date | null; createdAt: Date }) => ({
   id: row.id, mime: row.mime, size: row.size, status: row.status, confirmedAt: row.confirmedAt, createdAt: row.createdAt,
 });
@@ -97,7 +103,7 @@ export class UserAvatarService {
   async readOwn(userId: string) {
     const row = await transaction((tx) => tx.userAvatar.findFirst({ where: { userId, status: "READY", deletedAt: null } }));
     if (!row) return { avatar: null, download: null };
-    const download = await this.deps.storage.signedGet({ key: row.storageKey, versionId: row.storageVersionId ?? undefined, filename: "avatar", mime: row.mime, ttlSeconds: this.deps.config.readUrlTtlSeconds });
+    const download = await this.deps.storage.signedGet({ key: row.storageKey, versionId: pinnedVersion(row), filename: "avatar", mime: row.mime, ttlSeconds: this.deps.config.readUrlTtlSeconds });
     return { avatar: view(row), download };
   }
 

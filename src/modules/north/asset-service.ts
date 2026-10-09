@@ -41,6 +41,12 @@ function assetView(asset: {
   };
 }
 
+/** A READY asset always has the scanned version recorded; refuse to serve unpinned bytes if it somehow does not. */
+function pinnedVersion(asset: { storageVersionId: string | null }) {
+  if (!asset.storageVersionId) fail(503, "ASSET_STORAGE_IMMUTABILITY_UNAVAILABLE", "Asset has no recorded storage version");
+  return asset.storageVersionId;
+}
+
 const target = (organizationId: string) => ({ organizationId, scope: "ORGANIZATION" as const });
 
 export class NorthAssetService {
@@ -176,7 +182,7 @@ export class NorthAssetService {
       return current;
     });
     const download = await this.dependencies.storage.signedGet({
-      key: asset.storageKey, versionId: asset.storageVersionId ?? undefined, filename: asset.filename, mime: asset.mime,
+      key: asset.storageKey, versionId: pinnedVersion(asset), filename: asset.filename, mime: asset.mime,
       ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
     });
     return { asset: assetView(asset), download };
@@ -192,7 +198,7 @@ export class NorthAssetService {
       return current;
     });
     const download = await this.dependencies.storage.signedGet({
-      key: asset.storageKey, versionId: asset.storageVersionId ?? undefined, filename: "icon", mime: asset.mime, ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
+      key: asset.storageKey, versionId: pinnedVersion(asset), filename: "icon", mime: asset.mime, ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
     });
     return { download };
   }
