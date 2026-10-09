@@ -10,9 +10,10 @@
 - `Organization.iconData` holds a validated data URL (<= 256 KB, <= 512x512). It works today.
 - `NorthAsset` is organization-scoped (`organizationId` required, quota-charged, `north.asset.*` capabilities).
   `@@unique([id, organizationId])` makes a tenant-safe composite reference possible.
-- In the default wiring the malware scanner is `UnconfiguredMalwareScanner` and object storage is
-  `UnavailableObjectStorage` unless `NORTH_ASSET_S3_*` is set. **No asset can become READY until both are configured**
-  (a scanner adapter does not exist yet). This gates the whole feature in production.
+- Wiring: object storage is `UnavailableObjectStorage` unless `NORTH_ASSET_S3_*` is set, and the scanner is built by
+  `malwareScannerFromEnvironment`: the shared ClamAV adapter when a `CORECROW_CLAMAV_*` endpoint is configured, otherwise
+  `UnconfiguredMalwareScanner`, which fails closed with 503. **An asset or avatar becomes READY only when both a private
+  versioned bucket and a reachable clamd are configured**; either missing gate leaves uploads retryable and nothing served.
 
 ## Decision
 
@@ -42,15 +43,33 @@ deleted from storage. Deleting a user cascades the avatar rows; their objects ne
 
 Additive migration `20261008120000_media_assets_avatars_icons`; no row is rewritten. Existing icons keep working through
 `iconData`. NORTH uses the managed path first and falls back to `iconData` for icons when CORECROW cannot store assets. Avatars have
-no legacy path and report "storage not available" until storage and a scanner adapter are configured.
+no legacy path and report "storage not available" until the private bucket and clamd are configured and the release probe passes.
 
 Integration note (2026-10-08): this change is additive alongside the CoreCrow AI MVP and the dataset-import VPS stack. It does
-not alter AI contracts or tenant authorization. The VPS ClamAV service is currently wired only to the dataset-import scanner;
-ordinary NORTH assets and user avatars continue to use the fail-closed `UnconfiguredMalwareScanner` until a production
-`MalwareScanner` adapter is implemented and wired explicitly. Installing ClamAV alone does not enable those upload confirmations.
+not alter AI contracts or tenant authorization. Dataset imports and ordinary assets keep separate scanner interfaces and storage
+policies, but share a bounded, fail-closed ClamAV INSTREAM transport and private clamd endpoint. Asset and avatar confirmation is
+enabled only when its separate object-storage bucket and ClamAV configuration are both present and the release probe succeeds.
+
+## Shared scanner and exact-version reads
+
+`src/infrastructure/clamav.ts` is the single clamd transport for dataset imports, `NorthAsset` and `UserAvatar` (organization icons are
+`NorthAsset`s). It streams the private object through `zINSTREAM` with backpressure, an idle timeout, a wall-clock deadline, caller abort,
+explicit byte limits and a strict reply parser (`stream: OK` and `stream: <signature> FOUND` are the only accepted answers; clamd `ERROR`,
+garbage, truncated or oversized replies are "unavailable"). Configuration is common: `CORECROW_CLAMAV_SOCKET` or `_HOST`/`_PORT`,
+`_TIMEOUT_MS`, `_DEADLINE_MS`, `_MAX_BYTES` (can only lower a caller's ceiling) and `_CHUNK_BYTES`; the legacy
+`NORTH_DATA_IMPORT_CLAMAV_*` endpoint variables are still read. Nothing publishes a clamd port to the host, and nothing logs keys, bytes or
+credentials. Infected content is `QUARANTINED`; unavailability, timeouts and oversize never become an approval.
+
+Confirmation records the exact provider `VersionId` it inspected and scanned (`storageVersionId`, additive migration
+`20261008140000_asset_storage_versions`, required for READY rows by a CHECK). The scanner reads that version and every signed GET is pinned to
+it, so bytes written later to the same key (for example through a still-valid signed PUT) are never served. A bucket without versioning
+fails confirmation with `ASSET_STORAGE_IMMUTABILITY_UNAVAILABLE` (503, retryable). clamd must allow the largest scanned object
+(`StreamMaxLength`/`MaxFileSize` 256M, `AlertExceedsMax yes` so an over-limit file is an alert, not a silent OK); the compose file sets this.
+`scripts/verify-asset-infrastructure.mjs` proves versioned private storage, pinned inspection and reads, a clean verdict and an EICAR
+quarantine, then removes every probe version; it is independent of the import probe and runs in `scripts/deploy-vps.sh`.
 
 ## Pending
 
-- A production malware-scanner adapter and `NORTH_ASSET_S3_*` configuration (blocker for enabling the feature).
+- Production `NORTH_ASSET_S3_*` credentials and successful storage/ClamAV probe on the target VPS.
 - Bulk conversion of existing `iconData` to assets (needs the scanner; dry-run by default when written).
 - Orphan sweep for objects whose rows were cascaded or whose deletion failed.

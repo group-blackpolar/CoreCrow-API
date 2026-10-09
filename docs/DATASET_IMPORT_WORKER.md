@@ -31,8 +31,9 @@ source files change. Run exactly one watcher per intended worker instance.
 - `NORTH_DATA_IMPORT_S3_BUCKET` and `NORTH_DATA_IMPORT_S3_REGION`: private
   quarantine storage. Provider authentication comes from the AWS SDK credential
   chain; do not place credentials in job records or client contracts.
-- One ClamAV endpoint: `NORTH_DATA_IMPORT_CLAMAV_SOCKET`, or both
-  `NORTH_DATA_IMPORT_CLAMAV_HOST` and `NORTH_DATA_IMPORT_CLAMAV_PORT`.
+- One shared ClamAV endpoint: `CORECROW_CLAMAV_SOCKET`, or both
+  `CORECROW_CLAMAV_HOST` and `CORECROW_CLAMAV_PORT`. Legacy
+  `NORTH_DATA_IMPORT_CLAMAV_*` names remain accepted during migration.
 
 Optional storage configuration is `NORTH_DATA_IMPORT_S3_ENDPOINT` and the exact
 boolean `NORTH_DATA_IMPORT_S3_FORCE_PATH_STYLE`. Optional operational tuning:

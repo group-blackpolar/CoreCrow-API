@@ -4,9 +4,9 @@ import { transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
 import { assetConfiguration, type AssetConfiguration } from "../north/asset-config.js";
 import { validateInspectedAsset } from "../north/asset-policy.js";
-import { type MalwareScanner, UnconfiguredMalwareScanner } from "../north/malware-scanner.js";
+import { malwareScannerFromEnvironment, type MalwareScanner } from "../north/malware-scanner.js";
 import { objectStorageFromEnvironment, type ObjectStorage } from "../north/object-storage.js";
-import { validateAvatarDeclaration } from "./avatar-policy.js";
+import { AVATAR_MAX_BYTES, validateAvatarDeclaration } from "./avatar-policy.js";
 
 export type AvatarDependencies = { storage: ObjectStorage; scanner: MalwareScanner; config: AssetConfiguration };
 
@@ -61,13 +61,19 @@ export class UserAvatarService {
       await transaction((tx) => tx.userAvatar.update({ where: { id: row.id }, data: { status } }));
       await this.deps.storage.delete(row.storageKey).catch(() => undefined);
     };
+    let storageVersionId: string;
     try {
-      validateInspectedAsset({ mime: row.mime, size: BigInt(row.size), checksum: row.checksum }, await this.deps.storage.inspect(row.storageKey));
+      const inspected = await this.deps.storage.inspect(row.storageKey);
+      validateInspectedAsset({ mime: row.mime, size: BigInt(row.size), checksum: row.checksum }, inspected);
+      // Without a provider version the scanned bytes could be swapped afterwards: fail closed (retryable, not a rejection).
+      if (!inspected.versionId || inspected.versionId === "null")
+        fail(503, "ASSET_STORAGE_IMMUTABILITY_UNAVAILABLE", "Avatar storage must have object versioning enabled");
+      storageVersionId = inspected.versionId;
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 422) await reject("REJECTED");
       throw error;
     }
-    const verdict = await this.deps.scanner.scan({ storageKey: row.storageKey, mime: row.mime, size: row.size, checksum: row.checksum });
+    const verdict = await this.deps.scanner.scan({ storageKey: row.storageKey, storageVersionId, mime: row.mime, size: row.size, checksum: row.checksum });
     if (verdict !== "APPROVED") {
       await reject(verdict === "QUARANTINED" ? "QUARANTINED" : "REJECTED");
       fail(422, verdict === "QUARANTINED" ? "ASSET_QUARANTINED" : "MALWARE_REJECTED", "Avatar was rejected by the scanner");
@@ -79,7 +85,7 @@ export class UserAvatarService {
       if (!current || current.status !== "PROCESSING") fail(409, "ASSET_NOT_PROCESSABLE", "Avatar is not processable");
       const replaced = await tx.userAvatar.findMany({ where: { userId, status: "READY", deletedAt: null, id: { not: row.id } }, select: { id: true, storageKey: true } });
       if (replaced.length) await tx.userAvatar.updateMany({ where: { id: { in: replaced.map((item) => item.id) } }, data: { deletedAt: new Date() } });
-      const ready = await tx.userAvatar.update({ where: { id: row.id }, data: { status: "READY", confirmedAt: new Date() } });
+      const ready = await tx.userAvatar.update({ where: { id: row.id }, data: { status: "READY", confirmedAt: new Date(), storageVersionId } });
       await auditRepository.append(tx, { actorId: userId, action: "AVATAR_READY", targetType: "UserAvatar", targetId: row.id, metadata: { replaced: replaced.length } });
       return { ready, replaced };
     });
@@ -91,7 +97,7 @@ export class UserAvatarService {
   async readOwn(userId: string) {
     const row = await transaction((tx) => tx.userAvatar.findFirst({ where: { userId, status: "READY", deletedAt: null } }));
     if (!row) return { avatar: null, download: null };
-    const download = await this.deps.storage.signedGet({ key: row.storageKey, filename: "avatar", mime: row.mime, ttlSeconds: this.deps.config.readUrlTtlSeconds });
+    const download = await this.deps.storage.signedGet({ key: row.storageKey, versionId: row.storageVersionId ?? undefined, filename: "avatar", mime: row.mime, ttlSeconds: this.deps.config.readUrlTtlSeconds });
     return { avatar: view(row), download };
   }
 
@@ -109,7 +115,13 @@ export class UserAvatarService {
   }
 }
 
-let configured = new UserAvatarService({ storage: objectStorageFromEnvironment(), scanner: new UnconfiguredMalwareScanner(), config: assetConfiguration() });
+const defaultStorage = objectStorageFromEnvironment();
+const defaultConfiguration = assetConfiguration();
+let configured = new UserAvatarService({
+  storage: defaultStorage,
+  scanner: malwareScannerFromEnvironment(defaultStorage, { maximumBytes: AVATAR_MAX_BYTES }),
+  config: defaultConfiguration,
+});
 export function configureUserAvatarService(service: UserAvatarService) { configured = service; }
 export const userAvatars = {
   requestUpload: (...args: Parameters<UserAvatarService["requestUpload"]>) => configured.requestUpload(...args),

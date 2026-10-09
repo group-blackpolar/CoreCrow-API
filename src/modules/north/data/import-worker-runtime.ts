@@ -79,18 +79,18 @@ function validateEndpoint(environment: NodeJS.ProcessEnv) {
 }
 
 function validateScannerEndpoint(environment: NodeJS.ProcessEnv) {
-  const socketPath = environment.NORTH_DATA_IMPORT_CLAMAV_SOCKET?.trim();
-  const host = environment.NORTH_DATA_IMPORT_CLAMAV_HOST?.trim();
-  const port = environment.NORTH_DATA_IMPORT_CLAMAV_PORT?.trim();
+  const socketPath = (environment.CORECROW_CLAMAV_SOCKET ?? environment.NORTH_DATA_IMPORT_CLAMAV_SOCKET)?.trim();
+  const host = (environment.CORECROW_CLAMAV_HOST ?? environment.NORTH_DATA_IMPORT_CLAMAV_HOST)?.trim();
+  const port = (environment.CORECROW_CLAMAV_PORT ?? environment.NORTH_DATA_IMPORT_CLAMAV_PORT)?.trim();
   if (socketPath && (host || port))
     configurationError("ClamAV endpoint", "must use either a socket or host and port, not both");
   if (!socketPath && !host) configurationError("ClamAV endpoint", "is required");
-  if (host && !port) configurationError("NORTH_DATA_IMPORT_CLAMAV_PORT", "is required with the host");
-  if (!host && port) configurationError("NORTH_DATA_IMPORT_CLAMAV_HOST", "is required with the port");
+  if (host && !port) configurationError("CORECROW_CLAMAV_PORT", "is required with the host");
+  if (!host && port) configurationError("CORECROW_CLAMAV_HOST", "is required with the port");
   if (port) {
     const parsed = Number(port);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535)
-      configurationError("NORTH_DATA_IMPORT_CLAMAV_PORT", "must be an integer between 1 and 65535");
+      configurationError("CORECROW_CLAMAV_PORT", "must be an integer between 1 and 65535");
   }
 }
 

@@ -7,7 +7,7 @@ import { authorizeNorth } from "./authorization.js";
 import { assetConfiguration, type AssetConfiguration } from "./asset-config.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "./asset-policy.js";
 import { northAssetRepository as repo } from "./asset-repository.js";
-import { type MalwareScanner, UnconfiguredMalwareScanner } from "./malware-scanner.js";
+import { malwareScannerFromEnvironment, type MalwareScanner } from "./malware-scanner.js";
 import { objectStorageFromEnvironment, type ObjectStorage } from "./object-storage.js";
 
 type AssetInput = { filename: string; mime: string; size: number; checksum: string };
@@ -124,9 +124,13 @@ export class NorthAssetService {
     });
     if (asset.status === "READY") return assetView(asset);
 
+    let inspected: Awaited<ReturnType<ObjectStorage["inspect"]>>;
     try {
-      const inspected = await this.dependencies.storage.inspect(asset.storageKey);
+      inspected = await this.dependencies.storage.inspect(asset.storageKey);
       validateInspectedAsset(asset, inspected);
+      // Without a provider version the scanned bytes could be swapped afterwards: fail closed (retryable, not a rejection).
+      if (!inspected.versionId || inspected.versionId === "null")
+        fail(503, "ASSET_STORAGE_IMMUTABILITY_UNAVAILABLE", "Asset storage must have object versioning enabled");
     } catch (error) {
       if (error instanceof DomainError && error.statusCode === 422) {
         await this.terminal(userId, organizationId, assetId, "REJECTED", error.code);
@@ -135,8 +139,9 @@ export class NorthAssetService {
       throw error;
     }
 
+    const storageVersionId = inspected.versionId;
     const verdict = await this.dependencies.scanner.scan({
-      storageKey: asset.storageKey, mime: asset.mime, size: Number(asset.size), checksum: asset.checksum,
+      storageKey: asset.storageKey, storageVersionId, mime: asset.mime, size: Number(asset.size), checksum: asset.checksum,
     });
     if (verdict !== "APPROVED") {
       const status = verdict === "QUARANTINED" ? "QUARANTINED" : "REJECTED";
@@ -154,7 +159,7 @@ export class NorthAssetService {
       if (current.status !== "PROCESSING" || current.deletedAt)
         fail(409, "ASSET_NOT_PROCESSABLE", "Asset is not processable");
       await repo.commitReservation(tx, organizationId, current.size);
-      const updated = await repo.status(tx, current.id, "READY", new Date());
+      const updated = await repo.status(tx, current.id, "READY", new Date(), storageVersionId);
       await this.appendAudit(tx, {
         actorId: userId, organizationId, action: "ASSET_READY", targetType: "NorthAsset", targetId: current.id,
         metadata: { mime: current.mime, size: Number(current.size) },
@@ -171,7 +176,7 @@ export class NorthAssetService {
       return current;
     });
     const download = await this.dependencies.storage.signedGet({
-      key: asset.storageKey, filename: asset.filename, mime: asset.mime,
+      key: asset.storageKey, versionId: asset.storageVersionId ?? undefined, filename: asset.filename, mime: asset.mime,
       ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
     });
     return { asset: assetView(asset), download };
@@ -187,7 +192,7 @@ export class NorthAssetService {
       return current;
     });
     const download = await this.dependencies.storage.signedGet({
-      key: asset.storageKey, filename: "icon", mime: asset.mime, ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
+      key: asset.storageKey, versionId: asset.storageVersionId ?? undefined, filename: "icon", mime: asset.mime, ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
     });
     return { download };
   }
@@ -223,8 +228,14 @@ export class NorthAssetService {
   }
 }
 
+const defaultStorage = objectStorageFromEnvironment();
+const defaultConfiguration = assetConfiguration();
 let configured = new NorthAssetService({
-  storage: objectStorageFromEnvironment(), scanner: new UnconfiguredMalwareScanner(), config: assetConfiguration(),
+  storage: defaultStorage,
+  scanner: malwareScannerFromEnvironment(defaultStorage, {
+    maximumBytes: Math.max(...Object.values(defaultConfiguration.maximumBytes)),
+  }),
+  config: defaultConfiguration,
 });
 
 export function configureNorthAssetService(service: NorthAssetService) { configured = service; }

@@ -21,6 +21,7 @@ sudo -n docker run --rm --network "$network" --env-file "$runtime" "$image" node
 candidate="corecrow-check-$version"
 worker_candidate="corecrow-dataset-worker-check-$version"
 worker_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_DATA_IMPORT_WORKER_ENABLED === "true" ? "true" : "false")')"
+asset_storage_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_ASSET_S3_BUCKET?.trim() ? "true" : "false")')"
 sudo -n docker run -d --name "$candidate" --network "$network" --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
 cleanup() {
   sudo -n docker rm -f "$candidate" >/dev/null 2>&1 || true
@@ -39,6 +40,12 @@ for attempt in {1..20}; do
 done
 "$ready" || { echo 'Candidate failed liveness; current API remains running'; exit 1; }
 curl --silent --max-time 10 http://127.0.0.1:4101/v1/health | python3 -c 'import sys,json; s=json.load(sys.stdin); assert all(m["status"]=="available" for m in s["modules"])'
+if [[ "$asset_storage_enabled" == "true" ]]; then
+  # A configured asset bucket is not considered usable until CoreCrow proves a
+  # private object read and a real scan through the shared clamd endpoint.
+  sudo -n docker run --rm --network "$network" --env-file "$runtime" "$image" \
+    node scripts/verify-asset-infrastructure.mjs
+fi
 if [[ "$worker_enabled" == "true" ]]; then
   # A running process alone is insufficient: prove the immutable-version check
   # and an actual private ClamAV INSTREAM request before replacing the worker.

@@ -38,8 +38,8 @@ export const northAssetRepository = {
       data: { storageUsedBytes: { decrement: size } },
     });
   },
-  status(tx: Transaction, id: string, status: NorthAssetStatus, confirmedAt?: Date) {
-    return tx.northAsset.update({ where: { id }, data: { status, ...(confirmedAt ? { confirmedAt } : {}) } });
+  status(tx: Transaction, id: string, status: NorthAssetStatus, confirmedAt?: Date, storageVersionId?: string) {
+    return tx.northAsset.update({ where: { id }, data: { status, ...(confirmedAt ? { confirmedAt } : {}), ...(storageVersionId ? { storageVersionId } : {}) } });
   },
   softDelete(tx: Transaction, id: string, deletedAt: Date) {
     return tx.northAsset.update({ where: { id }, data: { deletedAt } });

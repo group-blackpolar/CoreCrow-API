@@ -107,6 +107,12 @@ also submits a harmless byte stream through the real ClamAV protocol and checks
 bucket versioning before it starts a candidate worker. It never enables the
 worker itself.
 
+The same private clamd endpoint now scans organization assets and user avatars
+through a shared bounded INSTREAM transport. Those uploads use a separate
+least-privilege MinIO bucket, remain fail-closed when storage or clamd is
+unavailable, and are verified by `scripts/verify-asset-infrastructure.mjs`
+before a configured asset runtime is promoted.
+
 The `seed-master-house-demo` production workflow is a bounded administrative
 exception for the presentation fixture committed in `src/fixtures`. It creates
 an isolated organization, records the seed and accepted no-scan risk in the

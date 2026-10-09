@@ -66,9 +66,10 @@ required after host provisioning.
   text asset references inside their serializable transaction. Deleted,
   non-ready, unauthorized, and cross-tenant references fail closed.
 - Apply `20260929120000_north_assets` before starting the new application image.
-  Configure S3-compatible storage and an approved scanner adapter before enabling
-  uploads. With no scanner adapter the API intentionally returns
-  `MALWARE_SCANNER_UNAVAILABLE` and never marks an asset ready.
+  Configure S3-compatible versioned storage and the shared ClamAV endpoint
+  (`CORECROW_CLAMAV_*`, see ADR-022) before enabling uploads. With no clamd endpoint
+  the API intentionally returns `MALWARE_SCANNER_UNAVAILABLE` and never marks an
+  asset ready.
 
 ## NORTH TASK 8C/8D: panel documents and immutable publishing (2026-09-28)
 

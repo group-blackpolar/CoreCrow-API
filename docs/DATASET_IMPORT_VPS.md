@@ -11,7 +11,7 @@ the application continues to reject ordinary imports safely.
 | --- | --- | --- |
 | Private MinIO/S3 bucket with versioning | Pins every scan and parser read to the exact object version confirmed by the API. | No host port; persistent `/data` mount. |
 | Separate bucket-scoped access identity | Lets the API sign upload URLs and lets workers inspect/read/delete only import objects. | Stored only in the root-owned API runtime file. |
-| ClamAV `clamd` service | Performs the malware scan before any ZIP/OOXML or SheetJS parser work. | No host port; only the CoreCrow Docker network. |
+| ClamAV `clamd` service | Scans dataset imports, ordinary NORTH assets and user avatars before they become usable. | No host port; only the CoreCrow Docker network. |
 | Dataset worker | Claims durable PostgreSQL jobs and runs the security, analysis and materialization phases. | Separate container from the API, same release image. |
 | Infrastructure probe | Checks S3 versioning and sends harmless content through ClamAV's real `INSTREAM` protocol. | Runs before a candidate worker starts. |
 | Capacity and backups | Keeps datasets, virus signatures and PostgreSQL recoverable without exhausting the host. | Host operator responsibility. |
@@ -83,16 +83,27 @@ NORTH_DATA_IMPORT_S3_BUCKET="corecrow-dataset-imports"
 NORTH_DATA_IMPORT_S3_REGION="us-east-1"
 NORTH_DATA_IMPORT_S3_ENDPOINT="http://corecrow-minio:9000"
 NORTH_DATA_IMPORT_S3_FORCE_PATH_STYLE=true
-NORTH_DATA_IMPORT_CLAMAV_HOST="corecrow-clamav"
-NORTH_DATA_IMPORT_CLAMAV_PORT=3310
+NORTH_ASSET_S3_BUCKET="corecrow-assets"
+NORTH_ASSET_S3_REGION="us-east-1"
+NORTH_ASSET_S3_ENDPOINT="http://corecrow-minio:9000"
+NORTH_ASSET_S3_FORCE_PATH_STYLE=true
+CORECROW_CLAMAV_HOST="corecrow-clamav"
+CORECROW_CLAMAV_PORT=3310
+CORECROW_CLAMAV_TIMEOUT_MS=30000
+CORECROW_CLAMAV_MAX_BYTES=262144000
+CORECROW_CLAMAV_CHUNK_BYTES=65536
 AWS_ACCESS_KEY_ID="<dataset-import-access-key>"
 AWS_SECRET_ACCESS_KEY="<dataset-import-secret>"
 NORTH_DATA_IMPORT_WORKER_ENABLED=false
 CORECROW_DOCKER_NETWORK="corecrow-api_default"
 ```
 
-The S3 endpoint is a private Docker hostname, not a public URL. Do not set
-`NORTH_DATA_IMPORT_CLAMAV_SOCKET` together with the host/port pair.
+The provisioning policy grants only versioned dataset-import/probe prefixes in
+the dataset bucket and `north-assets/*`, `user-avatars/*` and the harmless probe
+prefix in the separate asset bucket. The S3 endpoint is a private Docker
+hostname, not a public URL. Do not set `CORECROW_CLAMAV_SOCKET` together with
+the host/port pair. Legacy `NORTH_DATA_IMPORT_CLAMAV_*` values remain accepted
+temporarily, but new hosts use the shared `CORECROW_CLAMAV_*` endpoint.
 `CORECROW_DOCKER_NETWORK` must exactly match the value in
 `/etc/blackpolar/corecrow-dataset.env`; the provisioning script checks this
 without printing either runtime file.
@@ -104,19 +115,24 @@ without printing either runtime file.
 2. Run the read-only `audit-dataset-infrastructure` workflow operation and
    confirm the private service containers are healthy and configuration is
    present without revealing values.
-3. On the host, run the candidate image against the root-only runtime file:
+3. On the host, run both candidate-image probes against the root-only runtime file:
 
    ```sh
    sudo docker run --rm --network "<configured-corecrow-network>" \
      --env-file /etc/blackpolar/corecrow.env corecrow-api:<release> \
      node scripts/verify-dataset-infrastructure.mjs
+
+   sudo docker run --rm --network "<configured-corecrow-network>" \
+     --env-file /etc/blackpolar/corecrow.env corecrow-api:<release> \
+     node scripts/verify-asset-infrastructure.mjs
    ```
 
-   It writes a harmless temporary object, requires a non-null VersionId, reads
-   that exact version through both HEAD and GET, verifies its checksum, removes
-   the exact version, and submits harmless content to ClamAV. It must report
-   that versioned storage and ClamAV are available. A failure is
-   a hard stop; leave the worker disabled and investigate the private service.
+   The dataset probe requires a non-null VersionId and scans the exact private
+   bytes. The asset probe writes to its separate probe prefix, checks the exact
+   VersionId, pinned reads and a version-pinned signed URL, scans a clean object
+   (approved) and the EICAR test string (quarantined) through the production
+   `MalwareScanner`, then removes every probe version. A failure is a hard stop; leave the worker and uploads disabled and
+   investigate the private service.
 4. Only after the successful probe, change
    `NORTH_DATA_IMPORT_WORKER_ENABLED=true` in the root-only API runtime file and
    deploy the same verified release. `scripts/deploy-vps.sh` repeats the probe,

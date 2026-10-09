@@ -15,6 +15,30 @@
       "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:GetObject", "s3:GetObjectVersion", "s3:DeleteObject", "s3:DeleteObjectVersion"],
       "Resource": ["arn:aws:s3:::__DATASET_BUCKET__/corecrow-infrastructure-probe/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketVersioning"],
+      "Resource": ["arn:aws:s3:::__ASSET_BUCKET__"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:GetObjectVersion", "s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::__ASSET_BUCKET__/north-assets/*",
+        "arn:aws:s3:::__ASSET_BUCKET__/user-avatars/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:GetObjectVersion", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": ["arn:aws:s3:::__ASSET_BUCKET__/corecrow-asset-probe/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:ListBucketVersions"],
+      "Resource": ["arn:aws:s3:::__ASSET_BUCKET__"],
+      "Condition": { "StringLike": { "s3:prefix": ["corecrow-asset-probe/*"] } }
     }
   ]
 }

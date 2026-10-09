@@ -872,6 +872,8 @@ model NorthAsset {
   size           BigInt
   checksum       String
   storageKey     String           @unique
+  /// Exact object version that was inspected and scanned; reads are pinned to it. Set when the asset becomes READY.
+  storageVersionId String?
   status         NorthAssetStatus @default(UPLOADING)
   confirmedAt    DateTime?
   deletedAt      DateTime?
@@ -895,6 +897,8 @@ model UserAvatar {
   size        Int
   checksum    String
   storageKey  String           @unique
+  /// Exact object version that was inspected and scanned; reads are pinned to it. Set when the avatar becomes READY.
+  storageVersionId String?
   status      NorthAssetStatus @default(UPLOADING)
   confirmedAt DateTime?
   deletedAt   DateTime?

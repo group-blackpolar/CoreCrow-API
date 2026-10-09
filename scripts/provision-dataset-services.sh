@@ -39,7 +39,7 @@ set -a
 source <(sudo -n cat "$dataset_runtime")
 set +a
 
-required=(MINIO_IMAGE MC_IMAGE CLAMAV_IMAGE MINIO_DATA_DIR CLAMAV_DATABASE_DIR MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_APP_ACCESS_KEY MINIO_APP_SECRET_KEY MINIO_BUCKET CORECROW_DOCKER_NETWORK)
+required=(MINIO_IMAGE MC_IMAGE CLAMAV_IMAGE MINIO_DATA_DIR CLAMAV_DATABASE_DIR MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_APP_ACCESS_KEY MINIO_APP_SECRET_KEY MINIO_BUCKET MINIO_ASSET_BUCKET CORECROW_DOCKER_NETWORK)
 for name in "${required[@]}"; do
   [[ -n "${!name:-}" ]] || { echo "Missing required dataset service setting: $name" >&2; exit 1; }
 done
@@ -48,6 +48,14 @@ done
 [[ "$CLAMAV_IMAGE" == *@sha256:* ]] || { echo 'CLAMAV_IMAGE must be pinned by digest' >&2; exit 1; }
 [[ "$MINIO_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || {
   echo 'MINIO_BUCKET must be a DNS-compatible bucket name' >&2
+  exit 1
+}
+[[ "$MINIO_ASSET_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || {
+  echo 'MINIO_ASSET_BUCKET must be a DNS-compatible bucket name' >&2
+  exit 1
+}
+[[ "$MINIO_ASSET_BUCKET" != "$MINIO_BUCKET" ]] || {
+  echo 'Dataset imports and ordinary assets must use separate buckets' >&2
   exit 1
 }
 runtime_network="$(sudo -n awk -F= '
@@ -96,7 +104,7 @@ wait_for_health corecrow-clamav 900
 policy_file="$(mktemp)"
 cleanup() { rm -f "$policy_file"; }
 trap cleanup EXIT
-sed "s/__DATASET_BUCKET__/${MINIO_BUCKET}/g" "$policy_template" > "$policy_file"
+sed -e "s/__DATASET_BUCKET__/${MINIO_BUCKET}/g" -e "s/__ASSET_BUCKET__/${MINIO_ASSET_BUCKET}/g" "$policy_template" > "$policy_file"
 
 # MinIO is initialized with a separate application user and only the bucket
 # actions required by the version-pinned import lifecycle.
@@ -107,16 +115,22 @@ sudo -n docker run --rm --network "$CORECROW_DOCKER_NETWORK" \
   -ec '
     mc alias set corecrow http://corecrow-minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
     mc mb --ignore-existing "corecrow/$MINIO_BUCKET"
+    mc mb --ignore-existing "corecrow/$MINIO_ASSET_BUCKET"
     mc version enable "corecrow/$MINIO_BUCKET"
+    # Assets and avatars are pinned to the exact version that was scanned, so this bucket must be versioned too.
+    mc version enable "corecrow/$MINIO_ASSET_BUCKET"
+    # Deleting an object only adds a delete marker in a versioned bucket; expire the retained versions so deleted
+    # avatars and assets do not live forever (7 days leaves room for rollback).
+    mc ilm rule add --noncurrent-expire-days 7 "corecrow/$MINIO_ASSET_BUCKET" || true
     mc admin policy create corecrow corecrow-dataset-import /policy.json
     mc admin user add corecrow "$MINIO_APP_ACCESS_KEY" "$MINIO_APP_SECRET_KEY"
     mc admin policy attach corecrow corecrow-dataset-import --user "$MINIO_APP_ACCESS_KEY"
   '
 
 cat <<'NEXT_STEPS'
-Private MinIO and ClamAV are healthy and the bucket has versioning enabled.
+Private MinIO and ClamAV are healthy and both buckets have versioning enabled.
 The worker remains disabled. In the root-owned /etc/blackpolar/corecrow.env,
-set the documented NORTH_DATA_IMPORT_* and AWS SDK variables using the separate
-application identity from corecrow-dataset.env. Then run the release's dataset
-infrastructure verifier before setting NORTH_DATA_IMPORT_WORKER_ENABLED=true.
+set the documented NORTH_DATA_IMPORT_*, NORTH_ASSET_*, CORECROW_CLAMAV_* and AWS
+SDK variables using the separate application identity from corecrow-dataset.env.
+Then run both infrastructure verifiers before enabling uploads or the worker.
 NEXT_STEPS
