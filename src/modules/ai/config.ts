@@ -16,6 +16,13 @@ function boolean(name: string, fallback: boolean) {
   fail(500, "AI_CONFIGURATION_INVALID", `Invalid ${name} configuration`);
 }
 
+function thinkingLevel(): "minimal" | "low" | "medium" | "high" | undefined {
+  const raw = process.env.AI_THINKING_LEVEL?.trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw === "minimal" || raw === "low" || raw === "medium" || raw === "high") return raw;
+  fail(500, "AI_CONFIGURATION_INVALID", "Invalid AI_THINKING_LEVEL configuration");
+}
+
 export type AIConfiguration = ReturnType<typeof aiConfiguration>;
 
 export function aiConfiguration() {
@@ -25,7 +32,9 @@ export function aiConfiguration() {
   return {
     enabled: boolean("AI_ENABLED", false),
     provider,
-    model: process.env.AI_DEFAULT_MODEL?.trim() || "gemini-2.5-flash",
+    // Gemini 2.5 Flash is closed to new API users (Google answers 404); 3.8 Flash is Google's documented replacement.
+    model: process.env.AI_DEFAULT_MODEL?.trim() || "gemini-3.8-flash",
+    thinkingLevel: thinkingLevel(),
     geminiApiKey: process.env.GEMINI_API_KEY?.trim() || "",
     geminiBaseUrl:
       process.env.AI_GEMINI_BASE_URL?.trim() ||

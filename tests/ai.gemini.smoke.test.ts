@@ -6,7 +6,8 @@ import type { AIProviderRequest } from "../src/modules/ai/provider.types.js";
 // Opt-in, real-provider smoke: AI_REAL_GEMINI_SMOKE=true GEMINI_API_KEY=... (the key is read from the environment and never printed).
 const enabled = process.env.AI_REAL_GEMINI_SMOKE === "true" && Boolean(process.env.GEMINI_API_KEY);
 const apiKey = process.env.GEMINI_API_KEY ?? "";
-const model = process.env.AI_DEFAULT_MODEL ?? "gemini-2.5-flash";
+const model = process.env.AI_DEFAULT_MODEL ?? "gemini-3.8-flash";
+const thinkingLevel = (process.env.AI_THINKING_LEVEL as AIProviderRequest["thinkingLevel"]) || undefined;
 const baseUrl = process.env.AI_GEMINI_BASE_URL ?? "https://generativelanguage.googleapis.com";
 const timeout = Number(process.env.AI_PROVIDER_TIMEOUT_MS ?? 45_000);
 const provider = () => new GeminiProvider(apiKey, timeout, baseUrl);
@@ -17,22 +18,22 @@ const lookupTool = {
   inputSchema: { type: "object", properties: { service: { type: "string", description: "Service name" } }, required: ["service"], additionalProperties: false },
 };
 const request = (overrides: Partial<AIProviderRequest>): AIProviderRequest => ({
-  model, maxOutputTokens: 256, systemInstruction: "Be brief.", messages: [], tools: [], ...overrides,
+  model, maxOutputTokens: 1024, thinkingLevel, systemInstruction: "Be brief.", messages: [], tools: [], ...overrides,
 });
 
-test("real Gemini 2.5 Flash: simple response with usage", { skip: !enabled }, async () => {
+test("real Gemini Flash: simple response with usage", { skip: !enabled }, async () => {
   const response = await provider().generate(request({ systemInstruction: "Reply with exactly OK.", messages: [{ role: "user", content: "Connectivity check" }] }));
   assert.match(response.text.trim(), /^OK[.!]?$/i);
   assert.ok(response.usage.totalTokens > 0);
   assert.equal(response.toolCalls.length, 0);
 });
 
-test("real Gemini 2.5 Flash: read-only tool call, then a final answer from the tool result", { skip: !enabled }, async () => {
+test("real Gemini Flash: read-only tool call, then a final answer from the tool result", { skip: !enabled }, async () => {
   const first = await provider().generate(request({
     systemInstruction: "You must call lookup_status to answer questions about service status. Never guess.",
     messages: [{ role: "user", content: "What is the status of the service named alpha?" }],
     tools: [lookupTool],
-    maxOutputTokens: 512,
+    maxOutputTokens: 1024,
   }));
   assert.ok(first.toolCalls.length >= 1, "the model requested the tool");
   const call = first.toolCalls[0]!;
@@ -47,20 +48,20 @@ test("real Gemini 2.5 Flash: read-only tool call, then a final answer from the t
       { role: "tool", toolName: call.name, toolCallId: call.id, content: JSON.stringify({ service: "alpha", status: "GREEN-42" }) },
     ],
     tools: [lookupTool],
-    maxOutputTokens: 512,
+    maxOutputTokens: 1024,
   }));
   assert.match(final.text, /GREEN-42/);
   assert.equal(final.toolCalls.length, 0);
 });
 
-test("real Gemini 2.5 Flash: streaming yields deltas and a completed event", { skip: !enabled }, async () => {
+test("real Gemini Flash: streaming yields deltas and a completed event", { skip: !enabled }, async () => {
   const events: string[] = [];
   for await (const event of provider().stream(request({ systemInstruction: "Reply with exactly: stream ok", messages: [{ role: "user", content: "go" }] }))) events.push(event.type);
   assert.equal(events.at(-1), "completed");
   assert.ok(events.includes("text.delta"));
 });
 
-test("real Gemini 2.5 Flash: provider failures are normalized and never carry the key", { skip: !enabled }, async () => {
+test("real Gemini Flash: provider failures are normalized and never carry the key", { skip: !enabled }, async () => {
   const seen: string[] = [];
   const originals = { log: console.log, info: console.info, warn: console.warn, error: console.error };
   for (const level of ["log", "info", "warn", "error"] as const) console[level] = (...args: unknown[]) => { seen.push(args.map(String).join(" ")); };

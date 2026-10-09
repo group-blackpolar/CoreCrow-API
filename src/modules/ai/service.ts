@@ -315,7 +315,7 @@ export class AIService {
         let response: AIProviderResponse | undefined;
         const streamedCalls = new Map<string, AIProviderResponse["toolCalls"][number]>();
         for await (const event of this.provider().stream({
-          model: run.model, maxOutputTokens: this.configuration.maxOutputTokens,
+          model: run.model, maxOutputTokens: this.configuration.maxOutputTokens, thinkingLevel: this.configuration.thinkingLevel,
           messages, tools: this.registry.providerTools(available),
           systemInstruction: systemInstructions(context.application, available.map((tool) => tool.name)),
         }, controller.signal)) {

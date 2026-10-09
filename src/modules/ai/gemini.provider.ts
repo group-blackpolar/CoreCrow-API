@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Content, type GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, type Content, type GenerateContentResponse } from "@google/genai";
 import { DomainError } from "../../shared/errors.js";
 import type { AIProvider } from "./provider.interface.js";
 import type {
@@ -32,9 +32,11 @@ function contents(request: AIProviderRequest): Content[] {
       role: message.role === "assistant" ? "model" : "user",
       parts: [
         ...(message.content ? [{ text: message.content }] : []),
-        ...(message.toolCalls ?? []).map((call) => ({ functionCall: {
-          id: call.id, name: call.name, args: call.arguments as Record<string, unknown>,
-        } })),
+        ...(message.toolCalls ?? []).map((call) => ({
+          functionCall: { id: call.id, name: call.name, args: call.arguments as Record<string, unknown> },
+          // Gemini 3 rejects a replayed function call that lost its thought signature.
+          ...(call.thoughtSignature ? { thoughtSignature: call.thoughtSignature } : {}),
+        })),
       ],
     };
   });
@@ -44,12 +46,14 @@ function normalized(response: GenerateContentResponse): AIProviderResponse {
   const inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
   const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
   const calls = response.functionCalls ?? [];
+  const signatures = (response.candidates?.[0]?.content?.parts ?? []).filter((part) => part.functionCall).map((part) => part.thoughtSignature);
   return {
     text: response.text ?? "",
     toolCalls: calls.map((call, index) => ({
       id: call.id ?? `gemini-call-${index}`,
       name: call.name ?? "",
       arguments: call.args ?? {},
+      ...(signatures[index] ? { thoughtSignature: signatures[index] } : {}),
     })),
     usage: {
       inputTokens,
@@ -97,6 +101,7 @@ export class GeminiProvider implements AIProvider {
       config: {
         systemInstruction: request.systemInstruction,
         maxOutputTokens: request.maxOutputTokens,
+        ...(request.thinkingLevel ? { thinkingConfig: { thinkingLevel: ThinkingLevel[request.thinkingLevel.toUpperCase() as keyof typeof ThinkingLevel] } } : {}),
         abortSignal: combinedSignal(signal, this.timeoutMs),
         httpOptions: { timeout: this.timeoutMs },
         ...(request.tools.length ? { tools: [{

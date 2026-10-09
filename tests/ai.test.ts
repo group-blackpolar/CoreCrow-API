@@ -117,7 +117,7 @@ test("disabled AI fails before invoking the provider", async () => {
     async *stream() { called = true; throw new Error("unexpected"); },
   };
   const configuration: AIConfiguration = {
-    enabled: false, provider: "gemini", model: "gemini-2.5-flash", geminiApiKey: "",
+    enabled: false, provider: "gemini", model: "gemini-3.8-flash", geminiApiKey: "",
     geminiBaseUrl: "https://example.invalid", providerTimeoutMs: 1000, runTimeoutMs: 5000,
     maxToolRounds: 1, maxOutputTokens: 256, contextMaxMessages: 10,
     contextMaxCharacters: 8_000, messageMaxCharacters: 8_000,
@@ -137,10 +137,10 @@ test("public AI runs serialize bigint cost estimates as decimal strings", () => 
   const value = publicAIRun({
     id: "run-a", conversationId: "conversation-a", organizationId: "org-a", userId: "user-a",
     application: "NORTH",
-    status: "COMPLETED", provider: "gemini", model: "gemini-2.5-flash",
+    status: "COMPLETED", provider: "gemini", model: "gemini-3.8-flash",
     failureCode: null, failureMessage: null, cancellationRequestedAt: null,
     startedAt: null, completedAt: null, createdAt: new Date(0), updatedAt: new Date(0),
-    usage: [{ id: "usage-a", provider: "gemini", model: "gemini-2.5-flash",
+    usage: [{ id: "usage-a", provider: "gemini", model: "gemini-3.8-flash",
       inputTokens: 1, outputTokens: 1, totalTokens: 2, latencyMs: 1,
       estimatedCostMicrousd: 9_007_199_254_740_993n, pricingVersion: "test", createdAt: new Date(0),
       internal: "must-not-leak" }],

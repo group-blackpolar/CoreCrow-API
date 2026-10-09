@@ -16,6 +16,8 @@ export type AIToolCall = {
   id: string;
   name: string;
   arguments: unknown;
+  /** Opaque provider reasoning token that Gemini 3 models require to be replayed with the function call. */
+  thoughtSignature?: string;
 };
 
 export type AIUsage = {
@@ -27,6 +29,8 @@ export type AIUsage = {
 export type AIProviderRequest = {
   model: string;
   maxOutputTokens: number;
+  /** Reasoning effort for models that support it (Gemini 3). Omitted for models that do not. */
+  thinkingLevel?: "minimal" | "low" | "medium" | "high";
   systemInstruction: string;
   messages: AIProviderMessage[];
   tools: AIProviderTool[];

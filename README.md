@@ -4,7 +4,7 @@ Black Polar's shared backend foundation: Fastify + TypeScript + PostgreSQL + Bet
 
 ## CoreCrow AI MVP
 
-CoreCrow AI is an opt-in CORECROW module. Set `AI_ENABLED=true`, configure the backend-only `GEMINI_API_KEY`, apply migrations, and keep `AI_DEFAULT_MODEL=gemini-2.5-flash` for the confirmed MVP model. NORTH creates a tenant conversation, queues a run with `POST /v1/ai/runs`, then consumes persisted events from `GET /v1/ai/runs/:id/events?organizationId=...`. The SSE contract supports `Last-Event-ID` or `after` replay.
+CoreCrow AI is an opt-in CORECROW module. Set `AI_ENABLED=true`, configure the backend-only `GEMINI_API_KEY`, apply migrations, and keep `AI_DEFAULT_MODEL=gemini-3.8-flash` for the confirmed MVP model. NORTH creates a tenant conversation, queues a run with `POST /v1/ai/runs`, then consumes persisted events from `GET /v1/ai/runs/:id/events?organizationId=...`. The SSE contract supports `Last-Event-ID` or `after` replay.
 
 Provider output and retained conversation context are bounded by `AI_MAX_OUTPUT_TOKENS`, `AI_CONTEXT_MAX_MESSAGES`, and `AI_CONTEXT_MAX_CHARACTERS`. Recovery after a process restart drains interrupted runs conservatively in sequence so it cannot bypass the configured concurrency policy.
 
