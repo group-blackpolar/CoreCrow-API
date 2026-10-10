@@ -80,12 +80,27 @@ async function bounded<T>(work: Promise<T>): Promise<T> {
   }
 }
 
+/** Statement timeout for analytical reads. The interactive transaction gets headroom so PostgreSQL's cancel (503) wins over Prisma's own 5 s default. */
+const configured = Number(process.env.NORTH_DATASET_QUERY_TIMEOUT_MS);
+export const DATASET_QUERY_TIMEOUT_MS = Number.isFinite(configured) && configured > 0 ? Math.min(Math.max(configured, 1_000), 120_000) : 30_000;
+export const readTransaction = { isolationLevel: "ReadCommitted" as const, timeoutMilliseconds: DATASET_QUERY_TIMEOUT_MS + 5_000 };
+
+/** A dashboard fires a dozen heavy aggregates at once; running them all together makes every one miss the timeout. Excess waits here, outside any transaction. */
+const MAX_CONCURRENT = 4;
+let running = 0;
+const waiting: Array<() => void> = [];
+export async function gated<T>(work: () => Promise<T>): Promise<T> {
+  if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
+  running += 1;
+  try { return await work(); } finally { running -= 1; waiting.shift()?.(); }
+}
+
 export const northDatasetQuery = {
   execute(userId: string, organizationId: string, datasetId: string, query: DatasetQuery) {
-    return transaction(async (tx) => {
+    return gated(() => transaction(async (tx) => {
       await authorizeDataset(tx, userId, organizationId, datasetId, "north.data.query");
       return executeDatasetQuery(tx, organizationId, datasetId, query);
-    });
+    }, readTransaction));
   },
 };
 
@@ -104,7 +119,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         filters.push(Prisma.sql`(${Prisma.join(searchFields.map((id) => Prisma.sql`${typed(fields.get(id)!)} ILIKE ${pattern} ESCAPE '\\'`), " OR ")})`);
       }
       const where = Prisma.sql`rb."revisionId" = ${revision.id} AND rb."organizationId" = ${organizationId} AND rb."datasetId" = ${datasetId}${filters.length ? Prisma.sql` AND ${Prisma.join(filters, " AND ")}` : Prisma.empty}`;
-      await tx.$executeRaw`SET LOCAL statement_timeout = '5000ms'`;
+      await tx.$executeRaw(Prisma.sql`SET LOCAL statement_timeout = ${Prisma.raw(`'${DATASET_QUERY_TIMEOUT_MS}ms'`)}`);
       if (query.mode === "ROWS") {
         const pairs = query.fields.flatMap((fieldId) => [Prisma.sql`${fieldId}`, Prisma.sql`r."values" -> ${fieldId}`]);
         const ordering = (query.orderBy ?? []).map((item) => Prisma.sql`${typed(fields.get(item.fieldId)!)} ${Prisma.raw(item.direction)}`);

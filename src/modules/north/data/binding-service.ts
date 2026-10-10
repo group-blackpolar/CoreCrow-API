@@ -8,7 +8,7 @@ import type { NorthPanelDocument } from "../content-schema.js";
 import { authorizeDataset } from "./authorization.js";
 import { allowedBindingFilterSchema, datasetQuerySchema, type AllowedBindingFilter, type BindingRuntimeOptions, type DatasetQuery, type DatasetQueryFilter } from "./query-contract.js";
 import { previousPeriod, selectedPeriod, withPeriod } from "./period.js";
-import { executeDatasetQuery } from "./query-service.js";
+import { executeDatasetQuery, gated, readTransaction } from "./query-service.js";
 
 type BindingInput = { name: string; datasetId: string; query: DatasetQuery; allowedFilters?: AllowedBindingFilter[] };
 
@@ -46,7 +46,7 @@ async function validateAllowedFilters(tx: Transaction, organizationId: string, d
  * are served from memory. Authorization has ALREADY run for this caller when a lookup happens, and the key carries the
  * tenant, panel, binding, caller and the dataset's active revision, so a re-import or another identity can never read it.
  */
-const RESULT_TTL_MS = 20_000;
+const RESULT_TTL_MS = 600_000 // the key carries the active revision: a new import changes it, so a long TTL never serves stale data;
 const RESULT_CACHE_LIMIT = 300;
 const resultCache = new Map<string, { at: number; value: unknown }>();
 function cached<T>(key: string): T | undefined {
@@ -161,7 +161,7 @@ export const northAnalyticsBindings = {
     return true;
   },
   results(userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[], options: BindingRuntimeOptions = {}) {
-    return transaction(async (tx) => {
+    return gated(() => transaction(async (tx) => {
       const { binding, query, allowed } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, runtimeFilters);
       const revision = (await tx.northDataset.findFirst({ where: { id: binding.datasetId, organizationId }, select: { activeRevisionId: true } }))?.activeRevisionId ?? "none";
       const { fresh, ...requested } = options;
@@ -210,10 +210,10 @@ export const northAnalyticsBindings = {
       const payload = { bindingId, filterDefinitions, ...result, ...(comparison ? { comparison } : {}) };
       remember(cacheKey, payload);
       return payload;
-    });
+    }, readTransaction));
   },
   facets(userId: string, organizationId: string, panelId: string, bindingId: string, input: { fieldId: string; search?: string; filters: DatasetQueryFilter[]; limit: number; offset?: number; granularity?: "DAY" | "MONTH" | "QUARTER" | "YEAR" }) {
-    return transaction(async (tx) => {
+    return gated(() => transaction(async (tx) => {
       const { binding, query, allowed } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, input.filters);
       if (!allowed.some((item) => item.fieldId === input.fieldId)) fail(422, "BINDING_FILTER_NOT_ALLOWED", "Facet values are only available for fields this binding allows as filters");
       // Standard faceting: the facet's own selection is excluded so the user can still see (and add) sibling values;
@@ -233,6 +233,6 @@ export const northAnalyticsBindings = {
       const values = result.rows.map((row) => ({ value: (row[input.fieldId] ?? null) as string | number | boolean | null, count: Number(row.count) }));
       const total = result.totalRows ?? values.length;
       return { bindingId, fieldId: input.fieldId, values, truncated: (input.offset ?? 0) + values.length < total, total, executedAt: result.executedAt };
-    });
+    }, readTransaction));
   },
 };
