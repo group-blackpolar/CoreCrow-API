@@ -93,7 +93,7 @@ function bindingView(binding: { id: string; organizationId: string; panelId: str
 
 /** Shared by results and facets: a published, audience-authorized panel that references this binding, plus the binding's
  *  runtime-filter allowlist. Every failure is the same generic 404/403 so nothing about other tenants or panels leaks. */
-async function authorizedPublishedBinding(tx: Transaction, userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[]) {
+async function authorizedPublishedPanel(tx: Transaction, userId: string, organizationId: string, panelId: string) {
       const panel = await tx.northPanel.findFirst({
         where: { id: panelId, organizationId, status: "PUBLISHED" },
         include: { subcategory: true, publishedRevision: true, audienceRoles: true, audienceGroups: true, audiencePermissions: true, audienceMemberships: true },
@@ -104,8 +104,13 @@ async function authorizedPublishedBinding(tx: Transaction, userId: string, organ
         fail(404, "NOT_FOUND", "Published panel not found");
       if (panel.accessPolicyMode === "ACL_V1") fail(403, "FORBIDDEN", "Permission denied");
       if (!(await northPanelAudienceAllows(tx, userId, panel, panel.subcategory.categoryId))) fail(404, "NOT_FOUND", "Published panel not found");
+      return { panel, published: panel.publishedRevision };
+}
+
+async function authorizedPublishedBinding(tx: Transaction, userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[]) {
+      const { published } = await authorizedPublishedPanel(tx, userId, organizationId, panelId);
       const binding = await tx.northAnalyticsBinding.findFirst({ where: { id: bindingId, organizationId, panelId } });
-      if (!binding || !referenced(panel.publishedRevision.document as unknown as NorthPanelDocument, binding)) fail(404, "NOT_FOUND", "Binding not found");
+      if (!binding || !referenced(published.document as unknown as NorthPanelDocument, binding)) fail(404, "NOT_FOUND", "Binding not found");
       await authorizeDataset(tx, userId, organizationId, binding.datasetId, "north.data.query");
       const query = datasetQuerySchema.parse(binding.query);
       const allowed = allowedBindingFilterSchema.array().parse(binding.allowedFilters);
@@ -211,6 +216,35 @@ export const northAnalyticsBindings = {
       remember(cacheKey, payload);
       return payload;
     }, readTransaction));
+  },
+  /**
+   * What a READER may do with a published panel: its components and, for every binding the published document references and
+   * the reader may query, the output columns and the allowed runtime filters (field key, label, type, operators). Same
+   * authorization as results/facets; a dataset the reader cannot query is simply absent. Used by the assistant's tools.
+   */
+  describePublished(userId: string, organizationId: string, panelId: string) {
+    return transaction(async (tx) => {
+      const { panel, published } = await authorizedPublishedPanel(tx, userId, organizationId, panelId);
+      const document = published.document as unknown as NorthPanelDocument;
+      const components = document.sections.flatMap((section) => section.components);
+      const referenced = new Set(components.flatMap((component) => Object.values(component.bindings).flatMap((reference) => (reference.sourceType === "dataset" ? [reference.sourceId] : []))));
+      const found = await tx.northAnalyticsBinding.findMany({ where: { organizationId, panelId, id: { in: [...referenced] } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+      const bindings = [];
+      for (const binding of found) {
+        try { await authorizeDataset(tx, userId, organizationId, binding.datasetId, "north.data.query"); } catch { continue; }
+        const query = datasetQuerySchema.parse(binding.query);
+        const allowed = allowedBindingFilterSchema.array().parse(binding.allowedFilters);
+        const fields = allowed.length ? await tx.northDatasetField.findMany({ where: { organizationId, datasetId: binding.datasetId, id: { in: allowed.map((item) => item.fieldId) } }, select: { id: true, key: true, displayName: true, canonicalType: true } }) : [];
+        const byId = new Map(fields.map((field) => [field.id, field]));
+        bindings.push({
+          id: binding.id, name: binding.name, datasetId: binding.datasetId, mode: query.mode, outputs: outputKeys(query),
+          paged: Boolean(query.mode === "AGGREGATE" ? query.includeTotal : query.includeTotal), limit: query.limit ?? 100,
+          filters: allowed.flatMap((policy) => { const field = byId.get(policy.fieldId); return field ? [{ fieldId: field.id, key: field.key, displayName: field.displayName as Record<string, string>, type: field.canonicalType, operators: policy.operators }] : []; }),
+        });
+      }
+      const titles = components.map((component) => ({ id: component.id, type: component.type, title: (component.props as { title?: Record<string, string> }).title ?? (component.props as { label?: Record<string, string> }).label ?? null }));
+      return { panelId: panel.id, name: panel.name as Record<string, string>, slug: panel.slug, components: titles, bindings };
+    }, readTransaction);
   },
   facets(userId: string, organizationId: string, panelId: string, bindingId: string, input: { fieldId: string; search?: string; filters: DatasetQueryFilter[]; limit: number; offset?: number; granularity?: "DAY" | "MONTH" | "QUARTER" | "YEAR" }) {
     return gated(() => transaction(async (tx) => {

@@ -27,7 +27,7 @@ const usage = z.object({
   outputTokens: z.number().int(), totalTokens: z.number().int(), latencyMs: z.number().int(),
   estimatedCostMicrousd: z.string().regex(/^\d+$/), pricingVersion: z.string(), createdAt: s.date,
 }).strict();
-const action = z.object({ id: s.id, status: actionStatus, toolName: z.string(), expiresAt: s.date }).strict();
+const action = z.object({ id: s.id, status: actionStatus, toolName: z.string(), expiresAt: s.date, summary: z.string().nullable() }).strict();
 const toolCall = z.object({ id: s.id, name: z.string(), risk: z.string(), status: z.string(), errorCode: z.string().nullable() }).strict();
 const run = z.object({
   id: s.id, conversationId: s.id, organizationId: s.id, userId: s.id,
@@ -90,8 +90,8 @@ export async function aiRoutes(app: FastifyInstance) {
   contract(app, {
     method: "POST", url: "/ai/actions/:id/confirm", tag: "CoreCrow AI",
     security,
-    summary: "Reauthorize and confirm an AI action (no mutation tools enabled in MVP)",
-    params: z.object({ id: s.id }).strict(), response: action,
+    summary: "Reauthorize and execute a pending AI action the user confirmed (validated again, audited, single use)",
+    params: z.object({ id: s.id }).strict(), response: action.extend({ result: z.unknown().optional() }).strict(),
     run: ({ user, params }) => ai.confirmAction(user.id, params.id),
   });
   contract(app, {

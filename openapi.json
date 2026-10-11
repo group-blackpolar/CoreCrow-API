@@ -5759,13 +5759,18 @@
                           "expiresAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "summary": {
+                            "type": "string",
+                            "nullable": true
                           }
                         },
                         "required": [
                           "id",
                           "status",
                           "toolName",
-                          "expiresAt"
+                          "expiresAt",
+                          "summary"
                         ],
                         "additionalProperties": false
                       }
@@ -6129,13 +6134,18 @@
                           "expiresAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "summary": {
+                            "type": "string",
+                            "nullable": true
                           }
                         },
                         "required": [
                           "id",
                           "status",
                           "toolName",
-                          "expiresAt"
+                          "expiresAt",
+                          "summary"
                         ],
                         "additionalProperties": false
                       }
@@ -6291,7 +6301,7 @@
     },
     "/v1/ai/actions/{id}/confirm": {
       "post": {
-        "summary": "Reauthorize and confirm an AI action (no mutation tools enabled in MVP)",
+        "summary": "Reauthorize and execute a pending AI action the user confirmed (validated again, audited, single use)",
         "tags": [
           "CoreCrow AI"
         ],
@@ -6344,13 +6354,19 @@
                     "expiresAt": {
                       "type": "string",
                       "format": "date-time"
-                    }
+                    },
+                    "summary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "result": {}
                   },
                   "required": [
                     "id",
                     "status",
                     "toolName",
-                    "expiresAt"
+                    "expiresAt",
+                    "summary"
                   ],
                   "additionalProperties": false
                 }
@@ -6501,13 +6517,18 @@
                     "expiresAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "string",
+                      "nullable": true
                     }
                   },
                   "required": [
                     "id",
                     "status",
                     "toolName",
-                    "expiresAt"
+                    "expiresAt",
+                    "summary"
                   ],
                   "additionalProperties": false
                 }

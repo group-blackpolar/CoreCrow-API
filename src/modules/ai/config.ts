@@ -41,7 +41,7 @@ export function aiConfiguration() {
       "https://generativelanguage.googleapis.com",
     providerTimeoutMs: integer("AI_PROVIDER_TIMEOUT_MS", 45_000, 1_000),
     runTimeoutMs: integer("AI_RUN_TIMEOUT_MS", 90_000, 5_000),
-    maxToolRounds: integer("AI_MAX_TOOL_ROUNDS", 4),
+    maxToolRounds: integer("AI_MAX_TOOL_ROUNDS", 6),
     maxOutputTokens: integer("AI_MAX_OUTPUT_TOKENS", 2_048, 1, 8_192),
     contextMaxMessages: integer("AI_CONTEXT_MAX_MESSAGES", 50, 1, 100),
     contextMaxCharacters: integer("AI_CONTEXT_MAX_CHARACTERS", 64_000, 8_000, 256_000),
