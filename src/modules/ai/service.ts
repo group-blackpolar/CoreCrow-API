@@ -399,7 +399,7 @@ export class AIService {
               const value = safeJson({ status: "pending_user_confirmation", actionId: action.id, summary: proposal.summary, note: "Nothing has changed yet. Tell the user to review and confirm the action card shown in the chat." });
               await repo.completeToolCall(stored.id, value);
               await feedBack(stored, value, {});
-              await repo.addEvent(runId, "action.proposed", { actionId: action.id, toolName: call.name, summary: proposal.summary, expiresAt: action.expiresAt.toISOString() });
+              await repo.addEvent(runId, "action.proposed", { actionId: action.id, toolName: call.name, summary: proposal.summary, input: safeJson(proposal.input), expiresAt: action.expiresAt.toISOString() });
               await auditEvent({ actorId: run.userId, organizationId: run.organizationId, action: "ai.action.proposed", targetType: "AIAction", targetId: action.id, metadata: { name: call.name } });
               continue;
             }
