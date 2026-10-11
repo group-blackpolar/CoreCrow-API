@@ -47,11 +47,12 @@ function mappedKeys(type: string, props: Json): string[] {
   if (type === "metric" && typeof props.fieldKey === "string") keys.push(props.fieldKey);
   if (type === "kpi_card" && typeof props.valueKey === "string") keys.push(props.valueKey);
   if (type === "geo_map") for (const key of [props.regionKey, props.valueKey, props.secondaryKey]) if (typeof key === "string") keys.push(key);
-  if (type === "data_grid") for (const column of list(props.columns)) if (isRecord(column) && typeof column.key === "string" && column.kind !== "sparkline" && column.kind !== "actions") keys.push(column.key);
+  if (type === "data_grid") for (const column of list(props.columns)) if (isRecord(column) && typeof column.key === "string" && column.kind !== "sparkline" && column.kind !== "actions" && column.kind !== "rank") keys.push(column.key);
   if (CHART_TYPES.has(type)) {
     if (typeof props.categoryKey === "string") keys.push(props.categoryKey);
     if (typeof props.valueKey === "string") keys.push(props.valueKey);
     for (const item of list(props.series)) if (isRecord(item) && typeof item.key === "string") keys.push(item.key);
+    if (isRecord(props.drill) && typeof props.drill.categoryKey === "string") keys.push(props.drill.categoryKey);
   }
   return keys;
 }

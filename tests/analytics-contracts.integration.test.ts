@@ -175,4 +175,24 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     assert.equal((await results(grid, { filters: [] }, outsider.cookie, otherOrg)).statusCode, 404, "cross-tenant URL mixing is refused");
     assert.equal((await results(grid, { filters: [] }, "")).statusCode, 401);
   });
+
+  await t.test("SUM distinctBy counts a parent-level value once per key, per group, and stays tenant-bound", async () => {
+    const { northDatasetQuery } = await import("../src/modules/north/data/query-service.js");
+    const query = { mode: "AGGREGATE" as const, measures: [{ operation: "SUM" as const, fieldId: weight, distinctBy: consignee, alias: "once" }, { operation: "SUM" as const, fieldId: weight, alias: "plain" }, { operation: "COUNT" as const, alias: "n" }] };
+    const [total] = (await northDatasetQuery.execute(owner.id, org, dataset.id, query)).rows as Array<Record<string, string>>;
+    // Ground truth straight from the rows: every consignee contributes the MAX of its rows once (blank rows never hide the value).
+    const [truth] = await prisma.$queryRaw<Array<{ once: string; plain: string }>>`
+      WITH r AS (SELECT row."id", NULLIF(row."values"->>${weight}, '')::numeric AS w, row."values"->>${consignee} AS c FROM "NorthDatasetRow" row WHERE row."datasetId" = ${dataset.id})
+      SELECT (SELECT SUM(m) FROM (SELECT MAX(w) AS m FROM r GROUP BY c) x)::text AS once, (SELECT SUM(w) FROM r)::text AS plain`;
+    assert.equal(Number(total!.once), Number(truth!.once));
+    assert.equal(Number(total!.plain), Number(truth!.plain));
+    assert.ok(Number(total!.plain) > Number(total!.once), "the plain SUM repeats the value of every extra row of a key");
+    assert.equal(Number(total!.n), rowsExpected);
+    // Grouped: each (group, key) pair counts once, so grouping by the key itself equals one row's weight per group.
+    const byConsignee = (await northDatasetQuery.execute(owner.id, org, dataset.id, { ...query, groupBy: [consignee], limit: 1_000 })).rows as Array<Record<string, string>>;
+    assert.equal(byConsignee.length, 1000);
+    assert.equal(Math.round(byConsignee.reduce((sum, row) => sum + Number(row.once), 0)), Math.round(Number(truth!.once)));
+    // Another organization's member cannot run it against this dataset.
+    await assert.rejects(northDatasetQuery.execute(outsider.id, otherOrg, dataset.id, query));
+  });
 });

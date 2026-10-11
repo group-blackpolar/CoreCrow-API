@@ -25,7 +25,7 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
     search: datasetQuerySearch.optional(), searchFieldIds: z.array(queryFieldId).min(1).max(5).optional(), includeTotal: z.boolean().optional(), compareBy: queryFieldId.optional(),
   }).strict(),
   z.object({
-    mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(4).optional(),
+    mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(6).optional(),
     // DATE/DATETIME group fields may be truncated to a calendar bucket (the group value is the first day of the bucket).
     granularity: z.record(queryFieldId, datasetDateGranularity).optional(),
     // `distinctBy` (SUM only): sum the field once per distinct key inside each group. Needed when the value belongs to a parent

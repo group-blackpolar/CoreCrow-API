@@ -13283,7 +13283,7 @@
                           "minLength": 1,
                           "maxLength": 128
                         },
-                        "maxItems": 4
+                        "maxItems": 6
                       },
                       "granularity": {
                         "type": "object",
@@ -13314,6 +13314,11 @@
                               ]
                             },
                             "fieldId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "distinctBy": {
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 128
@@ -13988,7 +13993,7 @@
                                   "minLength": 1,
                                   "maxLength": 128
                                 },
-                                "maxItems": 4
+                                "maxItems": 6
                               },
                               "granularity": {
                                 "type": "object",
@@ -14019,6 +14024,11 @@
                                       ]
                                     },
                                     "fieldId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "distinctBy": {
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 128
@@ -14569,7 +14579,7 @@
                               "minLength": 1,
                               "maxLength": 128
                             },
-                            "maxItems": 4
+                            "maxItems": 6
                           },
                           "granularity": {
                             "type": "object",
@@ -14600,6 +14610,11 @@
                                   ]
                                 },
                                 "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "distinctBy": {
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 128
@@ -15079,7 +15094,7 @@
                                 "minLength": 1,
                                 "maxLength": 128
                               },
-                              "maxItems": 4
+                              "maxItems": 6
                             },
                             "granularity": {
                               "type": "object",
@@ -15110,6 +15125,11 @@
                                     ]
                                   },
                                   "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "distinctBy": {
                                     "type": "string",
                                     "minLength": 1,
                                     "maxLength": 128
@@ -15661,7 +15681,7 @@
                               "minLength": 1,
                               "maxLength": 128
                             },
-                            "maxItems": 4
+                            "maxItems": 6
                           },
                           "granularity": {
                             "type": "object",
@@ -15692,6 +15712,11 @@
                                   ]
                                 },
                                 "fieldId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "distinctBy": {
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 128
@@ -16181,7 +16206,7 @@
                                 "minLength": 1,
                                 "maxLength": 128
                               },
-                              "maxItems": 4
+                              "maxItems": 6
                             },
                             "granularity": {
                               "type": "object",
@@ -16212,6 +16237,11 @@
                                     ]
                                   },
                                   "fieldId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "distinctBy": {
                                     "type": "string",
                                     "minLength": 1,
                                     "maxLength": 128
@@ -35221,6 +35251,14 @@
                                       "lg"
                                     ],
                                     "default": "md"
+                                  },
+                                  "rowHeight": {
+                                    "type": "integer",
+                                    "minimum": 16,
+                                    "maximum": 120
+                                  },
+                                  "fit": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "additionalProperties": false
@@ -35732,6 +35770,14 @@
                                       "lg"
                                     ],
                                     "default": "md"
+                                  },
+                                  "rowHeight": {
+                                    "type": "integer",
+                                    "minimum": 16,
+                                    "maximum": 120
+                                  },
+                                  "fit": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "additionalProperties": false
@@ -36450,6 +36496,14 @@
                                       "lg"
                                     ],
                                     "default": "md"
+                                  },
+                                  "rowHeight": {
+                                    "type": "integer",
+                                    "minimum": 16,
+                                    "maximum": 120
+                                  },
+                                  "fit": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "additionalProperties": false
@@ -37133,6 +37187,14 @@
                                       "lg"
                                     ],
                                     "default": "md"
+                                  },
+                                  "rowHeight": {
+                                    "type": "integer",
+                                    "minimum": 16,
+                                    "maximum": 120
+                                  },
+                                  "fit": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "additionalProperties": false
@@ -37641,6 +37703,14 @@
                                       "lg"
                                     ],
                                     "default": "md"
+                                  },
+                                  "rowHeight": {
+                                    "type": "integer",
+                                    "minimum": 16,
+                                    "maximum": 120
+                                  },
+                                  "fit": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "additionalProperties": false
@@ -41575,6 +41645,14 @@
                                                       "lg"
                                                     ],
                                                     "default": "md"
+                                                  },
+                                                  "rowHeight": {
+                                                    "type": "integer",
+                                                    "minimum": 16,
+                                                    "maximum": 120
+                                                  },
+                                                  "fit": {
+                                                    "type": "boolean"
                                                   }
                                                 },
                                                 "additionalProperties": false
@@ -42235,6 +42313,14 @@
                                                     "lg"
                                                   ],
                                                   "default": "md"
+                                                },
+                                                "rowHeight": {
+                                                  "type": "integer",
+                                                  "minimum": 16,
+                                                  "maximum": 120
+                                                },
+                                                "fit": {
+                                                  "type": "boolean"
                                                 }
                                               },
                                               "additionalProperties": false
@@ -43347,6 +43433,14 @@
                                                     "lg"
                                                   ],
                                                   "default": "md"
+                                                },
+                                                "rowHeight": {
+                                                  "type": "integer",
+                                                  "minimum": 16,
+                                                  "maximum": 120
+                                                },
+                                                "fit": {
+                                                  "type": "boolean"
                                                 }
                                               },
                                               "additionalProperties": false
@@ -43912,6 +44006,14 @@
                                                       "lg"
                                                     ],
                                                     "default": "md"
+                                                  },
+                                                  "rowHeight": {
+                                                    "type": "integer",
+                                                    "minimum": 16,
+                                                    "maximum": 120
+                                                  },
+                                                  "fit": {
+                                                    "type": "boolean"
                                                   }
                                                 },
                                                 "additionalProperties": false
@@ -45109,6 +45211,14 @@
                                           "lg"
                                         ],
                                         "default": "md"
+                                      },
+                                      "rowHeight": {
+                                        "type": "integer",
+                                        "minimum": 16,
+                                        "maximum": 120
+                                      },
+                                      "fit": {
+                                        "type": "boolean"
                                       }
                                     },
                                     "additionalProperties": false
@@ -46004,6 +46114,14 @@
                                           "lg"
                                         ],
                                         "default": "md"
+                                      },
+                                      "rowHeight": {
+                                        "type": "integer",
+                                        "minimum": 16,
+                                        "maximum": 120
+                                      },
+                                      "fit": {
+                                        "type": "boolean"
                                       }
                                     },
                                     "additionalProperties": false

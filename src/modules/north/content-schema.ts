@@ -6,6 +6,7 @@ import type { Transaction } from "../../shared/transaction.js";
 const locale = z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/);
 const localized = z.record(locale, z.string().trim().min(1).max(10_000));
 const resourceId = z.string().min(1).max(128);
+const bindingName = z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/);
 const panelSlug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 const safeUrl = z.string().url().max(2_048).refine((value) => {
   const protocol = new URL(value).protocol;
@@ -96,8 +97,11 @@ const catalog = {
   card: z.object({ title: localized, body: localized.optional(), assetId: resourceId.optional(), variant: commonVariant.optional() }).strict(),
   list: z.object({ ordered: z.boolean().optional(), items: z.array(z.object({ id: resourceId, text: localized, href: safeUrl.optional(), panelSlug: panelSlug.optional() }).strict().refine((item) => !(item.href && item.panelSlug), "A list item takes href or panelSlug, not both")).min(1).max(200) }).strict(),
   metric: z.object({ label: localized, value: z.union([z.string().max(500), z.number()]).optional(), fieldKey: resultKey.optional(), format: z.enum(["number", "currency", "percent", "duration", "text"]).optional(), variant: commonVariant.optional() }).strict(),
-  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional(), showValues: z.boolean().optional(), valueFormat: valueFormat.optional() }).strict(),
-  line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional() }).strict(),
+  // `categoryFormat` names the calendar unit of a date category axis (month "Aug 2026" or year "2026").
+  // `drill` (bar charts): clicking a bar narrows the dashboard to that category and swaps the chart to the named binding
+  // (e.g. countries -> ports of the selected country); the back control clears that selection.
+  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional(), showValues: z.boolean().optional(), valueFormat: valueFormat.optional(), categoryFormat: z.enum(["month", "year"]).optional(), drill: z.object({ binding: bindingName, categoryKey: resultKey, title: localized.optional() }).strict().optional() }).strict(),
+  line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional(), categoryFormat: z.enum(["month", "year"]).optional() }).strict(),
   donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, maxSlices: z.number().int().min(2).max(12).optional(), totalKey: resultKey.optional(), color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional(), centerLabel: localized.optional(), showTotal: z.boolean().optional(), legend: z.enum(["right", "bottom", "none"]).optional() }).strict(),
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
@@ -148,7 +152,8 @@ const catalog = {
     height: chartHeight.optional(),
   }).strict(),
   // Places the page's filter bar (selectors, period, chips) at this spot instead of the default top position.
-  filter_bar: z.object({ title: localized.optional() }).strict(),
+  // `labels` renames a control by its dataset field KEY (e.g. arrival_date -> "Month / Year") without touching the dataset.
+  filter_bar: z.object({ title: localized.optional(), labels: z.record(resultKey, localized).optional() }).strict(),
   // Deterministic findings computed from binding results (no generative text).
   insights: z.object({ title: localized.optional(), items: z.array(insightRule).min(1).max(6) }).strict(),
 } as const;
