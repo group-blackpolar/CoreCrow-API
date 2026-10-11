@@ -17,3 +17,10 @@ test("IN is accepted inside queries and binding allowlists", () => {
   assert.ok(datasetQuerySchema.safeParse(query).success);
   assert.ok(allowedBindingFilterSchema.safeParse({ fieldId: "f", operators: ["IN", "EQ"] }).success);
 });
+
+test("distinctBy is only valid on a SUM over a field", () => {
+  const query = (measure: object) => ({ mode: "AGGREGATE", measures: [measure] });
+  assert.ok(datasetQuerySchema.safeParse(query({ operation: "SUM", fieldId: "teu", distinctBy: "bl", alias: "teus" })).success);
+  assert.ok(!datasetQuerySchema.safeParse(query({ operation: "COUNT", distinctBy: "bl", alias: "n" })).success);
+  assert.ok(!datasetQuerySchema.safeParse(query({ operation: "AVG", fieldId: "teu", distinctBy: "bl", alias: "n" })).success);
+});
