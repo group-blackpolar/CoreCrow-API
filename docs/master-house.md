@@ -54,6 +54,11 @@ fields once into a `MATERIALIZED` CTE (a few short columns per row) and run the 
 Per panel (before → after, ms): overview 2112 → 693 · Search By 5898 → 1683 · Master list 5437 → 1411 · House list 5751 → 1730 ·
 Port of Departure 7312 → 2215 · Cargo table 3285 → 884 · Consignees 2935 → 983 · Top forwarders 3222 → 1014.
 
+Production after the deploy (cold, result cache bypassed, one request at a time, median of 3, read-only, through the real service): per-binding
+latency 1.3–3.0 s; sequential sum per panel — overview 2.7 s, Consignees 5.1 s, Cargo table 6.3 s, House list 7.1 s, Top forwarders 8.1 s, Search By 8.4 s,
+Master list 8.9 s, Port of Departure 11.6 s. A browser fires them with 4 in flight server-side, so a cold panel renders in roughly 3–5 s; repeats inside 10 minutes hit the cache.
+These production panel numbers have no "before" (the old engine could not run the new bindings); the like-for-like before/after is the table above.
+
 Already in place and kept: 10-minute result cache keyed by tenant/panel/binding/user/active revision, concurrency gate (4), statement timeout,
 server-side paging/sorting/search, per-request cancellation and last-valid-result in the client. Not done (not justified by the measurements):
 materialized views, expression indexes (every query scans the single active revision; the plan is a parallel seq scan + hash join, the cost was the sort width).
@@ -94,3 +99,15 @@ node scripts/provision-view.mjs scripts/dashboards/shark-master-house.mjs --org 
 ```
 
 Updates the eight existing panels in place (new draft revision, validated by CORECROW, then published); previous revisions stay restorable from the panel's revision history.
+
+Server-side without a session (what was done for the 2026-10-11 production run): `--in-process --actor <email> --dist /app/dist` executes the same operations through the application
+services as that member account (authorization, validation and audit are that actor's; nothing is bypassed and no session is created):
+
+```
+docker cp scripts corecrow-v1:/tmp/prov
+docker exec corecrow-v1 sh -c "cd /tmp/prov && node provision-view.mjs shark-master-house.mjs --org shark --in-process --actor <email> --dist /app/dist --publish"
+```
+
+Production run 2026-10-11: pre-run `pg_dump -Fc` (`/var/backups/blackpolar/pre-master-house-20261011T234408Z.dump`, 577 entries), actor `group@blackpolar.org` (OWNER of SHARK, platform SUPERADMIN),
+eight panels published at revision 3 (`rowHeight` 16, `fit`), audit: 47 bindings created, 47 updated, 8 `PANEL_PUBLISHED`. The bindings of the previous tooling remain on the panels, unreferenced.
+Rollback: restore each panel's previous revision from NORTH's revision history, or `pg_restore` the dump above.

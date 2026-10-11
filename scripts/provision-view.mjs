@@ -19,13 +19,18 @@ const orgSlug = option("org");
 const api = (process.env.NORTH_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const origin = process.env.NORTH_ORIGIN ?? "http://localhost:5173";
 const cookie = process.env.NORTH_SESSION_COOKIE;
-if (!definitionPath || !orgSlug || !cookie) {
-  console.error("usage: NORTH_SESSION_COOKIE=... node scripts/provision-view.mjs <definition.mjs> --org <slug> [--publish]");
+// --in-process: run the same operations through the application services as a named actor (server-side, no HTTP / no session cookie).
+// Authorization, validation and audit are exactly those of that actor; see scripts/provision-transport-services.mjs.
+const inProcess = argv.includes("--in-process");
+if (!definitionPath || !orgSlug || (inProcess ? !option("actor") : !cookie)) {
+  console.error("usage: NORTH_SESSION_COOKIE=... node scripts/provision-view.mjs <definition.mjs> --org <slug> [--publish]\n   or: node scripts/provision-view.mjs <definition.mjs> --org <slug> --in-process --actor <email> [--dist <dir>]");
   process.exit(2);
 }
+const transport = inProcess ? await (await import("./provision-transport-services.mjs")).servicesTransport({ dist: option("dist") ?? "dist", actorEmail: option("actor") }) : null;
 
 // The API rate-limits per client (429). A multi-panel definition makes ~60 calls, so wait and retry instead of failing half-way.
 async function call(method, path, body, headers = {}, attempt = 0) {
+  if (transport) return transport.call(method, path, body, headers);
   const response = await fetch(`${api}/v1${path}`, {
     method,
     headers: { origin, cookie, ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
@@ -103,3 +108,4 @@ for (const entry of entries.filter((item) => !only || item.panel.slug === only))
   summary.push({ panelId: panel.id, slug: entry.panel.slug });
 }
 console.log(JSON.stringify({ organizationId: organization.id, datasetId: dataset.id, panels: summary }));
+await transport?.close();
