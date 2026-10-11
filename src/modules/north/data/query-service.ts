@@ -83,6 +83,9 @@ async function bounded<T>(work: Promise<T>): Promise<T> {
 /** Statement timeout for analytical reads. The interactive transaction gets headroom so PostgreSQL's cancel (503) wins over Prisma's own 5 s default. */
 const configured = Number(process.env.NORTH_DATASET_QUERY_TIMEOUT_MS);
 export const DATASET_QUERY_TIMEOUT_MS = Number.isFinite(configured) && configured > 0 ? Math.min(Math.max(configured, 1_000), 120_000) : 30_000;
+/** Per-query memory for sorts and hashes (SET LOCAL, so it ends with the read transaction). The projected rows are small; 64 MB keeps them in memory. */
+const workMem = Number(process.env.NORTH_DATASET_QUERY_WORK_MEM_MB);
+export const DATASET_QUERY_WORK_MEM_MB = Number.isFinite(workMem) && workMem > 0 ? Math.min(Math.max(Math.round(workMem), 4), 512) : 64;
 export const readTransaction = { isolationLevel: "ReadCommitted" as const, timeoutMilliseconds: DATASET_QUERY_TIMEOUT_MS + 5_000 };
 
 /** A dashboard fires a dozen heavy aggregates at once; running them all together makes every one miss the timeout. Excess waits here, outside any transaction. */
@@ -110,7 +113,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       const revision = dataset.activeRevision;
       const fields = new Map(revision.schemaVersion.fields.filter((field) => field.status === "ACTIVE").map((field) => [field.datasetFieldId, field]));
       const searchFields = query.search?.fieldIds ?? [];
-      const requested = query.mode === "ROWS" ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields] : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => item.fieldId ? [item.fieldId] : []), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields];
+      const requested = query.mode === "ROWS" ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields] : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => [...(item.fieldId ? [item.fieldId] : []), ...(item.distinctBy ? [item.distinctBy] : [])]), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields];
       if (requested.some((id) => !fields.has(id))) fail(422, "DATASET_QUERY_FIELD_INVALID", "Query references a field outside the active schema");
       if (searchFields.some((id) => fields.get(id)!.canonicalType !== "TEXT")) fail(422, "DATASET_QUERY_SEARCH_INVALID", "Search is only available on text fields");
       const filters = (query.filters ?? []).map((item) => filterSql(item, fields.get(item.fieldId)!));
@@ -120,6 +123,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       }
       const where = Prisma.sql`rb."revisionId" = ${revision.id} AND rb."organizationId" = ${organizationId} AND rb."datasetId" = ${datasetId}${filters.length ? Prisma.sql` AND ${Prisma.join(filters, " AND ")}` : Prisma.empty}`;
       await tx.$executeRaw(Prisma.sql`SET LOCAL statement_timeout = ${Prisma.raw(`'${DATASET_QUERY_TIMEOUT_MS}ms'`)}`);
+      await tx.$executeRaw(Prisma.sql`SET LOCAL work_mem = ${Prisma.raw(`'${DATASET_QUERY_WORK_MEM_MB}MB'`)}`);
       if (query.mode === "ROWS") {
         const pairs = query.fields.flatMap((fieldId) => [Prisma.sql`${fieldId}`, Prisma.sql`r."values" -> ${fieldId}`]);
         const ordering = (query.orderBy ?? []).map((item) => Prisma.sql`${typed(fields.get(item.fieldId)!)} ${Prisma.raw(item.direction)}`);
@@ -137,15 +141,33 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       }
       const groups = query.groupBy ?? [];
       const granularity = query.granularity ?? {};
-      const groupExpressions = groups.map((id) => {
+      // Aggregates read a handful of the 26 JSON keys, but a plain GROUP BY over the table drags every full row (~1.5 kB) through
+      // the sort. The referenced fields are projected ONCE into a MATERIALIZED CTE (a few short columns per row) and everything
+      // else runs on it: the same result, ~4x faster on the 193k-row SHARK dataset (measured, see docs/master-house-performance.md).
+      const used = [...new Set([...groups, ...query.measures.flatMap((measure) => [measure.fieldId, measure.distinctBy]).filter((id): id is string => Boolean(id))])];
+      const column = (id: string) => Prisma.raw(`"c${used.indexOf(id)}"`);
+      const bucketed = (id: string, source: Prisma.Sql) => {
         const field = fields.get(id)!;
         const unit = granularity[id];
-        if (!unit) return typed(field);
+        if (!unit) return source;
         if (field.canonicalType !== "DATE" && field.canonicalType !== "DATETIME") fail(422, "DATASET_QUERY_GRANULARITY_INVALID", "Granularity requires a date or datetime field");
-        const bucket = Prisma.sql`date_trunc(${({ DAY: "day", MONTH: "month", QUARTER: "quarter", YEAR: "year" } as const)[unit]}, ${typed(field)})`;
+        const bucket = Prisma.sql`date_trunc(${({ DAY: "day", MONTH: "month", QUARTER: "quarter", YEAR: "year" } as const)[unit]}, ${source})`;
         return field.canonicalType === "DATE" ? Prisma.sql`${bucket}::date` : bucket;
-      });
+      };
+      const rawGroupExpressions = groups.map((id) => bucketed(id, typed(fields.get(id)!)));
+      const groupExpressions = groups.map((id) => bucketed(id, column(id)));
       const groupPositions = groups.map((_, index) => Prisma.raw(String(index + 1)));
+      // SUM ... distinctBy: the value belongs to the key (e.g. a Master BL's TEUs) and is repeated on its rows, but is often BLANK
+      // on some of them (SHARK: a third of the rows). So each (group, key) contributes the MAX of its rows, counted once.
+      const distinctMeasures = query.measures.flatMap((measure, index) => (measure.distinctBy && measure.fieldId ? [{ index, key: measure.distinctBy, field: measure.fieldId }] : []));
+      const projection: Prisma.Sql[] = used.map((id, index) => Prisma.sql`${typed(fields.get(id)!)} AS ${Prisma.raw(`"c${index}"`)}`);
+      for (const { index, key } of distinctMeasures) projection.push(Prisma.sql`COALESCE(${typed(fields.get(key)!)}::text, r."id"::text) AS ${Prisma.raw(`"k${index}"`)}`);
+      if (distinctMeasures.length) projection.push(Prisma.sql`r."id" AS "rid"`);
+      if (!projection.length) projection.push(Prisma.sql`1 AS "one"`);
+      const ranks = distinctMeasures.flatMap(({ index, field }) => {
+        const window = Prisma.sql`(PARTITION BY ${Prisma.join([...groupExpressions, Prisma.raw(`"k${index}"`)], ", ")} ORDER BY "rid" ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)`;
+        return [Prisma.sql`max(${column(field)}) OVER ${window} AS ${Prisma.raw(`"__v${index}"`)}`, Prisma.sql`row_number() OVER ${window} AS ${Prisma.raw(`"__rn${index}"`)}`];
+      });
       const selects: Prisma.Sql[] = groupExpressions.map((expression, index) => Prisma.sql`${expression} AS ${Prisma.raw(`"g${index}"`)}`);
       for (const [index, measure] of query.measures.entries()) {
         const alias = Prisma.raw(`"m${index}"`);
@@ -153,11 +175,11 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         else {
           if (!measure.fieldId) fail(422, "DATASET_QUERY_MEASURE_INVALID", "Measure requires a field");
           const field = fields.get(measure.fieldId)!;
-          const expression = typed(field);
+          const expression = measure.distinctBy ? Prisma.raw(`"__v${index}"`) : column(measure.fieldId);
           if (["SUM", "AVG"].includes(measure.operation) && !["INTEGER", "DECIMAL"].includes(field.canonicalType)) fail(422, "DATASET_QUERY_MEASURE_INVALID", "SUM and AVG require numeric fields");
           if (["MIN", "MAX"].includes(measure.operation) && field.canonicalType === "BOOLEAN") fail(422, "DATASET_QUERY_MEASURE_INVALID", "MIN and MAX do not support boolean fields");
-          const operation = measure.operation === "COUNT_DISTINCT" ? Prisma.sql`COUNT(DISTINCT ${expression})` : Prisma.sql`${Prisma.raw(measure.operation)}(${expression})`;
-          selects.push(Prisma.sql`${operation} AS ${alias}`);
+          const aggregate = measure.operation === "COUNT_DISTINCT" ? Prisma.sql`COUNT(DISTINCT ${expression})` : Prisma.sql`${Prisma.raw(measure.operation)}(${expression})`;
+          selects.push(Prisma.sql`${measure.distinctBy ? Prisma.sql`${aggregate} FILTER (WHERE ${Prisma.raw(`"__rn${index}"`)} = 1)` : aggregate} AS ${alias}`);
         }
       }
       const limit = query.limit ?? 100;
@@ -172,10 +194,14 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       // Group columns break ties so offset pagination is stable between pages.
       if (groups.length) for (const [index] of groups.entries()) ordering.push(Prisma.sql`${Prisma.raw(`"g${index}"`)} ASC`);
       const rawRows = await bounded(tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+        WITH base AS MATERIALIZED (
+          SELECT ${Prisma.join(projection, ", ")}
+          FROM "NorthDatasetRevisionBatch" rb
+          JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
+          WHERE ${where}
+        )${ranks.length ? Prisma.sql`, ranked AS (SELECT base.*, ${Prisma.join(ranks, ", ")} FROM base)` : Prisma.empty}
         SELECT ${Prisma.join(selects)}
-        FROM "NorthDatasetRevisionBatch" rb
-        JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"
-        WHERE ${where}
+        FROM ${ranks.length ? Prisma.raw("ranked") : Prisma.raw("base")}
         ${groupPositions.length ? Prisma.sql`GROUP BY ${Prisma.join(groupPositions)}` : Prisma.empty}
         ${ordering.length ? Prisma.sql`ORDER BY ${Prisma.join(ordering)}` : Prisma.empty}
         LIMIT ${limit} OFFSET ${offset}`));
@@ -190,7 +216,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         })),
       ];
       const rows = rawRows.map((row) => Object.fromEntries([...groups.map((id, index) => [id, jsonScalar(row[`g${index}`])]), ...query.measures.map((measure, index) => [measure.alias, jsonScalar(row[`m${index}`])])]));
-      return { mode: "AGGREGATE" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows, rowCount: rows.length, ...(withTotal ? { totalRows: rawRows.length ? Number(rawRows[0]!["__total"]) : offset === 0 ? 0 : await countGroups(tx, where, groupExpressions) } : {}), executedAt: new Date() };
+      return { mode: "AGGREGATE" as const, datasetId, activeRevisionId: revision.id, schemaVersionId: revision.schemaVersionId, columns, rows, rowCount: rows.length, ...(withTotal ? { totalRows: rawRows.length ? Number(rawRows[0]!["__total"]) : offset === 0 ? 0 : await countGroups(tx, where, rawGroupExpressions) } : {}), executedAt: new Date() };
 }
 
 const FROM_ROWS = Prisma.sql`FROM "NorthDatasetRevisionBatch" rb JOIN "NorthDatasetRow" r ON r."batchId" = rb."batchId" AND r."datasetId" = rb."datasetId" AND r."organizationId" = rb."organizationId"`;

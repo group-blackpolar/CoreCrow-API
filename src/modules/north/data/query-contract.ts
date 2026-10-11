@@ -25,10 +25,12 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
     search: datasetQuerySearch.optional(), searchFieldIds: z.array(queryFieldId).min(1).max(5).optional(), includeTotal: z.boolean().optional(), compareBy: queryFieldId.optional(),
   }).strict(),
   z.object({
-    mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(4).optional(),
+    mode: z.literal("AGGREGATE"), groupBy: z.array(queryFieldId).max(6).optional(),
     // DATE/DATETIME group fields may be truncated to a calendar bucket (the group value is the first day of the bucket).
     granularity: z.record(queryFieldId, datasetDateGranularity).optional(),
-    measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: queryFieldId.optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(8),
+    // `distinctBy` (SUM only): sum the field once per distinct key inside each group. Needed when the value belongs to a parent
+    // record repeated on every child row (e.g. a Master BL's TEUs repeated for each of its containers).
+    measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: queryFieldId.optional(), distinctBy: queryFieldId.optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(8),
     filters: z.array(datasetQueryFilter).max(10).optional(),
     orderBy: z.array(z.object({ key: queryFieldId, direction: z.enum(["ASC", "DESC"]) }).strict()).max(3).optional(),
     limit: z.number().int().min(1).max(1_000).optional(), offset: z.number().int().min(0).max(100_000).optional(),
@@ -51,6 +53,10 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
   const aliases = value.measures.map((item) => item.alias);
   if (new Set(aliases).size !== aliases.length)
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["measures"], message: "Measure aliases must be unique" });
+  value.measures.forEach((measure, index) => {
+    if (measure.distinctBy && (measure.operation !== "SUM" || !measure.fieldId))
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["measures", index, "distinctBy"], message: "distinctBy is only valid on a SUM over a field" });
+  });
   const outputKeys = new Set([...groups, ...aliases]);
   const orderKeys = (value.orderBy ?? []).map((item) => item.key);
   if (new Set(orderKeys).size !== orderKeys.length)

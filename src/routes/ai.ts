@@ -6,6 +6,7 @@ import * as s from "../contracts/schemas.js";
 import { ai } from "../modules/ai/service.js";
 import { principal } from "../modules/security/session.js";
 
+const AI_EVENT_BATCH = 100; // keep in sync with repo.events take
 const application = z.literal("north");
 const security: Array<Record<string, never[]>> = [
   { sessionCookie: [] },
@@ -26,7 +27,7 @@ const usage = z.object({
   outputTokens: z.number().int(), totalTokens: z.number().int(), latencyMs: z.number().int(),
   estimatedCostMicrousd: z.string().regex(/^\d+$/), pricingVersion: z.string(), createdAt: s.date,
 }).strict();
-const action = z.object({ id: s.id, status: actionStatus, toolName: z.string(), expiresAt: s.date }).strict();
+const action = z.object({ id: s.id, status: actionStatus, toolName: z.string(), expiresAt: s.date, summary: z.string().nullable() }).strict();
 const toolCall = z.object({ id: s.id, name: z.string(), risk: z.string(), status: z.string(), errorCode: z.string().nullable() }).strict();
 const run = z.object({
   id: s.id, conversationId: s.id, organizationId: s.id, userId: s.id,
@@ -89,8 +90,8 @@ export async function aiRoutes(app: FastifyInstance) {
   contract(app, {
     method: "POST", url: "/ai/actions/:id/confirm", tag: "CoreCrow AI",
     security,
-    summary: "Reauthorize and confirm an AI action (no mutation tools enabled in MVP)",
-    params: z.object({ id: s.id }).strict(), response: action,
+    summary: "Reauthorize and execute a pending AI action the user confirmed (validated again, audited, single use)",
+    params: z.object({ id: s.id }).strict(), response: action.extend({ result: z.unknown().optional() }).strict(),
     run: ({ user, params }) => ai.confirmAction(user.id, params.id),
   });
   contract(app, {
@@ -132,7 +133,10 @@ export async function aiRoutes(app: FastifyInstance) {
     const query = eventQuery.parse(request.query);
     await ai.run(user.id, query.organizationId, params.id);
     reply.hijack();
+    // hijack() drops the headers @fastify/cors queued on the reply; without them the browser blocks reading the stream
+    // (the run completes server-side, but the client sees a network error). Carry them over explicitly.
     reply.raw.writeHead(200, {
+      ...reply.getHeaders() as Record<string, string | string[]>,
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-store, no-transform",
       Connection: "keep-alive",
@@ -148,7 +152,7 @@ export async function aiRoutes(app: FastifyInstance) {
         reply.raw.write(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
         after = event.sequence;
       }
-      if (batch.terminal) break;
+      if (batch.terminal && batch.events.length < AI_EVENT_BATCH) break; // a full batch may hide more events
       if (Date.now() - heartbeat >= 15_000) {
         reply.raw.write(": heartbeat\n\n");
         heartbeat = Date.now();

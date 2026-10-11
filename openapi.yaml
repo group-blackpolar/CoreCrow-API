@@ -3961,11 +3961,15 @@ paths:
                         expiresAt:
                           type: string
                           format: date-time
+                        summary:
+                          type: string
+                          nullable: true
                       required:
                         - id
                         - status
                         - toolName
                         - expiresAt
+                        - summary
                       additionalProperties: false
                   toolCalls:
                     type: array
@@ -4226,11 +4230,15 @@ paths:
                         expiresAt:
                           type: string
                           format: date-time
+                        summary:
+                          type: string
+                          nullable: true
                       required:
                         - id
                         - status
                         - toolName
                         - expiresAt
+                        - summary
                       additionalProperties: false
                   toolCalls:
                     type: array
@@ -4337,7 +4345,8 @@ paths:
                 additionalProperties: false
   /v1/ai/actions/{id}/confirm:
     post:
-      summary: Reauthorize and confirm an AI action (no mutation tools enabled in MVP)
+      summary: Reauthorize and execute a pending AI action the user confirmed
+        (validated again, audited, single use)
       tags:
         - CoreCrow AI
       parameters:
@@ -4374,11 +4383,16 @@ paths:
                   expiresAt:
                     type: string
                     format: date-time
+                  summary:
+                    type: string
+                    nullable: true
+                  result: {}
                 required:
                   - id
                   - status
                   - toolName
                   - expiresAt
+                  - summary
                 additionalProperties: false
         4XX:
           description: Default Response
@@ -4477,11 +4491,15 @@ paths:
                   expiresAt:
                     type: string
                     format: date-time
+                  summary:
+                    type: string
+                    nullable: true
                 required:
                   - id
                   - status
                   - toolName
                   - expiresAt
+                  - summary
                 additionalProperties: false
         4XX:
           description: Default Response
@@ -9311,7 +9329,7 @@ paths:
                         type: string
                         minLength: 1
                         maxLength: 128
-                      maxItems: 4
+                      maxItems: 6
                     granularity:
                       type: object
                       additionalProperties:
@@ -9336,6 +9354,10 @@ paths:
                               - MIN
                               - MAX
                           fieldId:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                          distinctBy:
                             type: string
                             minLength: 1
                             maxLength: 128
@@ -9801,7 +9823,7 @@ paths:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
-                              maxItems: 4
+                              maxItems: 6
                             granularity:
                               type: object
                               additionalProperties:
@@ -9826,6 +9848,10 @@ paths:
                                       - MIN
                                       - MAX
                                   fieldId:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 128
+                                  distinctBy:
                                     type: string
                                     minLength: 1
                                     maxLength: 128
@@ -10209,7 +10235,7 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
-                          maxItems: 4
+                          maxItems: 6
                         granularity:
                           type: object
                           additionalProperties:
@@ -10234,6 +10260,10 @@ paths:
                                   - MIN
                                   - MAX
                               fieldId:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              distinctBy:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
@@ -10567,7 +10597,7 @@ paths:
                               type: string
                               minLength: 1
                               maxLength: 128
-                            maxItems: 4
+                            maxItems: 6
                           granularity:
                             type: object
                             additionalProperties:
@@ -10592,6 +10622,10 @@ paths:
                                     - MIN
                                     - MAX
                                 fieldId:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                distinctBy:
                                   type: string
                                   minLength: 1
                                   maxLength: 128
@@ -10976,7 +11010,7 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
-                          maxItems: 4
+                          maxItems: 6
                         granularity:
                           type: object
                           additionalProperties:
@@ -11001,6 +11035,10 @@ paths:
                                   - MIN
                                   - MAX
                               fieldId:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              distinctBy:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
@@ -11341,7 +11379,7 @@ paths:
                               type: string
                               minLength: 1
                               maxLength: 128
-                            maxItems: 4
+                            maxItems: 6
                           granularity:
                             type: object
                             additionalProperties:
@@ -11366,6 +11404,10 @@ paths:
                                     - MIN
                                     - MAX
                                 fieldId:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                distinctBy:
                                   type: string
                                   minLength: 1
                                   maxLength: 128
@@ -24693,6 +24735,12 @@ paths:
                                     - md
                                     - lg
                                   default: md
+                                rowHeight:
+                                  type: integer
+                                  minimum: 16
+                                  maximum: 120
+                                fit:
+                                  type: boolean
                               additionalProperties: false
                             components:
                               type: array
@@ -25071,6 +25119,12 @@ paths:
                                     - md
                                     - lg
                                   default: md
+                                rowHeight:
+                                  type: integer
+                                  minimum: 16
+                                  maximum: 120
+                                fit:
+                                  type: boolean
                               additionalProperties: false
                             components:
                               type: array
@@ -25591,6 +25645,12 @@ paths:
                                     - md
                                     - lg
                                   default: md
+                                rowHeight:
+                                  type: integer
+                                  minimum: 16
+                                  maximum: 120
+                                fit:
+                                  type: boolean
                               additionalProperties: false
                             components:
                               type: array
@@ -26088,6 +26148,12 @@ paths:
                                     - md
                                     - lg
                                   default: md
+                                rowHeight:
+                                  type: integer
+                                  minimum: 16
+                                  maximum: 120
+                                fit:
+                                  type: boolean
                               additionalProperties: false
                             components:
                               type: array
@@ -26462,6 +26528,12 @@ paths:
                                     - md
                                     - lg
                                   default: md
+                                rowHeight:
+                                  type: integer
+                                  minimum: 16
+                                  maximum: 120
+                                fit:
+                                  type: boolean
                               additionalProperties: false
                             components:
                               type: array
@@ -29343,6 +29415,12 @@ paths:
                                                     - md
                                                     - lg
                                                   default: md
+                                                rowHeight:
+                                                  type: integer
+                                                  minimum: 16
+                                                  maximum: 120
+                                                fit:
+                                                  type: boolean
                                               additionalProperties: false
                                             components:
                                               type: array
@@ -29847,6 +29925,12 @@ paths:
                                                   - md
                                                   - lg
                                                 default: md
+                                              rowHeight:
+                                                type: integer
+                                                minimum: 16
+                                                maximum: 120
+                                              fit:
+                                                type: boolean
                                             additionalProperties: false
                                           components:
                                             type: array
@@ -30665,6 +30749,12 @@ paths:
                                                   - md
                                                   - lg
                                                 default: md
+                                              rowHeight:
+                                                type: integer
+                                                minimum: 16
+                                                maximum: 120
+                                              fit:
+                                                type: boolean
                                             additionalProperties: false
                                           components:
                                             type: array
@@ -31100,6 +31190,12 @@ paths:
                                                     - md
                                                     - lg
                                                   default: md
+                                                rowHeight:
+                                                  type: integer
+                                                  minimum: 16
+                                                  maximum: 120
+                                                fit:
+                                                  type: boolean
                                               additionalProperties: false
                                             components:
                                               type: array
@@ -31963,6 +32059,12 @@ paths:
                                         - md
                                         - lg
                                       default: md
+                                    rowHeight:
+                                      type: integer
+                                      minimum: 16
+                                      maximum: 120
+                                    fit:
+                                      type: boolean
                                   additionalProperties: false
                                 components:
                                   type: array
@@ -32617,6 +32719,12 @@ paths:
                                         - md
                                         - lg
                                       default: md
+                                    rowHeight:
+                                      type: integer
+                                      minimum: 16
+                                      maximum: 120
+                                    fit:
+                                      type: boolean
                                   additionalProperties: false
                                 components:
                                   type: array

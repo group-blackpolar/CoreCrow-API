@@ -38,7 +38,7 @@ export function publicAIRun<
       totalTokens: number; latencyMs: number; estimatedCostMicrousd: bigint;
       pricingVersion: string; createdAt: Date;
     }>;
-    actions: Array<{ id: string; status: string; toolName: string; expiresAt: Date }>;
+    actions: Array<{ id: string; status: string; toolName: string; expiresAt: Date; arguments: unknown }>;
     toolCalls: Array<{ id: string; name: string; risk: string; status: string; errorCode: string | null }>;
   },
 >(run: T) {
@@ -81,8 +81,20 @@ export function publicAIRun<
   };
 }
 
-function publicAIAction(action: { id: string; status: string; toolName: string; expiresAt: Date }) {
-  return { id: action.id, status: action.status, toolName: action.toolName, expiresAt: action.expiresAt };
+function publicAIAction(action: { id: string; status: string; toolName: string; expiresAt: Date; arguments?: unknown }) {
+  const stored = action.arguments && typeof action.arguments === "object" ? action.arguments as { summary?: unknown } : {};
+  return { id: action.id, status: action.status, toolName: action.toolName, expiresAt: action.expiresAt, summary: typeof stored.summary === "string" ? stored.summary : null };
+}
+
+const ACTION_TTL_MS = 10 * 60_000;
+const UI_TYPES = new Set(["open_panel", "apply_filters", "clear_filters"]);
+
+/** A UI directive is data the NORTH client validates again; only these shapes ever leave the server. */
+function splitUi(result: unknown): { value: unknown; ui?: Record<string, unknown> } {
+  if (!result || typeof result !== "object" || Array.isArray(result) || !("ui" in result)) return { value: result };
+  const { ui, ...rest } = result as { ui?: unknown } & Record<string, unknown>;
+  if (ui && typeof ui === "object" && !Array.isArray(ui) && UI_TYPES.has(String((ui as { type?: unknown }).type))) return { value: { ...rest, shownInNorth: true }, ui: ui as Record<string, unknown> };
+  return { value: rest };
 }
 
 /**
@@ -277,8 +289,24 @@ export class AIService {
       await auditEvent({ actorId: userId, organizationId: action.organizationId, action: "ai.action.failed", targetType: "AIAction", targetId: id, metadata: { code: "AI_ACTION_UNAVAILABLE" } });
       fail(422, "AI_ACTION_UNAVAILABLE", "AI action is not enabled");
     }
+    const context = { userId, organizationId: action.organizationId, application: "north" as const };
     await reauthorizeAIAction(authorizeAI, userId, action, tool.requiredPermissions);
-    fail(422, "AI_ACTION_UNAVAILABLE", "Mutation tools are not enabled in this MVP");
+    const stored = action.arguments as { input?: unknown };
+    const parsed = tool.input.safeParse(stored.input);
+    if (!parsed.success) { await repo.updateAction(id, "FAILED"); fail(422, "AI_INVALID_TOOL_CALL", "AI tool arguments are invalid"); }
+    // Only one confirmation can win; the claim also refuses an expired action.
+    if (!(await repo.claimAction(id))) fail(409, "AI_ACTION_NOT_PENDING", "AI action is not pending confirmation");
+    try {
+      await tool.precheck?.(context, parsed.data);
+      const result = splitUi(await tool.handler(context, parsed.data)).value;
+      await auditEvent({ actorId: userId, organizationId: action.organizationId, action: "ai.action.confirmed", targetType: "AIAction", targetId: id, metadata: { toolName: action.toolName } });
+      return { ...publicAIAction({ ...action, status: "CONFIRMED" }), result: safeJson(result) };
+    } catch (error) {
+      await repo.updateAction(id, "FAILED");
+      const code = error instanceof DomainError ? error.code : "AI_ACTION_FAILED";
+      await auditEvent({ actorId: userId, organizationId: action.organizationId, action: "ai.action.failed", targetType: "AIAction", targetId: id, metadata: { toolName: action.toolName, code } });
+      throw error;
+    }
   }
 
   async cancelAction(userId: string, id: string) {
@@ -352,6 +380,11 @@ export class AIService {
         messages.push({ role: "assistant", content: response.text, toolCalls: response.toolCalls });
         for (const call of response.toolCalls) {
           const definition = this.registry.find(call.name);
+          const feedBack = async (stored: { id: string }, value: Prisma.InputJsonValue, event: Record<string, unknown>) => {
+            await repo.addMessage({ conversationId: run.conversationId, runId, role: "TOOL", content: JSON.stringify(value), toolName: call.name, toolCallId: call.id });
+            messages.push({ role: "tool", content: JSON.stringify(value), toolName: call.name, toolCallId: call.id });
+            await repo.addEvent(runId, "tool.completed", { toolCallId: stored.id, name: call.name, ...event });
+          };
           const stored = await repo.createToolCall(runId, call.id, call.name, definition?.risk ?? "unknown", safeJson(call.arguments));
           this.logger.info({ runId, toolCallId: stored.id, toolName: call.name, risk: definition?.risk ?? "unknown" }, "AI tool proposed");
           await repo.addEvent(runId, "tool.proposed", { toolCallId: stored.id, name: call.name });
@@ -359,19 +392,33 @@ export class AIService {
           try {
             await repo.startToolCall(stored.id);
             await repo.addEvent(runId, "tool.started", { toolCallId: stored.id, name: call.name });
+            if (definition?.risk === "mutation") {
+              // A change is never executed from a model message: it becomes a pending action the user must confirm.
+              const proposal = await this.registry.propose(context, call.name, call.arguments);
+              const action = await repo.createAction({ runId, organizationId: run.organizationId, userId: run.userId, toolName: call.name, arguments: safeJson({ input: proposal.input, summary: proposal.summary }), expiresAt: new Date(Date.now() + ACTION_TTL_MS) });
+              const value = safeJson({ status: "pending_user_confirmation", actionId: action.id, summary: proposal.summary, note: "Nothing has changed yet. Tell the user to review and confirm the action card shown in the chat." });
+              await repo.completeToolCall(stored.id, value);
+              await feedBack(stored, value, {});
+              await repo.addEvent(runId, "action.proposed", { actionId: action.id, toolName: call.name, summary: proposal.summary, input: safeJson(proposal.input), expiresAt: action.expiresAt.toISOString() });
+              await auditEvent({ actorId: run.userId, organizationId: run.organizationId, action: "ai.action.proposed", targetType: "AIAction", targetId: action.id, metadata: { name: call.name } });
+              continue;
+            }
             const executed = await this.registry.execute(context, call.name, call.arguments);
-            const value = safeJson(executed.result);
+            const { value: raw, ui } = splitUi(executed.result);
+            const value = safeJson(raw);
             await repo.completeToolCall(stored.id, value);
-            await repo.addMessage({ conversationId: run.conversationId, runId, role: "TOOL", content: JSON.stringify(value), toolName: call.name, toolCallId: call.id });
-            messages.push({ role: "tool", content: JSON.stringify(value), toolName: call.name, toolCallId: call.id });
-            await repo.addEvent(runId, "tool.completed", { toolCallId: stored.id, name: call.name });
+            await feedBack(stored, value, ui ? { ui: safeJson(ui) } : {});
             await auditEvent({ actorId: run.userId, organizationId: run.organizationId, action: "ai.tool.executed", targetType: "AIToolCall", targetId: stored.id, metadata: { name: call.name, risk: executed.tool.risk } });
           } catch (error) {
             const code = error instanceof DomainError ? error.code : "AI_TOOL_FAILED";
             await repo.failToolCall(stored.id, code);
             await repo.addEvent(runId, "tool.failed", { toolCallId: stored.id, name: call.name, code });
             await auditEvent({ actorId: run.userId, organizationId: run.organizationId, action: "ai.tool.failed", targetType: "AIToolCall", targetId: stored.id, metadata: { name: call.name, code } });
-            throw error;
+            // A refused or invalid call (unknown field, no permission, bad argument) is information for the model, not a failed run.
+            if (!(error instanceof DomainError) || error.statusCode >= 500) throw error;
+            const value = safeJson({ error: { code: error.code, message: error.message } });
+            await repo.addMessage({ conversationId: run.conversationId, runId, role: "TOOL", content: JSON.stringify(value), toolName: call.name, toolCallId: call.id });
+            messages.push({ role: "tool", content: JSON.stringify(value), toolName: call.name, toolCallId: call.id });
           }
         }
       }

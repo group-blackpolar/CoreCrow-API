@@ -125,6 +125,14 @@ export const aiRepository = {
     application: AIApplication; provider: string; model: string; inputTokens: number;
     outputTokens: number; totalTokens: number; latencyMs: number; estimatedCostMicrousd: bigint; pricingVersion: string;
   }) { return prisma.aIUsage.create({ data }); },
+  createAction(data: { runId: string; organizationId: string; userId: string; toolName: string; arguments: Prisma.InputJsonValue; expiresAt: Date }) {
+    return prisma.aIAction.create({ data });
+  },
+  /** Atomic: only one confirmation can ever win, and only while the action is pending and unexpired. */
+  async claimAction(id: string) {
+    const claimed = await prisma.aIAction.updateMany({ where: { id, status: "PENDING_CONFIRMATION", expiresAt: { gt: new Date() } }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+    return claimed.count === 1;
+  },
   action(userId: string, id: string) {
     return prisma.aIAction.findFirst({ where: { id, userId } });
   },

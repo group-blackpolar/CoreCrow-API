@@ -6,6 +6,7 @@ import { tenants } from "../tenancy/service.js";
 import { identities } from "../identity/repository.js";
 import { fail } from "../../shared/errors.js";
 import type { AIProviderTool } from "./provider.types.js";
+import { northAITools } from "./north-tools.js";
 
 export type AIToolContext = {
   userId: string;
@@ -21,6 +22,10 @@ export type RegisteredAITool = {
   requiredPermissions: readonly Permission[];
   input: z.ZodTypeAny;
   handler: (context: AIToolContext, input: unknown) => Promise<unknown>;
+  /** Mutation tools only: one-line human summary of what the confirmation card will do. */
+  summarize?: (input: unknown) => string;
+  /** Mutation tools only: cheap authorization/validity check at PROPOSAL time, so impossible actions are never offered. */
+  precheck?: (context: AIToolContext, input: unknown) => Promise<void>;
 };
 
 export function aiUserProfile(user: { id: string; email: string; name: string | null }) {
@@ -110,7 +115,7 @@ const tools: RegisteredAITool[] = [
 
 export class AIToolRegistry {
   constructor(
-    private readonly registered = tools,
+    private readonly registered: RegisteredAITool[] = [...tools, ...northAITools],
     private readonly authorizer: typeof authorizeAI = authorizeAI,
   ) {}
 
@@ -140,6 +145,21 @@ export class AIToolRegistry {
       fail(409, "AI_CONFIRMATION_REQUIRED", "AI mutation requires confirmation");
     await this.authorizer(context.userId, context.organizationId, tool.requiredPermissions);
     return { tool, result: await tool.handler(context, parsed.data) };
+  }
+
+  /**
+   * Validates a mutation the model wants to make and returns what to show the user. It performs NO change: the action runs only
+   * after the user confirms it, and is authorized again at that moment.
+   */
+  async propose(context: AIToolContext, name: string, rawInput: unknown) {
+    const available = await this.available(context);
+    const tool = available.find((candidate) => candidate.name === name);
+    if (!tool || tool.risk !== "mutation") fail(422, "AI_TOOL_UNAVAILABLE", "AI tool is unavailable");
+    const parsed = tool.input.safeParse(rawInput);
+    if (!parsed.success) fail(422, "AI_INVALID_TOOL_CALL", "AI tool arguments are invalid");
+    await this.authorizer(context.userId, context.organizationId, tool.requiredPermissions);
+    await tool.precheck?.(context, parsed.data);
+    return { tool, input: parsed.data as unknown, summary: tool.summarize?.(parsed.data) ?? tool.name };
   }
 
   find(name: string) { return this.registered.find((tool) => tool.name === name); }
