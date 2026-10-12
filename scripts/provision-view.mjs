@@ -81,6 +81,15 @@ for (const entry of entries.filter((item) => !only || item.panel.slug === only))
   if (!subcategory) subcategory = (await call("POST", `${org}/categories/${category.id}/subcategories`, entry.subcategory)).json;
   let panel = (subcategory.panels ?? []).find((item) => item.slug === entry.panel.slug);
   if (!panel) panel = (await call("POST", `${org}/subcategories/${subcategory.id}/panels`, entry.panel)).json;
+  // Names follow the definition (translations are part of it): an existing resource is renamed, never duplicated.
+  const renamed = async (current, wanted, path) => {
+    if (!wanted?.name || (current.name?.es === wanted.name.es && current.name?.en === wanted.name.en)) return current;
+    console.log(`rename ${path}`);
+    return (await call("PATCH", `${org}/${path}/${current.id}`, { name: wanted.name })).json;
+  };
+  await renamed(category, definition.category, "categories");
+  subcategory = { ...subcategory, ...(await renamed(subcategory, entry.subcategory, "subcategories")) };
+  panel = { ...panel, ...(await renamed(panel, entry.panel, "panels")) };
   console.log(`panel ${panel.id} (${entry.panel.slug})`);
 
   // --- bindings (matched by name) ---

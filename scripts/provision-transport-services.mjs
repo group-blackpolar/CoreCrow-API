@@ -38,6 +38,9 @@ export async function servicesTransport({ dist, actorEmail }) {
       if (method === "GET" && path === "/organizations") return ok(await tenants.list(user));
       if ((match = /^\/organizations\/([^/]+)\/datasets$/.exec(path)) && method === "GET") return ok(await northData.list(user, match[1]));
       if ((match = /^\/organizations\/([^/]+)\/datasets\/([^/]+)\/fields$/.exec(path)) && method === "GET") return ok(await northData.fields(user, match[1], match[2]));
+      if (method === "PATCH" && (match = /^\/organizations\/([^/]+)\/categories\/([^/]+)$/.exec(path))) return ok(await northTaxonomy.updateCategory(user, match[1], match[2], body));
+      if (method === "PATCH" && (match = /^\/organizations\/([^/]+)\/subcategories\/([^/]+)$/.exec(path))) return ok(await northTaxonomy.updateSubcategory(user, match[1], match[2], body));
+      if (method === "PATCH" && (match = /^\/organizations\/([^/]+)\/panels\/([^/]+)$/.exec(path))) return ok(await northTaxonomy.updatePanel(user, match[1], match[2], body));
       if ((match = /^\/organizations\/([^/]+)\/north\/management-tree$/.exec(path)) && method === "GET") return ok(await northTaxonomy.managementTree(user, match[1]));
       if ((match = /^\/organizations\/([^/]+)\/panels\/([^/]+)\/analytics-bindings$/.exec(path))) {
         if (method === "GET") return ok(await northAnalyticsBindings.list(user, match[1], match[2]));
