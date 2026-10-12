@@ -45,7 +45,7 @@ const TEXT_OPS = ["IN", "EQ"];
 const DATE_OPS = ["GTE", "LTE"];
 
 const BLUE = "#2F6FED"; const VIOLET = "#7C5CFC"; const GREEN = "#1F9D63";
-const ROW_HEIGHT = 22; // minimum row height in px (the page scrolls below it); `fit` stretches the rows to the viewport
+const ROW_HEIGHT = 16; // minimum row height in px; `fit` stretches the rows to the viewport (the page never scrolls; only tables do)
 
 const text = (key) => ({ key, operators: TEXT_OPS });
 const when = (key) => ({ key, operators: DATE_OPS });
@@ -124,7 +124,7 @@ export default {
     panel({
       subcategory: { name: l("Search By"), slug: "search-by", icon: "magnifying-glass" },
       panel: { name: l("Búsqueda Master – House", "Master – House Search"), slug: "master-house-consignee", icon: "magnifying-glass", audienceType: "ALL_MEMBERS" },
-      filters: [text("masterConsignee"), text("houseConsignee"), text("housePortOfArrival"), text("housePortOfDeparture"), when("date"), text("houseCountry")],
+      filters: [text("masterConsignee"), text("houseConsignee"), text("housePortOfArrival"), text("housePortOfDeparture"), when("date"), text("houseCountry"), text("houseCarrier")],
       bindings: ({ f, containers }) => {
         const houseWeight = measure("SUM", f.houseWeight, "weight_mt");
         return [
@@ -144,7 +144,7 @@ export default {
         map: geoMap("Weight per Origin Country (MT)", f.houseCountry, "weight_mt", "containers", binding("countries")),
         bars: originBars("Containers per Origin - BL", f.houseCountry, binding("origin")),
         donut: carrierDonut("Volume per Shipping Line/Agency (Containers)", f.houseCarrier, binding("carriers"), binding("containers_total")),
-        layout: "right-stack",
+        hidden: ["house_carrier"],
       }),
     }),
 
@@ -175,7 +175,7 @@ export default {
         map: geoMap("Weight per Origin Country (MT)", f.masterCountry, "weight_mt", "containers", binding("countries")),
         bars: originBars("Containers per Origin - Master BL", f.masterCountry, binding("origin")),
         donut: carrierDonut("Volume per Shipping Line/Agency (Containers)", f.masterCarrier, binding("carriers"), binding("containers_total")),
-        layout: "right-stack",
+        hidden: ["master_carrier"],
       }),
     }),
 
@@ -199,7 +199,7 @@ export default {
         ];
       },
       items: ({ f, binding }) => [
-        filterBar({ house_port_of_arrival: l("House Port of Arrival"), house_port_of_departure: l("Port of Departure") }),
+        filterBar({ house_port_of_arrival: l("House Port of Arrival"), house_port_of_departure: l("Port of Departure") }, ["house_carrier"]),
         item("table", "data_grid", dataGrid("Containers and Weight (MT) by House Consignee", [
           col(f.houseConsignee, "House Consignee", "text", 240), col("containers", "Containers", "bar", 112), col("weight_mt", "House Weight (MT)", "decimal", 120), trendCol(), actionsCol(),
         ], { trend: { binding: "trend", rowKeys: [f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 2, w: 6, h: 16 }, { h: 14 }),
@@ -217,7 +217,7 @@ export default {
       panel: { name: l("Search by Port of Departure"), slug: "port-of-departure", icon: "anchor", audienceType: "ALL_MEMBERS" },
       // The reference listed the Port of ARRIVAL while the page is named after the port of DEPARTURE: both filters are offered
       // and the table carries both ports, so the dimension of every column matches its header.
-      filters: [text("masterConsignee"), text("masterBillType"), when("date"), text("masterPortOfArrival"), text("masterBl"), text("masterPortOfDeparture")],
+      filters: [text("masterConsignee"), text("masterBillType"), when("date"), text("masterPortOfArrival"), text("masterBl"), text("masterPortOfDeparture"), text("masterCountry"), text("masterCarrier")],
       bindings: ({ f, containers, masterTeus }) => [
         { name: "teus_total", query: agg({ measures: [masterTeus], compareBy: f.date }) },
         { name: "results", query: agg({ groupBy: [f.masterConsignee, f.masterPortOfDeparture, f.masterPortOfArrival], measures: [containers, masterTeus], orderBy: [{ key: "containers", direction: "DESC" }], limit: 200, includeTotal: true, searchFieldIds: [f.masterConsignee, f.masterPortOfDeparture, f.masterPortOfArrival] }) },
@@ -228,7 +228,7 @@ export default {
         { name: "carriers", query: agg({ groupBy: [f.masterCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
       ],
       items: ({ f, binding }) => [
-        filterBar({ master_bill_of_lading_nbr: l("Master Bill of Lading Number") }),
+        filterBar({ master_bill_of_lading_nbr: l("Master Bill of Lading Number") }, ["master_country_of_origin", "master_carrier"]),
         item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {}, tooltip: l("TEUs contados una vez por Master BL", "TEUs counted once per Master BL") }, { data: binding("teus_total") }, { x: 0, y: 2, w: 5, h: 2 }, { h: 2 }),
         item("table", "data_grid", dataGrid("Consignees and ports", [
           col(f.masterConsignee, "Master Consignee", "text", 170), col(f.masterPortOfDeparture, "Port of Departure", "text", 130), col(f.masterPortOfArrival, "Master Port of Arrival", "text", 140),
@@ -420,7 +420,7 @@ const FILTER_LABELS = {
   master_port_of_arrival: l("Master Port of Arrival"), master_port_of_departure: l("Port of Departure"),
   master_country_of_origin: l("Country of Origin"), master_bill_of_lading_nbr: l("Master BL Number"), master_bill_type: l("Master Bill Type"),
 };
-const filterBar = (extra = {}) => item("filters", "filter_bar", { title: l("Filtros", "Filters"), labels: { ...FILTER_LABELS, ...extra } }, {}, { x: 0, y: 0, w: 12, h: 2 }, { h: 4 }, { h: 4 });
+const filterBar = (extra = {}, hiddenFields = []) => item("filters", "filter_bar", { title: l("Filtros", "Filters"), labels: { ...FILTER_LABELS, ...extra }, ...(hiddenFields.length ? { hiddenFields } : {}) }, {}, { x: 0, y: 0, w: 12, h: 2 }, { h: 4 }, { h: 4 });
 
 function richText(content) {
   return { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: content }] }] };
@@ -444,7 +444,7 @@ const carrierDonutProps = (title, categoryKey, legend = "right") => ({ title: l(
 function standardBody(f, binding, parts) {
   void f; void binding;
   return [
-    filterBar(),
+    filterBar({}, parts.hidden ?? []),
     item("table", "data_grid", parts.table.props, parts.table.bindings, { x: 0, y: 2, w: 6, h: 16 }, { h: 14 }),
     item("map", "geo_map", parts.map.props, parts.map.bindings, { x: 6, y: 2, w: 6, h: 8 }, { h: 9 }),
     item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, { x: 6, y: 10, w: 3, h: 8 }, { h: 9 }),
