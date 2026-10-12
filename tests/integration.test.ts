@@ -1981,9 +1981,14 @@ test(
         assert.equal(organization.storageUsedBytes, BigInt(png.length));
         assert.equal(organization.storageReservedBytes, 0n);
 
+        // Dataset import source files share the organization's storage limit with assets.
+        const kept = await prisma.northDatasetImportJob.aggregate({
+          where: { organizationId, status: { notIn: ["CANCELLED", "REJECTED", "FAILED", "SECURITY_BLOCKED", "ANALYSIS_BLOCKED"] } },
+          _sum: { declaredSize: true },
+        });
         await prisma.organization.update({
           where: { id: organizationId },
-          data: { storageLimitBytes: organization.storageUsedBytes + BigInt(png.length) },
+          data: { storageLimitBytes: organization.storageUsedBytes + (kept._sum.declaredSize ?? 0n) + BigInt(png.length) },
         });
         const concurrent = await Promise.all([
           call("POST", `/v1/organizations/${organizationId}/assets/uploads`, owner.cookie, { filename: "quota-a.png", mime: "image/png", size: png.length, checksum }),

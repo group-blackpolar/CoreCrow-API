@@ -33,37 +33,37 @@ function conflict(error: unknown): never {
     fail(409, "NORTH_SLUG_TAKEN", "Slug or grant is already in use");
   throw error;
 }
-const label = (value: string): Localized => ({ es: value, en: value });
+const label = (en: string, es: string = en): Localized => ({ es, en });
 
 export async function bootstrapNorthOrganization(tx: Transaction, organizationId: string) {
   const homeCategory = await tx.northCategory.upsert({
     where: { organizationId_slug: { organizationId, slug: "home" } },
-    create: { organizationId, scope: "ORGANIZATION", resourceKind: "SYSTEM", categoryClass: "SYSTEM", name: label("Home"), slug: "home", order: 0 },
+    create: { organizationId, scope: "ORGANIZATION", resourceKind: "SYSTEM", categoryClass: "SYSTEM", name: label("Home", "Inicio"), slug: "home", order: 0 },
     update: {},
   });
   const homeSubcategory = await tx.northSubcategory.upsert({
     where: { categoryId_slug: { categoryId: homeCategory.id, slug: "overview" } },
-    create: { organizationId, categoryId: homeCategory.id, resourceKind: "SYSTEM", name: label("Overview"), slug: "overview", order: 0 },
+    create: { organizationId, categoryId: homeCategory.id, resourceKind: "SYSTEM", name: label("Overview", "Resumen"), slug: "overview", order: 0 },
     update: {},
   });
   const homePanel = await tx.northPanel.upsert({
     where: { subcategoryId_slug: { subcategoryId: homeSubcategory.id, slug: "home" } },
-    create: { organizationId, subcategoryId: homeSubcategory.id, resourceKind: "SYSTEM", name: label("Home"), slug: "home", status: "PUBLISHED", order: 0 },
+    create: { organizationId, subcategoryId: homeSubcategory.id, resourceKind: "SYSTEM", name: label("Home", "Inicio"), slug: "home", status: "PUBLISHED", order: 0 },
     update: {},
   });
   const adminCategory = await tx.northCategory.upsert({
     where: { organizationId_slug: { organizationId, slug: "admin" } },
-    create: { organizationId, scope: "ORGANIZATION", resourceKind: "SYSTEM", categoryClass: "SYSTEM", name: label("Administration"), slug: "admin", order: 1000 },
+    create: { organizationId, scope: "ORGANIZATION", resourceKind: "SYSTEM", categoryClass: "SYSTEM", name: label("Administration", "Administración"), slug: "admin", order: 1000 },
     update: {},
   });
   const adminSubcategory = await tx.northSubcategory.upsert({
     where: { categoryId_slug: { categoryId: adminCategory.id, slug: "settings" } },
-    create: { organizationId, categoryId: adminCategory.id, resourceKind: "SYSTEM", name: label("Settings"), slug: "settings", order: 0 },
+    create: { organizationId, categoryId: adminCategory.id, resourceKind: "SYSTEM", name: label("Settings", "Configuración"), slug: "settings", order: 0 },
     update: {},
   });
   const adminPanel = await tx.northPanel.upsert({
     where: { subcategoryId_slug: { subcategoryId: adminSubcategory.id, slug: "administration" } },
-    create: { organizationId, subcategoryId: adminSubcategory.id, resourceKind: "SYSTEM", name: label("Administration"), slug: "administration", status: "PUBLISHED", order: 0, audienceType: "ROLES" },
+    create: { organizationId, subcategoryId: adminSubcategory.id, resourceKind: "SYSTEM", name: label("Administration", "Administración"), slug: "administration", status: "PUBLISHED", order: 0, audienceType: "ROLES" },
     update: {},
   });
   await tx.northPanelAudienceRole.createMany({
@@ -78,6 +78,29 @@ export async function bootstrapNorthOrganization(tx: Transaction, organizationId
   }
   await tx.organization.updateMany({ where: { id: organizationId, homePanelId: null }, data: { homePanelId: homePanel.id } });
   return homePanel;
+}
+
+
+/**
+ * Permanent deletion of a content tree (panel -> subcategory -> category). Every dependent row is removed in an order the
+ * Restrict foreign keys accept; datasets, assets and members are never touched (a binding only references a dataset).
+ * SYSTEM resources and the organization's home panel are protected.
+ */
+async function eraseSubcategories(tx: Transaction, organizationId: string, subcategoryIds: string[]) {
+  if (!subcategoryIds.length) return { panels: 0 };
+  const panels = await tx.northPanel.findMany({ where: { organizationId, subcategoryId: { in: subcategoryIds } }, select: { id: true, resourceKind: true } });
+  const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { homePanelId: true } });
+  if (panels.some((panel) => panel.resourceKind === "SYSTEM" || panel.id === organization?.homePanelId))
+    fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be deleted");
+  const panelIds = panels.map((panel) => panel.id);
+  if (panelIds.length) {
+    await tx.northPanel.updateMany({ where: { id: { in: panelIds } }, data: { publishedRevisionId: null, draftRevisionId: null } });
+    await tx.northAnalyticsBinding.deleteMany({ where: { organizationId, panelId: { in: panelIds } } });
+    await tx.northPanelRevision.deleteMany({ where: { organizationId, panelId: { in: panelIds } } });
+    await tx.northPanel.deleteMany({ where: { organizationId, id: { in: panelIds } } });
+  }
+  await tx.northSubcategory.deleteMany({ where: { organizationId, id: { in: subcategoryIds } } });
+  return { panels: panelIds.length };
 }
 
 async function categoryTarget(tx: Transaction, organizationId: string, id: string): Promise<NorthTarget> {
@@ -209,6 +232,42 @@ export const northTaxonomy = {
       if (current!.resourceKind === "SYSTEM") fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be archived");
       const result = await repo.updateCategory(tx, id, { status: "ARCHIVED" });
       await audit.append(tx, { actorId: userId, organizationId, action: "CATEGORY_ARCHIVED", targetType: "NorthCategory", targetId: id }); return result;
+    });
+  },
+  deleteCategory(userId: string, organizationId: string, id: string) {
+    return transaction(async (tx) => {
+      const target = await categoryTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.category.delete", target);
+      const current = await repo.category(tx, organizationId, id);
+      if (current!.resourceKind === "SYSTEM") fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be deleted");
+      const children = await tx.northSubcategory.findMany({ where: { organizationId, categoryId: id }, select: { id: true } });
+      const erased = await eraseSubcategories(tx, organizationId, children.map((child) => child.id));
+      await tx.northCategory.delete({ where: { id } });
+      await audit.append(tx, { actorId: userId, organizationId, action: "CATEGORY_DELETED", targetType: "NorthCategory", targetId: id, metadata: { subcategories: children.length, panels: erased.panels } });
+      return null;
+    });
+  },
+  deleteSubcategory(userId: string, organizationId: string, id: string) {
+    return transaction(async (tx) => {
+      const target = await subcategoryTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.subcategory.delete", target);
+      const current = await repo.subcategory(tx, organizationId, id);
+      if (current!.resourceKind === "SYSTEM") fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be deleted");
+      const erased = await eraseSubcategories(tx, organizationId, [id]);
+      await audit.append(tx, { actorId: userId, organizationId, action: "SUBCATEGORY_DELETED", targetType: "NorthSubcategory", targetId: id, metadata: { panels: erased.panels } });
+      return null;
+    });
+  },
+  deletePanel(userId: string, organizationId: string, id: string) {
+    return transaction(async (tx) => {
+      const target = await panelTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.panel.delete", target);
+      const current = await repo.panel(tx, organizationId, id);
+      const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { homePanelId: true } });
+      if (current!.resourceKind === "SYSTEM" || organization?.homePanelId === id) fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be deleted");
+      await tx.northPanel.update({ where: { id }, data: { publishedRevisionId: null, draftRevisionId: null } });
+      await tx.northAnalyticsBinding.deleteMany({ where: { organizationId, panelId: id } });
+      await tx.northPanelRevision.deleteMany({ where: { organizationId, panelId: id } });
+      await tx.northPanel.delete({ where: { id } });
+      await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_DELETED", targetType: "NorthPanel", targetId: id });
+      return null;
     });
   },
   createSubcategory(userId: string, organizationId: string, categoryId: string, input: CreateMetadata) {

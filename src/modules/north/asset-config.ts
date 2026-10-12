@@ -24,7 +24,7 @@ export function assetConfiguration(): AssetConfiguration {
     readUrlTtlSeconds: positiveInteger("NORTH_ASSET_READ_URL_TTL_SECONDS", 300, 30, 900),
     defaultOrganizationStorageLimitBytes: positiveInteger(
       "NORTH_ASSET_DEFAULT_STORAGE_LIMIT_BYTES",
-      10 * 1024 * 1024 * 1024,
+      5 * 1024 * 1024 * 1024,
       1024 * 1024,
     ),
     maximumBytes: {

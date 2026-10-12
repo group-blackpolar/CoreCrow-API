@@ -1,3 +1,4 @@
+import { assertStorageAvailable } from "../storage-usage.js";
 import { randomUUID } from "node:crypto";
 import { Prisma, type NorthDatasetImportStatus } from "../../../lib/database.js";
 import type { ObjectStorage } from "../../../infrastructure/object-storage.js";
@@ -109,6 +110,7 @@ export class NorthDatasetImportService {
       if (dataset.status !== "ACTIVE") fail(409, "DATASET_ARCHIVED", "Archived datasets cannot accept imports");
       const replay = await repo.replay(tx, organizationId, membership.id, userId, idempotencyKey);
       if (replay) return ensureReplayMatches(replay, requestHash);
+      await assertStorageAvailable(tx, organizationId, BigInt(declared.size));
       const id = randomUUID();
       const job = await repo.create(tx, {
         id,

@@ -45,7 +45,7 @@ const TEXT_OPS = ["IN", "EQ"];
 const DATE_OPS = ["GTE", "LTE"];
 
 const BLUE = "#2F6FED"; const VIOLET = "#7C5CFC"; const GREEN = "#1F9D63";
-const ROW_HEIGHT = 16; // minimum row height in px; `fit` stretches the rows to the viewport
+const ROW_HEIGHT = 22; // minimum row height in px (the page scrolls below it); `fit` stretches the rows to the viewport
 
 const text = (key) => ({ key, operators: TEXT_OPS });
 const when = (key) => ({ key, operators: DATE_OPS });

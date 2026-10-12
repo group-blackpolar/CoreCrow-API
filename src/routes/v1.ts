@@ -4,6 +4,7 @@ import { contract } from "../contracts/route.js";
 import * as s from "../contracts/schemas.js";
 import { tenants } from "../modules/tenancy/service.js";
 import { invitations } from "../modules/tenancy/invitation-service.js";
+import { storageSummary } from "../modules/north/storage-usage.js";
 import { platform } from "../modules/platform/service.js";
 import { billing } from "../modules/billing/service.js";
 import { commerce } from "../modules/commerce/service.js";
@@ -1305,9 +1306,41 @@ export async function v1Routes(app: FastifyInstance) {
       organization: z.object({ name: z.string(), slug: z.string(), iconData: z.string().nullable() }),
       kind: s.invitationKind,
       expiresAt: s.date,
+      email: z.string().nullable(),
+      accountExists: z.boolean().nullable(),
     }),
     rateLimit: 10,
     run: ({ body }) => invitations.validate(body.token),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/invitations/accept-new",
+    tag: "Multi-tenancy",
+    summary: "Create the account of an emailed invitation's recipient (name and password) and accept it; no email verification is needed",
+    public: true,
+    body: z.object({ token: z.string().trim().min(8).max(128), name: z.string().trim().min(2).max(120), password: z.string().min(12).max(128) }).strict(),
+    response: z.object({ email: z.string(), organization: z.object({ name: z.string(), slug: z.string() }) }),
+    status: 201,
+    rateLimit: 5,
+    run: ({ body }) => invitations.acceptNew(body.token, { name: body.name, password: body.password }),
+  });
+  contract(app, {
+    method: "POST",
+    url: "/organizations/:organizationId/members/new",
+    tag: "Multi-tenancy",
+    summary: "Create a member account (name, address name@<org>.bp assigned automatically, typed or generated password)",
+    params: s.orgParams,
+    body: z.object({
+      name: z.string().trim().min(2).max(120),
+      localPart: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9._-]{0,39}$/).optional(),
+      password: z.string().min(12).max(128).optional(),
+      role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
+      groupIds: z.array(s.id).max(50).default([]),
+    }).strict(),
+    response: z.object({ membership: s.member, user: z.object({ id: s.id, email: z.string(), name: z.string() }), password: z.string().nullable() }),
+    status: 201,
+    rateLimit: 20,
+    run: ({ user, params, body }) => invitations.createMember(user.id, params.organizationId, body),
   });
   contract(app, {
     method: "GET",
@@ -1350,6 +1383,19 @@ export async function v1Routes(app: FastifyInstance) {
     status: 201,
     run: ({ user, params }) =>
       invitations.replace(user.id, params.organizationId, params.id),
+  });
+  contract(app, {
+    method: "GET",
+    url: "/organizations/:organizationId/storage",
+    tag: "Multi-tenancy",
+    summary: "Read the organization's storage usage against its limit (assets and dataset import files)",
+    params: s.orgParams,
+    response: z.object({
+      limitBytes: z.string(), usedBytes: z.string(), assetBytes: z.string(), reservedBytes: z.string(), importBytes: z.string(),
+      assetCount: z.number().int().nonnegative(), importCount: z.number().int().nonnegative(),
+      byCategory: z.array(z.object({ category: z.enum(["image", "video", "document", "other"]), bytes: z.string(), count: z.number().int().nonnegative() })),
+    }),
+    run: ({ user, params }) => storageSummary(user.id, params.organizationId),
   });
   contract(app, {
     method: "DELETE",
@@ -1411,6 +1457,21 @@ export async function v1Routes(app: FastifyInstance) {
     method: "PATCH", url: "/organizations/:organizationId/categories/:categoryId", tag: "NORTH taxonomy",
     summary: "Update category metadata while preserving its stable ID", params: categoryParams, body: northUpdateMetadata,
     response: s.northCategory, run: ({ user, params, body }) => northTaxonomy.updateCategory(user.id, params.organizationId, params.categoryId, body),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/categories/:categoryId", tag: "NORTH taxonomy",
+    summary: "Permanently delete a category with its subcategories and panels (datasets and assets are kept)", params: categoryParams, response: z.null(),
+    run: ({ user, params }) => northTaxonomy.deleteCategory(user.id, params.organizationId, params.categoryId),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/subcategories/:subcategoryId", tag: "NORTH taxonomy",
+    summary: "Permanently delete a subcategory with its panels", params: subcategoryParams, response: z.null(),
+    run: ({ user, params }) => northTaxonomy.deleteSubcategory(user.id, params.organizationId, params.subcategoryId),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/panels/:panelId", tag: "NORTH taxonomy",
+    summary: "Permanently delete a panel with its revisions and bindings", params: panelParams, response: z.null(),
+    run: ({ user, params }) => northTaxonomy.deletePanel(user.id, params.organizationId, params.panelId),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/categories/:categoryId/archive", tag: "NORTH taxonomy",
