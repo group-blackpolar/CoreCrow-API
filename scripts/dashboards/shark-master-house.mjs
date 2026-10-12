@@ -56,7 +56,7 @@ export default {
               "Import operations report for Master BL, House BL, consignees, containers and metric tons. Each page crosses the cargo with its consignee, country of origin, ports and shipping line from the imported records."),
             chips: [{ icon: "filter", label: l("Datos de importación", "Import data") }, { icon: "calendar", label: l("Cobertura histórica y actual", "Historical and current coverage") }],
             aside: { icon: "bars", title: l("Análisis integral de la cadena de importación", "End-to-end import chain analysis"), body: l("De los registros a la visualización, para una toma de decisiones más rápida.", "From records to visualization, for faster decisions.") },
-            showBrand: true, backgroundImage: "/brand/shark-port-hero.jpg",
+            showBrand: true, backgroundImage: "/brand/shark-port-hero.webp", logoImage: "/brand/shark-logo.png",
           }, {}, { x: 0, y: 0, w: 12, h: 5 }, { w: 12, h: 8 }),
           kpi("kpi-from", 0, "first_date", l("Primer registro", "First record"), "date", "calendar", "blue", { subtitle: { mode: "text", text: l("Inicio de la cobertura", "Start of coverage") } }),
           kpi("kpi-to", 2, "last_date", l("Último registro", "Latest record"), "date", "clock", "slate", { subtitle: { mode: "relative_date" } }),

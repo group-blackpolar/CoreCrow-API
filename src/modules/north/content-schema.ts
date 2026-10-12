@@ -115,6 +115,7 @@ const catalog = {
     showBrand: z.boolean().optional(),
     // A picture shipped with NORTH under /brand/ (same origin, never an external URL). Absent or missing file: an illustrated backdrop is drawn.
     backgroundImage: z.string().regex(/^\/brand\/[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
+    logoImage: z.string().regex(/^\/brand\/[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
   }).strict(),
   // Shows sibling components of the same section either all at once (stacked, when the box is tall enough for `minItemHeight` each)
   // or one at a time behind tabs. The members keep their own component entry (and layout cell) but are drawn only here.
