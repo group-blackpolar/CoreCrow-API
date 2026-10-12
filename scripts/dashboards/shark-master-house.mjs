@@ -45,35 +45,48 @@ export default {
           measure("SUM", f.houseWeight, "weight_mt"),
         ] }) },
       ],
-      items: ({ f, binding }) => {
-        const kpi = (id, x, y, key, label, format, icon, tone, extra = {}) => item(id, "kpi_card", { label, valueKey: key, format, icon, tone, variant: "compact", ...extra }, { data: binding("coverage") }, { x, y, w: 2, h: 3 });
+      items: ({ binding }) => {
+        const kpi = (id, x, key, label, format, icon, tone, extra = {}) => item(id, "kpi_card", { label, valueKey: key, format, icon, tone, variant: "compact", ...extra }, { data: binding("coverage") }, { x, y: 5, w: 2, h: 3 }, { w: 6, h: 3 });
+        const card = (id, panelSlug, icon, tone, title, description) => ({ id, panelSlug, icon, tone, title: l(title), description });
         return [
-          item("brand", "org_brand", { showName: false, align: "left" }, {}, { x: 0, y: 0, w: 2, h: 4 }, { w: 4, h: 3 }),
-          item("title", "heading", { text: l("IMPORTS MASTER-HOUSE"), level: 1, align: "left" }, {}, { x: 2, y: 0, w: 10, h: 2 }, { w: 8, h: 2 }),
-          item("about", "rich_text", { documents: {
-            es: richText("Reporte de operaciones de importación: Master BL, House BL, consignatarios, contenedores y toneladas métricas. Cada categoría cruza la carga con su consignatario, país de origen, puertos y línea naviera a partir de los registros importados."),
-            en: richText("Import operations report: Master BL, House BL, consignees, containers and metric tons. Each page crosses the cargo with its consignee, country of origin, ports and shipping line from the imported records."),
-          } }, {}, { x: 2, y: 2, w: 10, h: 2 }, { w: 12, h: 4 }),
-          item("cov-title", "heading", { text: l("Cobertura de datos y unidades", "Data coverage and units"), level: 3 }, {}, { x: 0, y: 4, w: 12, h: 1 }),
-          kpi("kpi-from", 0, 5, "first_date", l("Primer registro", "First record"), "date", "calendar", "blue"),
-          kpi("kpi-to", 2, 5, "last_date", l("Último registro (actualización)", "Latest record (last update)"), "date", "clock", "slate", { subtitle: { mode: "relative_date" } }),
-          kpi("kpi-containers", 4, 5, "containers", l("Contenedores únicos", "Unique containers"), "number", "container", "blue"),
-          kpi("kpi-master", 6, 5, "master_bls", l("Master BL", "Master BLs"), "number", "package", "violet"),
-          kpi("kpi-house", 8, 5, "house_bls", l("House BL", "House BLs"), "number", "package", "cyan"),
-          kpi("kpi-weight", 10, 5, "weight_mt", l("Peso House (MT)", "House weight (MT)"), "decimal", "scale", "green", { decimals: 0 }),
-          item("nav-title", "heading", { text: l("Report Navigation"), level: 3 }, {}, { x: 0, y: 8, w: 7, h: 1 }),
-          item("nav", "list", { items: [
-            nav("search-by", "master-house-consignee", l("Search By — busca por Master o House Consignee, puertos y país de origen.", "Search By — look up by Master or House Consignee, ports and country of origin.")),
-            nav("master", "master-consignees", l("Master Consignee List — contenedores, TEUs y peso por consignatario Master.", "Master Consignee List — containers, TEUs and weight by Master consignee.")),
-            nav("house", "house-consignees", l("House Consignee List — contenedores y peso House, con evolución mensual.", "House Consignee List — containers and House weight with monthly evolution.")),
-            nav("port", "port-of-departure", l("Search by Port of Departure — rutas puerto de salida → puerto de arribo.", "Search by Port of Departure — departure → arrival port routes.")),
-            nav("cargo", "consignees-cargo", l("Consignees and Cargo Table — tabla detallada por mes, transportista y puerto.", "Consignees and Cargo Table — detailed table by month, carrier and port.")),
-            nav("table", "consignees", l("Consignees Table — relación directa Master ↔ House.", "Consignees Table — direct Master ↔ House relation.")),
-            nav("ff", "top-freight-forwarders", l("Top Freight Forwarders — ranking de forwarders por contenedores o TEUs.", "Top Freight Forwarders — forwarder ranking by containers or TEUs.")),
-          ] }, {}, { x: 0, y: 9, w: 7, h: 9 }),
-          item("units", "card", { title: l("Unidades y definiciones", "Units and definitions"), body: l(
-            "Contenedores: números de contenedor únicos. TEUs: se cuentan una vez por Master/House BL. Peso (MT): toneladas métricas asignadas por contenedor. La cobertura temporal se calcula de los registros importados.",
-            "Containers: unique container numbers. TEUs: counted once per Master/House BL. Weight (MT): metric tons allocated per container. Time coverage is computed from the imported records.") }, {}, { x: 7, y: 8, w: 5, h: 10 }),
+          // Everything numeric below is a bound KPI of the `coverage` binding (computed from the data); the rest is static copy.
+          item("hero", "hero", {
+            eyebrow: l("REPORTE DE IMPORTACIONES", "IMPORTS REPORT"), title: l("IMPORTS MASTER-HOUSE"),
+            body: l("Reporte de operaciones de importación de Master BL, House BL, consignatarios, contenedores y toneladas métricas. Cada categoría cruza la carga con su consignatario, país de origen, puertos y línea naviera a partir de los registros importados.",
+              "Import operations report for Master BL, House BL, consignees, containers and metric tons. Each page crosses the cargo with its consignee, country of origin, ports and shipping line from the imported records."),
+            chips: [{ icon: "filter", label: l("Datos de importación", "Import data") }, { icon: "calendar", label: l("Cobertura histórica y actual", "Historical and current coverage") }],
+            aside: { icon: "bars", title: l("Análisis integral de la cadena de importación", "End-to-end import chain analysis"), body: l("De los registros a la visualización, para una toma de decisiones más rápida.", "From records to visualization, for faster decisions.") },
+            showBrand: true,
+          }, {}, { x: 0, y: 0, w: 12, h: 5 }, { w: 12, h: 8 }),
+          kpi("kpi-from", 0, "first_date", l("Primer registro", "First record"), "date", "calendar", "blue", { subtitle: { mode: "text", text: l("Inicio de la cobertura", "Start of coverage") } }),
+          kpi("kpi-to", 2, "last_date", l("Último registro", "Latest record"), "date", "clock", "slate", { subtitle: { mode: "relative_date" } }),
+          kpi("kpi-containers", 4, "containers", l("Contenedores únicos", "Unique containers"), "number", "container", "blue"),
+          kpi("kpi-master", 6, "master_bls", l("Master BL", "Master BLs"), "number", "package", "violet"),
+          kpi("kpi-house", 8, "house_bls", l("House BL", "House BLs"), "number", "package", "cyan"),
+          kpi("kpi-weight", 10, "weight_mt", l("Peso House (MT)", "House weight (MT)"), "decimal", "scale", "green", { decimals: 0 }),
+          item("nav", "link_cards", {
+            title: l("¿Qué incluye este reporte?", "What does this report include?"), icon: "book",
+            items: [
+              card("search-by", "master-house-consignee", "filter", "cyan", "Search By", l("Búsqueda por Master o House Consignee, puertos y país de origen.", "Look up by Master or House Consignee, ports and country of origin.")),
+              card("master", "master-consignees", "list", "blue", "Master Consignee List", l("Contenedores, TEUs y peso por consignatario Master.", "Containers, TEUs and weight by Master consignee.")),
+              card("house", "house-consignees", "package", "violet", "House Consignee List", l("Contenedores y peso House por consignatario, con evolución mensual.", "Containers and House weight by consignee, with monthly evolution.")),
+              card("port", "port-of-departure", "anchor", "amber", "Search by Port of Departure", l("Rutas puerto de salida → puerto de arribo.", "Departure → arrival port routes.")),
+              card("cargo", "consignees-cargo", "users", "green", "Consignees and Cargo Table", l("Tabla detallada por mes, transportista y puerto.", "Detailed table by month, carrier and port.")),
+              card("table", "consignees", "ship", "slate", "Consignees Table", l("Relación directa Master ↔ House.", "Direct Master ↔ House relation.")),
+              card("ff", "top-freight-forwarders", "bars", "rose", "Top Freight Forwarders", l("Ranking de forwarders por contenedores o TEUs.", "Forwarder ranking by containers or TEUs.")),
+            ],
+          }, {}, { x: 0, y: 8, w: 8, h: 10 }, { w: 12, h: 14 }),
+          item("units", "definition_list", {
+            title: l("Unidades y definiciones", "Units and definitions"), icon: "info",
+            items: [
+              { id: "containers", icon: "container", tone: "blue", term: l("Contenedores", "Containers"), text: l("Números de contenedor únicos.", "Unique container numbers.") },
+              { id: "teus", icon: "container", tone: "cyan", term: l("TEUs", "TEUs"), text: l("Se cuentan una vez por Master/House BL.", "Counted once per Master/House BL.") },
+              { id: "master", icon: "package", tone: "violet", term: l("Master BL", "Master BL"), text: l("Conocimiento de embarque principal.", "Main bill of lading.") },
+              { id: "house", icon: "package", tone: "cyan", term: l("House BL", "House BL"), text: l("Conocimiento de embarque secundario.", "Secondary bill of lading.") },
+              { id: "weight", icon: "scale", tone: "green", term: l("Peso (MT)", "Weight (MT)"), text: l("Toneladas métricas asignadas por contenedor.", "Metric tons allocated per container.") },
+              { id: "coverage", icon: "calendar", tone: "slate", term: l("Cobertura", "Coverage"), text: l("Se calcula de los registros importados.", "Computed from the imported records.") },
+            ],
+          }, {}, { x: 8, y: 8, w: 4, h: 10 }, { w: 12, h: 10 }),
         ];
       },
       // No filter bar on the information page.
@@ -100,8 +113,8 @@ export default {
       },
       items: ({ f, binding }) => standardBody(f, binding, {
         table: { props: dataGrid("Containers and Weight (MT) by Master and House Consignee", [
-          col(f.masterConsignee, "Master Consignee", "text", 190), col(f.houseConsignee, "House Consignee", "text", 190),
-          col("containers", "Containers", "bar", 120), col("weight_mt", "Weight MT", "decimal", 110), trendCol(), actionsCol(),
+          col(f.masterConsignee, "Master Consignee", "text", 150), col(f.houseConsignee, "House Consignee", "text", 150),
+          col("containers", "Containers", "bar", 112), col("weight_mt", "Weight MT", "decimal", 92), trendCol(), actionsCol(),
         ], { trend: { binding: "trend", rowKeys: [f.masterConsignee, f.houseConsignee], categoryKey: f.date, valueKey: "containers" } }), bindings: { data: binding("results"), trend: binding("results_trend") } },
         map: geoMap("Weight per Origin Country (MT)", f.houseCountry, "weight_mt", "containers", binding("countries")),
         bars: originBars("Containers per Origin - BL", f.houseCountry, f.housePortOfDeparture, "Puertos de salida", binding("origin"), binding("origin_ports")),
@@ -132,8 +145,8 @@ export default {
       items: ({ f, binding }) => standardBody(f, binding, {
         // The reference captured a table titled "...and Weight (MT)" whose columns had no weight; both are shown here.
         table: { props: dataGrid("Containers, TEUs and Weight (MT) by Master Consignee", [
-          col(f.masterConsignee, "Master Consignee", "text", 240), col("containers", "Containers", "bar", 120),
-          col("master_teus", "Master TEUs", "number", 110), col("weight_mt", "Master Weight (MT)", "decimal", 130), trendCol(), actionsCol(),
+          col(f.masterConsignee, "Master Consignee", "text", 190), col("containers", "Containers", "bar", 112),
+          col("master_teus", "Master TEUs", "number", 90), col("weight_mt", "Master Weight (MT)", "decimal", 110), trendCol(), actionsCol(),
         ], { trend: { binding: "trend", rowKeys: [f.masterConsignee], categoryKey: f.date, valueKey: "containers" } }), bindings: { data: binding("results"), trend: binding("results_trend") } },
         map: geoMap("Weight per Origin Country (MT)", f.masterCountry, "weight_mt", "containers", binding("countries")),
         bars: originBars("Containers per Origin - Master BL", f.masterCountry, f.masterPortOfDeparture, "Puertos de salida", binding("origin"), binding("origin_ports")),
@@ -367,6 +380,8 @@ function document(name, items) {
   };
   const tablet = flow("tablet");
   const mobile = flow("mobile");
+  // Layouts below are authored under a 3-row filter band; the compact filter bar needs 2, so the body moves up one row.
+  if (items.some((entry) => entry.type === "filter_bar")) for (const entry of items) if (entry.type !== "filter_bar" && entry.desktop.y >= 3) entry.desktop = { ...entry.desktop, y: entry.desktop.y - 1 };
   return {
     schemaVersion: 1, defaultLocale: "es", fallbackLocales: ["en"],
     sections: [{
@@ -385,7 +400,7 @@ const FILTER_LABELS = {
   house_port_of_arrival: l("Entry Port"), house_port_of_departure: l("Departure Port"), house_country_of_origin: l("Country of Origin"),
   master_country_of_origin: l("Country of Origin"), master_bill_of_lading_nbr: l("Master BL Number"),
 };
-const filterBar = (extra = {}) => item("filters", "filter_bar", { title: l("Filtros", "Filters"), labels: { ...FILTER_LABELS, ...extra } }, {}, { x: 0, y: 0, w: 12, h: 3 }, { h: 4 }, { h: 4 });
+const filterBar = (extra = {}) => item("filters", "filter_bar", { title: l("Filtros", "Filters"), labels: { ...FILTER_LABELS, ...extra } }, {}, { x: 0, y: 0, w: 12, h: 2 }, { h: 4 }, { h: 4 });
 
 function richText(content) {
   return { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: content }] }] };
@@ -393,8 +408,8 @@ function richText(content) {
 const nav = (id, panelSlug, label) => ({ id, text: label, panelSlug });
 
 const col = (key, label, kind, width, extra = {}) => ({ key, label: l(label), kind, sortable: kind !== "rank", width, ...(kind === "bar" ? { barTone: "blue" } : {}), ...extra });
-const trendCol = () => ({ key: "trend", label: l("Tendencia", "Trend"), kind: "sparkline", width: 100 });
-const actionsCol = () => ({ key: "actions", label: l("Acciones", "Actions"), kind: "actions", align: "center", width: 72 });
+const trendCol = () => ({ key: "trend", label: l("Tendencia", "Trend"), kind: "sparkline", width: 84 });
+const actionsCol = () => ({ key: "actions", label: l("Acciones", "Actions"), kind: "actions", align: "center", width: 64 });
 
 function dataGrid(title, columns, options = {}, ..._rest) {
   const { trend, search = true, exportable = true, defaultSort = { key: "containers", direction: "DESC" }, pageSizes = [10, 20, 30], defaultPageSize = 20 } = options;
@@ -411,9 +426,9 @@ function standardBody(f, binding, parts) {
   return [
     filterBar(),
     item("table", "data_grid", parts.table.props, parts.table.bindings, { x: 0, y: 3, w: 7, h: 15 }, { h: 14 }),
-    item("map", "geo_map", parts.map.props, parts.map.bindings, { x: 7, y: 3, w: 5, h: 6 }, { h: 8 }),
-    item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, { x: 7, y: 9, w: 5, h: 5 }, { h: 8 }),
-    item("carriers", "donut_chart", parts.donut.props, parts.donut.bindings, { x: 7, y: 14, w: 5, h: 4 }, { h: 8 }),
+    item("map", "geo_map", parts.map.props, parts.map.bindings, { x: 7, y: 3, w: 5, h: 5 }, { h: 8 }),
+    item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, { x: 7, y: 8, w: 5, h: 5 }, { h: 8 }),
+    item("carriers", "donut_chart", parts.donut.props, parts.donut.bindings, { x: 7, y: 13, w: 5, h: 5 }, { h: 8 }),
   ];
 }
 
