@@ -54,7 +54,7 @@ const chartSeries = z.object({
 
 // Reusable analytics presentation vocabulary. Everything is data (enums and keys), never markup or expressions.
 const tone = z.enum(["blue", "violet", "green", "amber", "rose", "cyan", "slate"]);
-const iconName = z.enum(["container", "scale", "users", "buildings", "globe", "clock", "ship", "anchor", "pin", "chart", "package", "truck", "calendar", "trend", "warning", "star"]);
+const iconName = z.enum(["container", "scale", "users", "buildings", "globe", "clock", "ship", "anchor", "pin", "chart", "package", "truck", "calendar", "trend", "warning", "star", "filter", "book", "info", "list", "bars", "document"]);
 const valueFormat = z.enum(["number", "decimal", "percent", "text", "date", "month"]);
 const kpiSubtitle = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("text"), text: localized }).strict(),
@@ -106,6 +106,25 @@ const catalog = {
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
   document_workspace: z.object({ typeKey: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/), title: localized.optional() }).strict(),
+  // Information-page blocks (static copy; the numbers on such a page come from bound kpi_card components, never from here).
+  // Hero: eyebrow, title, body, a few chips, an optional side note and the organization logo.
+  hero: z.object({
+    eyebrow: localized.optional(), title: localized, body: localized.optional(),
+    chips: z.array(z.object({ icon: iconName.optional(), label: localized }).strict()).max(4).optional(),
+    aside: z.object({ icon: iconName.optional(), title: localized, body: localized.optional() }).strict().optional(),
+    showBrand: z.boolean().optional(),
+  }).strict(),
+  // Cards that open other panels of the organization (`panelSlug`) or an external page (`href`).
+  link_cards: z.object({
+    title: localized.optional(), icon: iconName.optional(),
+    items: z.array(z.object({ id: resourceId, panelSlug: panelSlug.optional(), href: safeUrl.optional(), icon: iconName.optional(), tone: tone.optional(), title: localized, description: localized.optional() }).strict()
+      .refine((item) => !(item.href && item.panelSlug), "A card takes href or panelSlug, not both")).min(1).max(12),
+  }).strict(),
+  // Term / explanation rows with an icon.
+  definition_list: z.object({
+    title: localized.optional(), icon: iconName.optional(),
+    items: z.array(z.object({ id: resourceId, icon: iconName.optional(), tone: tone.optional(), term: localized, text: localized }).strict()).min(1).max(12),
+  }).strict(),
   // The active organization's logo and name (the organization identity, never an uploaded asset reference).
   org_brand: z.object({ showName: z.boolean().optional(), align: align.optional() }).strict(),
   divider: z.object({ variant: z.enum(["solid", "dashed", "dotted"]).optional(), spacing: size.optional() }).strict(),

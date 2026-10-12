@@ -75,6 +75,8 @@ for (const entry of entries.filter((item) => !only || item.panel.slug === only))
   const categories = tree.categories ?? tree;
   let category = categories.find((item) => item.slug === definition.category.slug);
   if (!category) category = (await call("POST", `${org}/categories`, definition.category)).json;
+  // An archived category is hidden from NORTH's navigation: publishing into it would look like nothing happened.
+  if (category.status === "ARCHIVED") { console.error(`category "${category.slug}" is ARCHIVED (hidden from navigation); restore it first`); process.exit(1); }
   let subcategory = (category.subcategories ?? []).find((item) => item.slug === entry.subcategory.slug);
   if (!subcategory) subcategory = (await call("POST", `${org}/categories/${category.id}/subcategories`, entry.subcategory)).json;
   let panel = (subcategory.panels ?? []).find((item) => item.slug === entry.panel.slug);
