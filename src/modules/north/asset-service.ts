@@ -4,6 +4,7 @@ import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
 import { authorize } from "../authorization/service.js";
 import { authorizeNorth } from "./authorization.js";
+import { assertStorageAvailable } from "./storage-usage.js";
 import { assetConfiguration, type AssetConfiguration } from "./asset-config.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "./asset-policy.js";
 import { northAssetRepository as repo } from "./asset-repository.js";
@@ -76,8 +77,7 @@ export class NorthAssetService {
       const organization = await repo.organization(tx, organizationId);
       if (!organization) fail(404, "NOT_FOUND", "Organization not found");
       const size = BigInt(declared.size);
-      if (organization.storageUsedBytes + organization.storageReservedBytes + size > organization.storageLimitBytes)
-        fail(409, "QUOTA_EXCEEDED", "Organization storage quota is exceeded");
+      await assertStorageAvailable(tx, organizationId, size);
       await repo.reserve(tx, organizationId, size);
       const created = await repo.create(tx, {
         id, organizationId, ownerId: userId, filename: declared.filename, mime: declared.mime,

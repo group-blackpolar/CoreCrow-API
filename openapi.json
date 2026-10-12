@@ -30918,12 +30918,437 @@
                     "expiresAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "email": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "accountExists": {
+                      "type": "boolean",
+                      "nullable": true
                     }
                   },
                   "required": [
                     "organization",
                     "kind",
-                    "expiresAt"
+                    "expiresAt",
+                    "email",
+                    "accountExists"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/invitations/accept-new": {
+      "post": {
+        "summary": "Create the account of an emailed invitation's recipient (name and password) and accept it; no email verification is needed",
+        "tags": [
+          "Multi-tenancy"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 128
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "token",
+                  "name",
+                  "password"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "organization": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "slug"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "email",
+                    "organization"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/members/new": {
+      "post": {
+        "summary": "Create a member account (name, address name@<org>.bp assigned automatically, typed or generated password)",
+        "tags": [
+          "Multi-tenancy"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "localPart": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._-]{0,39}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "ADMIN",
+                      "BILLING_ADMIN",
+                      "MEMBER",
+                      "VIEWER"
+                    ],
+                    "default": "MEMBER"
+                  },
+                  "groupIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "maxItems": 50,
+                    "default": []
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "membership": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "organizationId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "userId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "OWNER",
+                            "ADMIN",
+                            "BILLING_ADMIN",
+                            "MEMBER",
+                            "VIEWER"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "organizationId",
+                        "userId",
+                        "role",
+                        "createdAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "password": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "membership",
+                    "user",
+                    "password"
                   ],
                   "additionalProperties": false
                 }
@@ -31376,6 +31801,195 @@
                     "createdByUserId",
                     "keyHint",
                     "delivery"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/storage": {
+      "get": {
+        "summary": "Read the organization's storage usage against its limit (assets and dataset import files)",
+        "tags": [
+          "Multi-tenancy"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "limitBytes": {
+                      "type": "string"
+                    },
+                    "usedBytes": {
+                      "type": "string"
+                    },
+                    "assetBytes": {
+                      "type": "string"
+                    },
+                    "reservedBytes": {
+                      "type": "string"
+                    },
+                    "importBytes": {
+                      "type": "string"
+                    },
+                    "assetCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "importCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "byCategory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "image",
+                              "video",
+                              "document",
+                              "other"
+                            ]
+                          },
+                          "bytes": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "category",
+                          "bytes",
+                          "count"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "limitBytes",
+                    "usedBytes",
+                    "assetBytes",
+                    "reservedBytes",
+                    "importBytes",
+                    "assetCount",
+                    "importCount",
+                    "byCategory"
                   ],
                   "additionalProperties": false
                 }
@@ -32921,6 +33535,1259 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Permanently delete a category with its subcategories and panels (datasets and assets are kept)",
+        "tags": [
+          "NORTH taxonomy"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "categoryId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "enum": [
+                    "null"
+                  ],
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/subcategories/{subcategoryId}": {
+      "delete": {
+        "summary": "Permanently delete a subcategory with its panels",
+        "tags": [
+          "NORTH taxonomy"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "subcategoryId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "enum": [
+                    "null"
+                  ],
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update or move a same-tenant subcategory",
+        "tags": [
+          "NORTH taxonomy"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "description": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "nullable": true
+                  },
+                  "icon": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "nullable": true
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$",
+                    "nullable": true
+                  },
+                  "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "order": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "navigationHidden": {
+                    "type": "boolean"
+                  },
+                  "categoryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "subcategoryId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "resourceKind": {
+                      "type": "string",
+                      "enum": [
+                        "SYSTEM",
+                        "CONTENT"
+                      ]
+                    },
+                    "name": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "nullable": true
+                    },
+                    "icon": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "color": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "order": {
+                      "type": "integer"
+                    },
+                    "navigationHidden": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "categoryId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "resourceKind",
+                    "name",
+                    "description",
+                    "icon",
+                    "color",
+                    "slug",
+                    "order",
+                    "navigationHidden",
+                    "createdAt",
+                    "updatedAt",
+                    "categoryId",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/panels/{panelId}": {
+      "delete": {
+        "summary": "Permanently delete a panel with its revisions and bindings",
+        "tags": [
+          "NORTH taxonomy"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "enum": [
+                    "null"
+                  ],
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Read authorized panel metadata",
+        "tags": [
+          "NORTH taxonomy"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "resourceKind": {
+                      "type": "string",
+                      "enum": [
+                        "SYSTEM",
+                        "CONTENT"
+                      ]
+                    },
+                    "name": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "nullable": true
+                    },
+                    "icon": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "color": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "order": {
+                      "type": "integer"
+                    },
+                    "navigationHidden": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "subcategoryId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED",
+                        "ARCHIVED"
+                      ]
+                    },
+                    "audienceType": {
+                      "type": "string",
+                      "enum": [
+                        "ALL_MEMBERS",
+                        "ROLES",
+                        "GROUPS",
+                        "PERMISSIONS",
+                        "SPECIFIC_USERS"
+                      ]
+                    },
+                    "accessPolicyMode": {
+                      "type": "string",
+                      "enum": [
+                        "LEGACY_AUDIENCE",
+                        "ACL_V1"
+                      ]
+                    },
+                    "publishedRevisionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    },
+                    "draftRevisionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "resourceKind",
+                    "name",
+                    "description",
+                    "icon",
+                    "color",
+                    "slug",
+                    "order",
+                    "navigationHidden",
+                    "createdAt",
+                    "updatedAt",
+                    "subcategoryId",
+                    "status",
+                    "audienceType",
+                    "accessPolicyMode",
+                    "publishedRevisionId",
+                    "draftRevisionId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update or move same-tenant panel metadata",
+        "tags": [
+          "NORTH taxonomy"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "description": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "nullable": true
+                  },
+                  "icon": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "nullable": true
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$",
+                    "nullable": true
+                  },
+                  "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "order": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "navigationHidden": {
+                    "type": "boolean"
+                  },
+                  "subcategoryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "resourceKind": {
+                      "type": "string",
+                      "enum": [
+                        "SYSTEM",
+                        "CONTENT"
+                      ]
+                    },
+                    "name": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "nullable": true
+                    },
+                    "icon": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "color": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "order": {
+                      "type": "integer"
+                    },
+                    "navigationHidden": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "subcategoryId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED",
+                        "ARCHIVED"
+                      ]
+                    },
+                    "audienceType": {
+                      "type": "string",
+                      "enum": [
+                        "ALL_MEMBERS",
+                        "ROLES",
+                        "GROUPS",
+                        "PERMISSIONS",
+                        "SPECIFIC_USERS"
+                      ]
+                    },
+                    "accessPolicyMode": {
+                      "type": "string",
+                      "enum": [
+                        "LEGACY_AUDIENCE",
+                        "ACL_V1"
+                      ]
+                    },
+                    "publishedRevisionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    },
+                    "draftRevisionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "resourceKind",
+                    "name",
+                    "description",
+                    "icon",
+                    "color",
+                    "slug",
+                    "order",
+                    "navigationHidden",
+                    "createdAt",
+                    "updatedAt",
+                    "subcategoryId",
+                    "status",
+                    "audienceType",
+                    "accessPolicyMode",
+                    "publishedRevisionId",
+                    "draftRevisionId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/organizations/{organizationId}/categories/{categoryId}/archive": {
@@ -33456,287 +35323,6 @@
         }
       }
     },
-    "/v1/organizations/{organizationId}/subcategories/{subcategoryId}": {
-      "patch": {
-        "summary": "Update or move a same-tenant subcategory",
-        "tags": [
-          "NORTH taxonomy"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 500
-                    }
-                  },
-                  "description": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 500
-                    },
-                    "nullable": true
-                  },
-                  "icon": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "nullable": true
-                  },
-                  "color": {
-                    "type": "string",
-                    "pattern": "^#[0-9a-fA-F]{6}$",
-                    "nullable": true
-                  },
-                  "slug": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100
-                  },
-                  "order": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 100000
-                  },
-                  "navigationHidden": {
-                    "type": "boolean"
-                  },
-                  "categoryId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "in": "path",
-            "name": "organizationId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "in": "path",
-            "name": "subcategoryId",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "organizationId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "resourceKind": {
-                      "type": "string",
-                      "enum": [
-                        "SYSTEM",
-                        "CONTENT"
-                      ]
-                    },
-                    "name": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 500
-                      }
-                    },
-                    "description": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 500
-                      },
-                      "nullable": true
-                    },
-                    "icon": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "color": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "slug": {
-                      "type": "string"
-                    },
-                    "order": {
-                      "type": "integer"
-                    },
-                    "navigationHidden": {
-                      "type": "boolean"
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "categoryId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "ACTIVE",
-                        "ARCHIVED"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "organizationId",
-                    "resourceKind",
-                    "name",
-                    "description",
-                    "icon",
-                    "color",
-                    "slug",
-                    "order",
-                    "navigationHidden",
-                    "createdAt",
-                    "updatedAt",
-                    "categoryId",
-                    "status"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "requestId": {
-                          "type": "string"
-                        },
-                        "currentRevision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "currentETag": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message",
-                        "requestId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "requestId": {
-                          "type": "string"
-                        },
-                        "currentRevision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "currentETag": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message",
-                        "requestId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/organizations/{organizationId}/subcategories/{subcategoryId}/archive": {
       "post": {
         "summary": "Archive a content subcategory",
@@ -34069,576 +35655,6 @@
         ],
         "responses": {
           "201": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "organizationId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "resourceKind": {
-                      "type": "string",
-                      "enum": [
-                        "SYSTEM",
-                        "CONTENT"
-                      ]
-                    },
-                    "name": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 500
-                      }
-                    },
-                    "description": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 500
-                      },
-                      "nullable": true
-                    },
-                    "icon": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "color": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "slug": {
-                      "type": "string"
-                    },
-                    "order": {
-                      "type": "integer"
-                    },
-                    "navigationHidden": {
-                      "type": "boolean"
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "subcategoryId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
-                      ]
-                    },
-                    "audienceType": {
-                      "type": "string",
-                      "enum": [
-                        "ALL_MEMBERS",
-                        "ROLES",
-                        "GROUPS",
-                        "PERMISSIONS",
-                        "SPECIFIC_USERS"
-                      ]
-                    },
-                    "accessPolicyMode": {
-                      "type": "string",
-                      "enum": [
-                        "LEGACY_AUDIENCE",
-                        "ACL_V1"
-                      ]
-                    },
-                    "publishedRevisionId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128,
-                      "nullable": true
-                    },
-                    "draftRevisionId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128,
-                      "nullable": true
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "organizationId",
-                    "resourceKind",
-                    "name",
-                    "description",
-                    "icon",
-                    "color",
-                    "slug",
-                    "order",
-                    "navigationHidden",
-                    "createdAt",
-                    "updatedAt",
-                    "subcategoryId",
-                    "status",
-                    "audienceType",
-                    "accessPolicyMode",
-                    "publishedRevisionId",
-                    "draftRevisionId"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "requestId": {
-                          "type": "string"
-                        },
-                        "currentRevision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "currentETag": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message",
-                        "requestId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "requestId": {
-                          "type": "string"
-                        },
-                        "currentRevision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "currentETag": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message",
-                        "requestId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/organizations/{organizationId}/panels/{panelId}": {
-      "get": {
-        "summary": "Read authorized panel metadata",
-        "tags": [
-          "NORTH taxonomy"
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "in": "path",
-            "name": "organizationId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "in": "path",
-            "name": "panelId",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "organizationId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "resourceKind": {
-                      "type": "string",
-                      "enum": [
-                        "SYSTEM",
-                        "CONTENT"
-                      ]
-                    },
-                    "name": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 500
-                      }
-                    },
-                    "description": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 500
-                      },
-                      "nullable": true
-                    },
-                    "icon": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "color": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "slug": {
-                      "type": "string"
-                    },
-                    "order": {
-                      "type": "integer"
-                    },
-                    "navigationHidden": {
-                      "type": "boolean"
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "subcategoryId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
-                      ]
-                    },
-                    "audienceType": {
-                      "type": "string",
-                      "enum": [
-                        "ALL_MEMBERS",
-                        "ROLES",
-                        "GROUPS",
-                        "PERMISSIONS",
-                        "SPECIFIC_USERS"
-                      ]
-                    },
-                    "accessPolicyMode": {
-                      "type": "string",
-                      "enum": [
-                        "LEGACY_AUDIENCE",
-                        "ACL_V1"
-                      ]
-                    },
-                    "publishedRevisionId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128,
-                      "nullable": true
-                    },
-                    "draftRevisionId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 128,
-                      "nullable": true
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "organizationId",
-                    "resourceKind",
-                    "name",
-                    "description",
-                    "icon",
-                    "color",
-                    "slug",
-                    "order",
-                    "navigationHidden",
-                    "createdAt",
-                    "updatedAt",
-                    "subcategoryId",
-                    "status",
-                    "audienceType",
-                    "accessPolicyMode",
-                    "publishedRevisionId",
-                    "draftRevisionId"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "requestId": {
-                          "type": "string"
-                        },
-                        "currentRevision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "currentETag": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message",
-                        "requestId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        },
-                        "requestId": {
-                          "type": "string"
-                        },
-                        "currentRevision": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "currentETag": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message",
-                        "requestId"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "summary": "Update or move same-tenant panel metadata",
-        "tags": [
-          "NORTH taxonomy"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 500
-                    }
-                  },
-                  "description": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 500
-                    },
-                    "nullable": true
-                  },
-                  "icon": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "nullable": true
-                  },
-                  "color": {
-                    "type": "string",
-                    "pattern": "^#[0-9a-fA-F]{6}$",
-                    "nullable": true
-                  },
-                  "slug": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100
-                  },
-                  "order": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 100000
-                  },
-                  "navigationHidden": {
-                    "type": "boolean"
-                  },
-                  "subcategoryId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "in": "path",
-            "name": "organizationId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "in": "path",
-            "name": "panelId",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -38779,16 +39795,19 @@
                         "north.category.create",
                         "north.category.update",
                         "north.category.archive",
+                        "north.category.delete",
                         "north.subcategory.read",
                         "north.subcategory.create",
                         "north.subcategory.update",
                         "north.subcategory.archive",
+                        "north.subcategory.delete",
                         "north.panel.read",
                         "north.panel.create",
                         "north.panel.update",
                         "north.panel.preview",
                         "north.panel.publish",
                         "north.panel.archive",
+                        "north.panel.delete",
                         "north.content.read",
                         "north.content.update",
                         "north.asset.read",
@@ -39161,16 +40180,19 @@
                           "north.category.create",
                           "north.category.update",
                           "north.category.archive",
+                          "north.category.delete",
                           "north.subcategory.read",
                           "north.subcategory.create",
                           "north.subcategory.update",
                           "north.subcategory.archive",
+                          "north.subcategory.delete",
                           "north.panel.read",
                           "north.panel.create",
                           "north.panel.update",
                           "north.panel.preview",
                           "north.panel.publish",
                           "north.panel.archive",
+                          "north.panel.delete",
                           "north.content.read",
                           "north.content.update",
                           "north.asset.read",
@@ -39514,16 +40536,19 @@
                               "north.category.create",
                               "north.category.update",
                               "north.category.archive",
+                              "north.category.delete",
                               "north.subcategory.read",
                               "north.subcategory.create",
                               "north.subcategory.update",
                               "north.subcategory.archive",
+                              "north.subcategory.delete",
                               "north.panel.read",
                               "north.panel.create",
                               "north.panel.update",
                               "north.panel.preview",
                               "north.panel.publish",
                               "north.panel.archive",
+                              "north.panel.delete",
                               "north.content.read",
                               "north.content.update",
                               "north.asset.read",
@@ -39634,16 +40659,19 @@
                               "north.category.create",
                               "north.category.update",
                               "north.category.archive",
+                              "north.category.delete",
                               "north.subcategory.read",
                               "north.subcategory.create",
                               "north.subcategory.update",
                               "north.subcategory.archive",
+                              "north.subcategory.delete",
                               "north.panel.read",
                               "north.panel.create",
                               "north.panel.update",
                               "north.panel.preview",
                               "north.panel.publish",
                               "north.panel.archive",
+                              "north.panel.delete",
                               "north.content.read",
                               "north.content.update",
                               "north.asset.read",
@@ -39754,16 +40782,19 @@
                               "north.category.create",
                               "north.category.update",
                               "north.category.archive",
+                              "north.category.delete",
                               "north.subcategory.read",
                               "north.subcategory.create",
                               "north.subcategory.update",
                               "north.subcategory.archive",
+                              "north.subcategory.delete",
                               "north.panel.read",
                               "north.panel.create",
                               "north.panel.update",
                               "north.panel.preview",
                               "north.panel.publish",
                               "north.panel.archive",
+                              "north.panel.delete",
                               "north.content.read",
                               "north.content.update",
                               "north.asset.read",
@@ -39998,16 +41029,19 @@
                       "north.category.create",
                       "north.category.update",
                       "north.category.archive",
+                      "north.category.delete",
                       "north.subcategory.read",
                       "north.subcategory.create",
                       "north.subcategory.update",
                       "north.subcategory.archive",
+                      "north.subcategory.delete",
                       "north.panel.read",
                       "north.panel.create",
                       "north.panel.update",
                       "north.panel.preview",
                       "north.panel.publish",
                       "north.panel.archive",
+                      "north.panel.delete",
                       "north.content.read",
                       "north.content.update",
                       "north.asset.read",
@@ -40098,16 +41132,19 @@
                         "north.category.create",
                         "north.category.update",
                         "north.category.archive",
+                        "north.category.delete",
                         "north.subcategory.read",
                         "north.subcategory.create",
                         "north.subcategory.update",
                         "north.subcategory.archive",
+                        "north.subcategory.delete",
                         "north.panel.read",
                         "north.panel.create",
                         "north.panel.update",
                         "north.panel.preview",
                         "north.panel.publish",
                         "north.panel.archive",
+                        "north.panel.delete",
                         "north.content.read",
                         "north.content.update",
                         "north.asset.read",
@@ -41556,16 +42593,19 @@
                                               "north.category.create",
                                               "north.category.update",
                                               "north.category.archive",
+                                              "north.category.delete",
                                               "north.subcategory.read",
                                               "north.subcategory.create",
                                               "north.subcategory.update",
                                               "north.subcategory.archive",
+                                              "north.subcategory.delete",
                                               "north.panel.read",
                                               "north.panel.create",
                                               "north.panel.update",
                                               "north.panel.preview",
                                               "north.panel.publish",
                                               "north.panel.archive",
+                                              "north.panel.delete",
                                               "north.content.read",
                                               "north.content.update",
                                               "north.asset.read",
@@ -42224,16 +43264,19 @@
                                             "north.category.create",
                                             "north.category.update",
                                             "north.category.archive",
+                                            "north.category.delete",
                                             "north.subcategory.read",
                                             "north.subcategory.create",
                                             "north.subcategory.update",
                                             "north.subcategory.archive",
+                                            "north.subcategory.delete",
                                             "north.panel.read",
                                             "north.panel.create",
                                             "north.panel.update",
                                             "north.panel.preview",
                                             "north.panel.publish",
                                             "north.panel.archive",
+                                            "north.panel.delete",
                                             "north.content.read",
                                             "north.content.update",
                                             "north.asset.read",
@@ -43344,16 +44387,19 @@
                                             "north.category.create",
                                             "north.category.update",
                                             "north.category.archive",
+                                            "north.category.delete",
                                             "north.subcategory.read",
                                             "north.subcategory.create",
                                             "north.subcategory.update",
                                             "north.subcategory.archive",
+                                            "north.subcategory.delete",
                                             "north.panel.read",
                                             "north.panel.create",
                                             "north.panel.update",
                                             "north.panel.preview",
                                             "north.panel.publish",
                                             "north.panel.archive",
+                                            "north.panel.delete",
                                             "north.content.read",
                                             "north.content.update",
                                             "north.asset.read",
@@ -43917,16 +44963,19 @@
                                               "north.category.create",
                                               "north.category.update",
                                               "north.category.archive",
+                                              "north.category.delete",
                                               "north.subcategory.read",
                                               "north.subcategory.create",
                                               "north.subcategory.update",
                                               "north.subcategory.archive",
+                                              "north.subcategory.delete",
                                               "north.panel.read",
                                               "north.panel.create",
                                               "north.panel.update",
                                               "north.panel.preview",
                                               "north.panel.publish",
                                               "north.panel.archive",
+                                              "north.panel.delete",
                                               "north.content.read",
                                               "north.content.update",
                                               "north.asset.read",

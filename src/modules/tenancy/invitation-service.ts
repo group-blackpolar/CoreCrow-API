@@ -1,4 +1,6 @@
 import { createHmac, randomBytes, randomInt } from "node:crypto";
+import { Prisma } from "@prisma/client";
+import { hashPassword } from "better-auth/crypto";
 import type { InvitationKind, TenantRole } from "../../lib/database.js";
 import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
@@ -9,6 +11,7 @@ import { groupsRepository as groups } from "../authorization/groups-repository.j
 import { hash as legacyHash } from "../security/crypto.js";
 import { sendOrganizationInvitationMail } from "../security/mail.js";
 import { tenantRepository as repo } from "./repository.js";
+import { identities } from "../identity/repository.js";
 
 const EMAIL_TOKEN_BYTES = 32;
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -16,6 +19,26 @@ const DEFAULT_EXPIRY_HOURS = 7 * 24;
 
 function normalizedEmail(value: string) {
   return value.trim().toLowerCase();
+}
+
+
+const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+/** `SHARK-PASS-8nHFG31zTL`: organization prefix + 10 random characters (~58 bits); only its hash is ever stored. */
+export function generatedPassword(slug: string) {
+  const prefix = slug.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16) || "ORG";
+  const random = Array.from({ length: 10 }, () => PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]).join("");
+  return `${prefix}-PASS-${random}`;
+}
+
+/** Login addresses of an organization's own accounts live under `<slug>.bp`. */
+export const organizationDomain = (slug: string) => `${slug.toLowerCase()}.bp`;
+
+/** `Samuel Perez` -> `samuel`: the first word, accents removed, only characters that are safe in an address. */
+export function localPartOf(value: string) {
+  const first = value.trim().split(/\s+/)[0] ?? "";
+  const clean = first.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase().replace(/[^a-z0-9._-]/g, "").replace(/^[^a-z0-9]+/, "").slice(0, 40);
+  return clean || "user";
 }
 
 function invitationHash(value: string) {
@@ -270,13 +293,16 @@ export const invitations = {
         invitation.expiresAt <= new Date()
       )
         fail(404, "INVITATION_INVALID", "Invitation unavailable");
-      if (!user.emailVerified)
-        fail(403, "VERIFIED_EMAIL_REQUIRED", "A verified email is required");
-      if (
-        invitation.kind === "EMAIL" &&
-        normalizedEmail(user.email) !== invitation.email
-      )
+      const emailed = invitation.kind === "EMAIL";
+      if (emailed && normalizedEmail(user.email) !== invitation.email)
         fail(403, "INVITATION_EMAIL_MISMATCH", "The invitation belongs to another email");
+      // An emailed invitation proves control of that mailbox (the token only exists in it); organization keys still need a verified account.
+      if (!emailed && !user.emailVerified)
+        fail(403, "VERIFIED_EMAIL_REQUIRED", "A verified email is required");
+      if (emailed && !user.emailVerified) {
+        await tx.user.update({ where: { id: user.id }, data: { emailVerified: true } });
+        await tx.emailVerificationChallenge.deleteMany({ where: { userId: user.id } });
+      }
       const membership = await repo.accept(
         tx,
         invitation.id,
@@ -322,12 +348,97 @@ export const invitations = {
       const organization = await repo.organization(tx, invitation.organizationId);
       if (!organization || organization.status !== "ACTIVE")
         fail(404, "INVITATION_INVALID", "Invitation unavailable");
+      const invited = invitation.kind === "EMAIL" && invitation.email ? await repo.userByEmail(tx, invitation.email) : null;
       return {
         organization: { name: organization.name, slug: organization.slug, iconData: organization.iconData },
         kind: invitation.kind,
         expiresAt: invitation.expiresAt,
+        // Only the holder of the emailed token can read these: they describe the recipient of that very invitation.
+        email: invitation.kind === "EMAIL" ? invitation.email : null,
+        accountExists: invitation.kind === "EMAIL" ? Boolean(invited) : null,
       };
     });
+  },
+  /**
+   * Public: the recipient of an EMAIL invitation without an account chooses a name and a password and joins in one step.
+   * The invitation token proves control of the mailbox, so the account is created already verified (no code is sent).
+   */
+  async acceptNew(credentialInput: string, input: { name: string; password: string }) {
+    const credential = credentialInput.trim();
+    const variants = [...new Set([credential, credential.toUpperCase()])];
+    const hashes = variants.flatMap((value) => [invitationHash(value), legacyHash(value)]);
+    const passwordHash = await hashPassword(input.password);
+    try {
+      return await transaction(async (tx) => {
+        const invitation = await repo.invitation(tx, hashes);
+        if (!invitation || invitation.revokedAt || invitation.acceptedAt || invitation.expiresAt <= new Date())
+          fail(404, "INVITATION_INVALID", "Invitation unavailable");
+        if (invitation.kind !== "EMAIL" || !invitation.email)
+          fail(400, "INVITATION_EMAIL_REQUIRED", "Only emailed invitations can create an account");
+        const organization = await repo.organization(tx, invitation.organizationId);
+        if (!organization || organization.status !== "ACTIVE") fail(404, "INVITATION_INVALID", "Invitation unavailable");
+        if (await repo.userByEmail(tx, invitation.email))
+          fail(409, "ACCOUNT_EXISTS", "An account already exists for this email; sign in to accept");
+        const user = await identities.create(tx, { name: input.name.trim(), email: invitation.email, role: "USER", emailVerified: true }, passwordHash);
+        const membership = await repo.accept(tx, invitation.id, invitation.organizationId, user.id, invitation.role);
+        if (!membership) fail(404, "INVITATION_INVALID", "Invitation unavailable");
+        await repo.addInvitationGrants(
+          tx,
+          invitation.organizationId,
+          membership.id,
+          invitation.groupGrants.map((grant) => grant.groupId),
+          invitation.permissionGrants.map((grant) => grant.permission).filter(isPermission),
+        );
+        await audit.append(tx, { actorId: user.id, organizationId: invitation.organizationId, action: "invitation.accept_new_account", targetType: "invitation", targetId: invitation.id, metadata: { kind: invitation.kind } });
+        return { email: invitation.email, organization: { name: organization.name, slug: organization.slug } };
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+        fail(409, "ACCOUNT_EXISTS", "An account already exists for this email; sign in to accept");
+      throw error;
+    }
+  },
+  /**
+   * An organization administrator creates a member account: name, a login address name@<org>.bp assigned automatically
+   * (the domain is the organization's own slug, so an admin can never mint addresses of another organization) and a password
+   * they type or have generated (ORG-PASS-<10 chars>). The generated password is returned once and never stored or audited.
+   */
+  async createMember(
+    userId: string,
+    organizationId: string,
+    input: { name: string; localPart?: string; password?: string; role: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
+  ) {
+    const slug = (await transaction((tx) => repo.organization(tx, organizationId)))?.slug ?? "org";
+    const generated = input.password ? null : generatedPassword(slug);
+    const password = input.password ?? generated!;
+    const passwordHash = await hashPassword(password);
+    try {
+      return await transaction(async (tx) => {
+        const actor = await authorize(tx, userId, organizationId, "members.manage");
+        if (!canManageRole(actor.role, input.role, input.role)) fail(403, "FORBIDDEN", "Cannot assign this role");
+        const groupIds = [...new Set(input.groupIds ?? [])];
+        if (groupIds.length) await authorize(tx, userId, organizationId, "permissions.manage");
+        for (const groupId of groupIds) if (!(await groups.group(tx, organizationId, groupId))) fail(404, "NOT_FOUND", "Group not found");
+        const organization = await repo.organization(tx, organizationId);
+        if (!organization || organization.status !== "ACTIVE") fail(404, "NOT_FOUND", "Organization not found");
+        const domain = organizationDomain(organization.slug);
+        const base = localPartOf(input.localPart ?? input.name);
+        let email = `${base}@${domain}`;
+        if (input.localPart) {
+          if (await repo.userByEmail(tx, email)) fail(409, "IDENTITY_EXISTS", "That address is already taken");
+        } else {
+          for (let n = 2; await repo.userByEmail(tx, email); n += 1) email = `${base}${n}@${domain}`;
+        }
+        const user = await identities.create(tx, { name: input.name.trim(), email, role: "USER", emailVerified: true }, passwordHash);
+        const membership = await repo.addMember(tx, organizationId, user.id, input.role);
+        await repo.addInvitationGrants(tx, organizationId, membership.id, groupIds, []);
+        await audit.append(tx, { actorId: userId, organizationId, action: "membership.create_user", targetType: "membership", targetId: membership.id, metadata: { role: input.role, passwordGenerated: Boolean(generated), groupCount: groupIds.length } });
+        return { membership, user: { id: user.id, email, name: input.name.trim() }, password: generated };
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") fail(409, "IDENTITY_EXISTS", "That address is already taken");
+      throw error;
+    }
   },
   /** Org admins check whether an account already exists for an email (needs members.manage). */
   lookupUser(userId: string, organizationId: string, emailInput: string) {

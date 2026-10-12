@@ -353,7 +353,7 @@ model Organization {
   entitlements          Entitlement[]
   billingProfile        OrganizationBillingProfile?
   homePanelId           String?
-  storageLimitBytes     BigInt                      @default(10737418240)
+  storageLimitBytes     BigInt                      @default(5368709120)
   storageUsedBytes      BigInt                      @default(0)
   storageReservedBytes  BigInt                      @default(0)
   documentTypes         DocumentType[]

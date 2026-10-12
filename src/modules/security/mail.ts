@@ -129,7 +129,7 @@ export async function sendOrganizationInvitationMail(
       invitationUrl,
       "",
       `This single-use invitation expires ${expiresAt.toISOString()}.`,
-      "Sign in with this email address and verify it before accepting.",
+      "Open the link and press Accept. If you do not have an account yet you will choose your name and a password; no verification code is needed.",
       "If you were not expecting this invitation, you can ignore this email.",
     ].join("\n"),
     html: `<!doctype html>
@@ -140,7 +140,7 @@ export async function sendOrganizationInvitationMail(
       <tr><td style="padding-top:24px;font-size:28px;line-height:1.2;font-weight:700">Join ${safeOrganizationName}</td></tr>
       <tr><td style="padding-top:14px;color:#bdc7d5;font-size:16px;line-height:1.6">You have been invited to this organization on NORTH.</td></tr>
       <tr><td style="padding:28px 0"><a href="${safeUrl}" style="display:inline-block;background:#f4f7fb;color:#090b10;text-decoration:none;font-weight:700;padding:14px 22px;border-radius:10px">Accept invitation</a></td></tr>
-      <tr><td style="color:#9aa8ba;font-size:14px;line-height:1.6">This link can be used once and expires ${escapeHtml(expiresAt.toISOString())}. Sign in with the invited email address.</td></tr>
+      <tr><td style="color:#9aa8ba;font-size:14px;line-height:1.6">This link can be used once and expires ${escapeHtml(expiresAt.toISOString())}. If you do not have an account yet you will choose a name and a password; no verification code is needed.</td></tr>
       <tr><td style="padding-top:24px;color:#748196;font-size:12px;line-height:1.5">If you were not expecting this invitation, you can safely ignore this email.</td></tr>
     </table>
   </td></tr></table>
