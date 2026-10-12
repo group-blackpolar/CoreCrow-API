@@ -182,7 +182,8 @@ const catalog = {
   }).strict(),
   // Places the page's filter bar (selectors, period, chips) at this spot instead of the default top position.
   // `labels` renames a control by its dataset field KEY (e.g. arrival_date -> "Month / Year") without touching the dataset.
-  filter_bar: z.object({ title: localized.optional(), labels: z.record(resultKey, localized).optional() }).strict(),
+  // `hiddenFields` (dataset field KEYS) are filterable by clicking charts and tables and show as chips, but get no control in the bar.
+  filter_bar: z.object({ title: localized.optional(), labels: z.record(resultKey, localized).optional(), hiddenFields: z.array(resultKey).max(30).optional() }).strict(),
   // Deterministic findings computed from binding results (no generative text).
   insights: z.object({ title: localized.optional(), items: z.array(insightRule).min(1).max(6) }).strict(),
 } as const;
