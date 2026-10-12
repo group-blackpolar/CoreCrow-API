@@ -12,7 +12,33 @@
 //   metric tons  SUM house_metric_tons DISTINCT BY house BL (BL-level value repeated per container)
 //   Master side (03, 05, 07 country, 08) vs House side (02, 04, 06) follows the title of each panel; Master and House
 //   country of origin differ on ~16% of rows, so they are never mixed inside one panel.
-const l = (es, en = es) => ({ es, en });
+// One-argument calls carry the ENGLISH label (the Looker reference's own wording) and get their Spanish from this glossary;
+// two-argument calls are written es, en. Proper nouns and technical names (Master BL, House BL, TEUs) are kept as they are.
+const ES = {
+  "Carrier": "Naviera", "Consignees Table": "Tabla de consignatarios", "Consignees and Cargo Table": "Consignatarios y carga",
+  "Consignees and ports": "Consignatarios y puertos", "Containers": "Contenedores",
+  "Containers and Weight (MT) by House Consignee": "Contenedores y peso (TM) por consignatario House",
+  "Containers and Weight (MT) by Master and House Consignee": "Contenedores y peso (TM) por consignatario Master y House",
+  "Containers by Master Consignee": "Contenedores por consignatario Master", "Containers per Origin": "Contenedores por origen",
+  "Containers per Origin - BL": "Contenedores por origen - BL", "Containers per Origin - House BL": "Contenedores por origen - House BL",
+  "Containers per Origin - Master BL": "Contenedores por origen - Master BL", "Containers per Shipping Line/Agency": "Contenedores por línea naviera/agencia",
+  "Containers per freight forwarder": "Contenedores por agente de carga",
+  "Containers, TEUs and Weight (MT) by Master Consignee": "Contenedores, TEUs y peso (TM) por consignatario Master",
+  "Country of Origin": "País de origen", "Dashboard Information": "Información del tablero", "Departure Port": "Puerto de salida",
+  "Entry Port": "Puerto de entrada", "House Carrier": "Naviera House", "House Consignee": "Consignatario House",
+  "House Consignee List": "Lista de consignatarios House", "House Consignees": "Consignatarios House", "House Metric Tons": "Toneladas métricas House",
+  "House Port of Arrival": "Puerto de arribo House", "House Port of Departure": "Puerto de salida House", "House Weight (MT)": "Peso House (TM)",
+  "Master BL Number": "Número de Master BL", "Master Bill of Lading Number": "Número de conocimiento Master", "Master Consignee": "Consignatario Master",
+  "Master Consignee / Freight Forwarder": "Consignatario Master / Agente de carga", "Master Consignee List": "Lista de consignatarios Master",
+  "Master Containers per Year": "Contenedores Master por año", "Master Country of Origin": "País de origen Master", "Master Bill Type": "Tipo de conocimiento Master", "Master Port of Arrival": "Puerto de arribo Master",
+  "Master Weight (MT)": "Peso Master (TM)", "Month": "Mes", "Month / Year": "Mes / Año", "Port of Departure": "Puerto de salida",
+  "Search By": "Búsqueda por", "Search by Port of Departure": "Búsqueda por puerto de salida", "Top Country": "País principal",
+  "Top Freight Forwarders": "Principales agentes de carga", "Top Freight Forwarders for Imports (Master BL)": "Principales agentes de carga en importaciones (Master BL)",
+  "Volume per Shipping Line/Agency (Containers)": "Volumen por línea naviera/agencia (contenedores)", "Weight (MT)": "Peso (TM)", "Weight MT": "Peso (TM)",
+  "Weight per Month (MT)": "Peso por mes (TM)", "Weight per Origin Country (MT)": "Peso por país de origen (TM)", "Year": "Año",
+  "Freight forwarders": "Agentes de carga", 
+};
+const l = (a, b) => (b === undefined ? { es: ES[a] ?? a, en: a } : { es: a, en: b });
 const measure = (operation, fieldId, alias, extra = {}) => ({ operation, ...(fieldId ? { fieldId } : {}), ...extra, alias });
 const agg = (spec) => ({ mode: "AGGREGATE", ...spec });
 const TEXT_OPS = ["IN", "EQ"];
@@ -97,7 +123,7 @@ export default {
     // ---------------------------------------------------------------------------------------------------------------
     panel({
       subcategory: { name: l("Search By"), slug: "search-by", icon: "magnifying-glass" },
-      panel: { name: l("Search By"), slug: "master-house-consignee", icon: "magnifying-glass", audienceType: "ALL_MEMBERS" },
+      panel: { name: l("Búsqueda Master – House", "Master – House Search"), slug: "master-house-consignee", icon: "magnifying-glass", audienceType: "ALL_MEMBERS" },
       filters: [text("masterConsignee"), text("houseConsignee"), text("housePortOfArrival"), text("housePortOfDeparture"), when("date"), text("houseCountry")],
       bindings: ({ f, containers }) => {
         const houseWeight = measure("SUM", f.houseWeight, "weight_mt");
@@ -107,17 +133,16 @@ export default {
           { name: "containers_total", query: agg({ measures: [containers], compareBy: f.date }) },
           { name: "countries", query: agg({ groupBy: [f.houseCountry], measures: [houseWeight, containers], orderBy: [{ key: "weight_mt", direction: "DESC" }], limit: 200 }) },
           { name: "origin", query: agg({ groupBy: [f.houseCountry], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-          { name: "origin_ports", query: agg({ groupBy: [f.housePortOfDeparture], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-          { name: "carriers", query: agg({ groupBy: [f.houseCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
+            { name: "carriers", query: agg({ groupBy: [f.houseCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
         ];
       },
       items: ({ f, binding }) => standardBody(f, binding, {
         table: { props: dataGrid("Containers and Weight (MT) by Master and House Consignee", [
-          col(f.masterConsignee, "Master Consignee", "text", 150), col(f.houseConsignee, "House Consignee", "text", 150),
-          col("containers", "Containers", "bar", 112), col("weight_mt", "Weight MT", "decimal", 92), trendCol(), actionsCol(),
+          col(f.masterConsignee, "Master Consignee", "text", 124), col(f.houseConsignee, "House Consignee", "text", 124),
+          col("containers", "Containers", "bar", 96), col("weight_mt", "Weight MT", "decimal", 86), trendCol(), actionsCol(),
         ], { trend: { binding: "trend", rowKeys: [f.masterConsignee, f.houseConsignee], categoryKey: f.date, valueKey: "containers" } }), bindings: { data: binding("results"), trend: binding("results_trend") } },
         map: geoMap("Weight per Origin Country (MT)", f.houseCountry, "weight_mt", "containers", binding("countries")),
-        bars: originBars("Containers per Origin - BL", f.houseCountry, f.housePortOfDeparture, "Puertos de salida", binding("origin"), binding("origin_ports")),
+        bars: originBars("Containers per Origin - BL", f.houseCountry, binding("origin")),
         donut: carrierDonut("Volume per Shipping Line/Agency (Containers)", f.houseCarrier, binding("carriers"), binding("containers_total")),
         layout: "right-stack",
       }),
@@ -138,8 +163,7 @@ export default {
           { name: "containers_total", query: agg({ measures: [containers], compareBy: f.date }) },
           { name: "countries", query: agg({ groupBy: [f.masterCountry], measures: [weight, containers], orderBy: [{ key: "weight_mt", direction: "DESC" }], limit: 200 }) },
           { name: "origin", query: agg({ groupBy: [f.masterCountry], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-          { name: "origin_ports", query: agg({ groupBy: [f.masterPortOfDeparture], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-          { name: "carriers", query: agg({ groupBy: [f.masterCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
+            { name: "carriers", query: agg({ groupBy: [f.masterCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
         ];
       },
       items: ({ f, binding }) => standardBody(f, binding, {
@@ -149,7 +173,7 @@ export default {
           col("master_teus", "Master TEUs", "number", 90), col("weight_mt", "Master Weight (MT)", "decimal", 110), trendCol(), actionsCol(),
         ], { trend: { binding: "trend", rowKeys: [f.masterConsignee], categoryKey: f.date, valueKey: "containers" } }), bindings: { data: binding("results"), trend: binding("results_trend") } },
         map: geoMap("Weight per Origin Country (MT)", f.masterCountry, "weight_mt", "containers", binding("countries")),
-        bars: originBars("Containers per Origin - Master BL", f.masterCountry, f.masterPortOfDeparture, "Puertos de salida", binding("origin"), binding("origin_ports")),
+        bars: originBars("Containers per Origin - Master BL", f.masterCountry, binding("origin")),
         donut: carrierDonut("Volume per Shipping Line/Agency (Containers)", f.masterCarrier, binding("carriers"), binding("containers_total")),
         layout: "right-stack",
       }),
@@ -171,8 +195,7 @@ export default {
           // A real calendar axis: one bucket per month, oldest first (never alphabetical, years never mixed).
           { name: "weight_monthly", query: agg({ groupBy: [f.date], granularity: { [f.date]: "MONTH" }, measures: [weight], orderBy: [{ key: f.date, direction: "ASC" }], limit: 240 }) },
           { name: "origin", query: agg({ groupBy: [f.houseCountry], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-          { name: "origin_ports", query: agg({ groupBy: [f.housePortOfDeparture], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-          { name: "carriers", query: agg({ groupBy: [f.houseCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
+            { name: "carriers", query: agg({ groupBy: [f.houseCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
         ];
       },
       items: ({ f, binding }) => [
@@ -180,11 +203,9 @@ export default {
         item("table", "data_grid", dataGrid("Containers and Weight (MT) by House Consignee", [
           col(f.houseConsignee, "House Consignee", "text", 240), col("containers", "Containers", "bar", 112), col("weight_mt", "House Weight (MT)", "decimal", 120), trendCol(), actionsCol(),
         ], { trend: { binding: "trend", rowKeys: [f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 2, w: 6, h: 16 }, { h: 14 }),
-        ...region("views", { x: 6, y: 2, w: 6, h: 16 }, [
-          { label: l("Peso por mes", "Weight per month"), weight: 1.3, item: item("monthly", "line_chart", { title: l("Weight per Month (MT)"), categoryKey: f.date, categoryFormat: "month", series: [{ key: "weight_mt", label: l("Peso (MT)", "Weight (MT)"), color: BLUE }], variant: "area", height: 240 }, { data: binding("weight_monthly") }, null) },
-          { label: l("Países", "Countries"), item: item("origin", "bar_chart", originBarProps("Containers per Origin - House BL", f.houseCountry, f.housePortOfDeparture, "Puertos de salida"), { data: binding("origin"), drill: binding("origin_ports") }, null) },
-          { label: l("Líneas navieras", "Shipping lines"), item: item("carriers", "donut_chart", carrierDonutProps("Volume per Shipping Line/Agency (Containers)", f.houseCarrier), { data: binding("carriers"), total: binding("containers_total") }, null) },
-        ]),
+        item("monthly", "line_chart", { title: l("Weight per Month (MT)"), categoryKey: f.date, categoryFormat: "month", series: [{ key: "weight_mt", label: l("Peso (MT)", "Weight (MT)"), color: BLUE }], variant: "area", height: 240 }, { data: binding("weight_monthly") }, { x: 6, y: 2, w: 6, h: 6 }, { h: 9 }),
+        item("origin", "bar_chart", originBarProps("Containers per Origin - House BL", f.houseCountry), { data: binding("origin") }, { x: 6, y: 8, w: 3, h: 10 }, { h: 9 }),
+        item("carriers", "donut_chart", carrierDonutProps("Volume per Shipping Line/Agency (Containers)", f.houseCarrier, "bottom"), { data: binding("carriers"), total: binding("containers_total") }, { x: 9, y: 8, w: 3, h: 10 }, { h: 9 }),
       ],
     }),
 
@@ -202,26 +223,21 @@ export default {
         { name: "results", query: agg({ groupBy: [f.masterConsignee, f.masterPortOfDeparture, f.masterPortOfArrival], measures: [containers, masterTeus], orderBy: [{ key: "containers", direction: "DESC" }], limit: 200, includeTotal: true, searchFieldIds: [f.masterConsignee, f.masterPortOfDeparture, f.masterPortOfArrival] }) },
         { name: "containers_total", query: agg({ measures: [containers], compareBy: f.date }) },
         { name: "origin", query: agg({ groupBy: [f.masterCountry], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
-        { name: "origin_ports", query: agg({ groupBy: [f.masterPortOfDeparture], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
         { name: "consignees", query: agg({ groupBy: [f.masterConsignee], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 10 }) },
         { name: "yearly", query: agg({ groupBy: [f.date], granularity: { [f.date]: "YEAR" }, measures: [containers], orderBy: [{ key: f.date, direction: "ASC" }], limit: 50 }) },
         { name: "carriers", query: agg({ groupBy: [f.masterCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
-        { name: "entry_ports", query: agg({ groupBy: [f.masterPortOfArrival], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
       ],
       items: ({ f, binding }) => [
         filterBar({ master_bill_of_lading_nbr: l("Master Bill of Lading Number") }),
-        item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {}, tooltip: l("TEUs contados una vez por Master BL", "TEUs counted once per Master BL") }, { data: binding("teus_total") }, { x: 0, y: 2, w: 6, h: 2 }, { h: 2 }),
+        item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {}, tooltip: l("TEUs contados una vez por Master BL", "TEUs counted once per Master BL") }, { data: binding("teus_total") }, { x: 0, y: 2, w: 5, h: 2 }, { h: 2 }),
         item("table", "data_grid", dataGrid("Consignees and ports", [
           col(f.masterConsignee, "Master Consignee", "text", 170), col(f.masterPortOfDeparture, "Port of Departure", "text", 130), col(f.masterPortOfArrival, "Master Port of Arrival", "text", 140),
           col("containers", "Containers", "bar", 100), col("master_teus", "Master TEUs", "number", 90),
-        ], { search: true, exportable: true }), { data: binding("results") }, { x: 0, y: 4, w: 6, h: 14 }, { h: 14 }),
-        ...region("views", { x: 6, y: 2, w: 6, h: 16 }, [
-          { label: l("Origen", "Origin"), item: item("origin", "bar_chart", originBarProps("Containers per Origin", f.masterCountry, f.masterPortOfDeparture, "Puertos de salida"), { data: binding("origin"), drill: binding("origin_ports") }, null) },
-          { label: l("Consignatarios", "Consignees"), item: item("consignees", "bar_chart", barProps("Containers by Master Consignee", f.masterConsignee, GREEN), { data: binding("consignees") }, null) },
-          { label: l("Por año", "Per year"), item: item("yearly", "bar_chart", { ...barProps("Master Containers per Year", f.date, BLUE), horizontal: false, categoryFormat: "year" }, { data: binding("yearly") }, null) },
-          { label: l("Navieras", "Carriers"), item: item("carriers", "donut_chart", carrierDonutProps("Containers per Shipping Line/Agency", f.masterCarrier), { data: binding("carriers"), total: binding("containers_total") }, null) },
-          { label: l("Puerto de arribo", "Entry port"), item: item("entry", "donut_chart", carrierDonutProps("Containers per Entry Port", f.masterPortOfArrival), { data: binding("entry_ports"), total: binding("containers_total") }, null) },
-        ], 150),
+        ], { search: true, exportable: true }), { data: binding("results") }, { x: 0, y: 4, w: 5, h: 14 }, { h: 14 }),
+        item("origin", "bar_chart", originBarProps("Containers per Origin", f.masterCountry), { data: binding("origin") }, { x: 5, y: 2, w: 4, h: 8 }, { h: 9 }),
+        item("consignees", "bar_chart", barProps("Containers by Master Consignee", f.masterConsignee, GREEN), { data: binding("consignees") }, { x: 9, y: 2, w: 3, h: 8 }, { h: 9 }),
+        item("yearly", "bar_chart", { ...barProps("Master Containers per Year", f.date, BLUE), horizontal: false, categoryFormat: "year" }, { data: binding("yearly") }, { x: 5, y: 10, w: 3, h: 8 }, { h: 9 }),
+        item("carriers", "donut_chart", carrierDonutProps("Containers per Shipping Line/Agency", f.masterCarrier), { data: binding("carriers"), total: binding("containers_total") }, { x: 8, y: 10, w: 4, h: 8 }, { h: 9 }),
       ],
     }),
 
@@ -371,7 +387,6 @@ function document(name, items) {
     let x = 0; let y = 0; let rowHeight = 0;
     const placed = new Map();
     for (const entry of items) {
-      if (entry.member) continue; // drawn inside its panel group
       const size = { w: 12, h: Math.max(2, entry.desktop.h > 6 ? Math.round(entry.desktop.h * 0.7) : entry.desktop.h), ...(entry[device] ?? {}) };
       if (entry.type === "kpi_card" && device === "tablet") size.w = 6;
       if (x + size.w > 12) { x = 0; y += rowHeight; rowHeight = 0; }
@@ -387,10 +402,9 @@ function document(name, items) {
     sections: [{
       id: "dashboard", name: name, order: 0, layout: { variant: "grid", gap: "sm", rowHeight: ROW_HEIGHT, fit: true },
       components: items.map((entry, index) => {
-        const owner = entry.member ? items.find((candidate) => candidate.id === entry.member) : entry; // a member shares its group's cell
         return {
           id: entry.id, type: entry.type, schemaVersion: 1, props: entry.props, bindings: entry.bindings, order: index,
-          layout: { desktop: owner.desktop, tablet: tablet.get(owner.id), mobile: { ...mobile.get(owner.id), w: 12, x: 0 } },
+          layout: { desktop: entry.desktop, tablet: tablet.get(entry.id), mobile: { ...mobile.get(entry.id), w: 12, x: 0 } },
         };
       }),
     }],
@@ -400,8 +414,11 @@ function document(name, items) {
 // Control names follow the Looker reference (Month / Year, Entry Port, ...); the dataset's own field names are not renamed.
 const FILTER_LABELS = {
   arrival_date: l("Month / Year"),
+  master_consignee: l("Master Consignee"), house_consignee: l("House Consignee"),
+  master_carrier: l("Carrier"), house_carrier: l("House Carrier"),
   house_port_of_arrival: l("Entry Port"), house_port_of_departure: l("Departure Port"), house_country_of_origin: l("Country of Origin"),
-  master_country_of_origin: l("Country of Origin"), master_bill_of_lading_nbr: l("Master BL Number"),
+  master_port_of_arrival: l("Master Port of Arrival"), master_port_of_departure: l("Port of Departure"),
+  master_country_of_origin: l("Country of Origin"), master_bill_of_lading_nbr: l("Master BL Number"), master_bill_type: l("Master Bill Type"),
 };
 const filterBar = (extra = {}) => item("filters", "filter_bar", { title: l("Filtros", "Filters"), labels: { ...FILTER_LABELS, ...extra } }, {}, { x: 0, y: 0, w: 12, h: 2 }, { h: 4 }, { h: 4 });
 
@@ -411,8 +428,8 @@ function richText(content) {
 const nav = (id, panelSlug, label) => ({ id, text: label, panelSlug });
 
 const col = (key, label, kind, width, extra = {}) => ({ key, label: l(label), kind, sortable: kind !== "rank", width, ...(kind === "bar" ? { barTone: "blue" } : {}), ...extra });
-const trendCol = () => ({ key: "trend", label: l("Tendencia", "Trend"), kind: "sparkline", width: 84 });
-const actionsCol = () => ({ key: "actions", label: l("Acciones", "Actions"), kind: "actions", align: "center", width: 64 });
+const trendCol = () => ({ key: "trend", label: l("Tendencia", "Trend"), kind: "sparkline", width: 80 });
+const actionsCol = () => ({ key: "actions", label: l("Acciones", "Actions"), kind: "actions", align: "center", width: 56 });
 
 function dataGrid(title, columns, options = {}, ..._rest) {
   const { trend, search = true, exportable = true, defaultSort = { key: "containers", direction: "DESC" }, pageSizes = [10, 20, 30], defaultPageSize = 20 } = options;
@@ -420,32 +437,21 @@ function dataGrid(title, columns, options = {}, ..._rest) {
 }
 
 const barProps = (title, categoryKey, color) => ({ title: l(title), categoryKey, series: [{ key: "containers", label: l("Contenedores", "Containers"), color }], horizontal: true, height: 240, showValues: true });
-const originBarProps = (title, countryKey, portKey, drillTitle) => ({ ...barProps(title, countryKey, BLUE), drill: { binding: "drill", categoryKey: portKey, title: l(drillTitle, "Departure ports") } });
+const originBarProps = (title, countryKey) => barProps(title, countryKey, BLUE);
 const carrierDonutProps = (title, categoryKey, legend = "right") => ({ title: l(title), categoryKey, valueKey: "containers", maxSlices: 5, totalKey: "containers", height: 240, variant: "donut", showTotal: true, centerLabel: l("Contenedores", "Containers"), legend });
 
-/**
- * Several charts that share one region. NORTH measures the region: tall enough, they are stacked (heights by weight, so a map can
- * outweigh a legend); otherwise one is shown at a time behind tabs. Members keep their own component entry but are drawn only here.
- */
-function region(id, desktop, members, minItemHeight = 170) {
-  const group = item(id, "panel_group", { items: members.map((member) => ({ componentId: member.item.id, label: member.label, ...(member.weight ? { weight: member.weight } : {}) })), minItemHeight }, {}, desktop, { h: 10 }, { h: 10 });
-  return [group, ...members.map((member) => ({ ...member.item, desktop, member: id }))];
-}
-
-/** The common body of Search By and the Master list: table on the left (~58 %), one region of charts on the right. */
+/** Search By / Master list: table on the left half; map on top right and the ranking + donut side by side below it. Nothing is hidden behind tabs. */
 function standardBody(f, binding, parts) {
   void f; void binding;
   return [
     filterBar(),
-    item("table", "data_grid", parts.table.props, parts.table.bindings, { x: 0, y: 2, w: 7, h: 16 }, { h: 14 }),
-    ...region("views", { x: 7, y: 2, w: 5, h: 16 }, [
-      { label: l("Mapa", "Map"), weight: 1.7, item: item("map", "geo_map", parts.map.props, parts.map.bindings, null) },
-      { label: l("Países", "Countries"), item: item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, null) },
-      { label: l("Líneas navieras", "Shipping lines"), item: item("carriers", "donut_chart", parts.donut.props, parts.donut.bindings, null) },
-    ]),
+    item("table", "data_grid", parts.table.props, parts.table.bindings, { x: 0, y: 2, w: 6, h: 16 }, { h: 14 }),
+    item("map", "geo_map", parts.map.props, parts.map.bindings, { x: 6, y: 2, w: 6, h: 8 }, { h: 9 }),
+    item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, { x: 6, y: 10, w: 3, h: 8 }, { h: 9 }),
+    item("carriers", "donut_chart", { ...parts.donut.props, legend: "bottom" }, parts.donut.bindings, { x: 9, y: 10, w: 3, h: 8 }, { h: 9 }),
   ];
 }
 
 const geoMap = (title, regionKey, valueKey, secondaryKey, data) => ({ props: { title: l(title), regionKey, valueKey, secondaryKey, valueLabel: l("Peso (MT)", "Weight (MT)"), secondaryLabel: l("Contenedores", "Containers") }, bindings: { data } });
-const originBars = (title, countryKey, portKey, drillTitle, data, drill) => ({ props: originBarProps(title, countryKey, portKey, drillTitle), bindings: { data, drill } });
+const originBars = (title, countryKey, data) => ({ props: originBarProps(title, countryKey), bindings: { data } });
 const carrierDonut = (title, categoryKey, data, total) => ({ props: carrierDonutProps(title, categoryKey), bindings: { data, total } });
