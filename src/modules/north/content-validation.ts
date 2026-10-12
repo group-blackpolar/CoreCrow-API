@@ -135,8 +135,19 @@ export function buildDraftReport(input: {
       if (stale.length)
         issues.push({ severity: "error", code: "FIELD_NOT_IN_BINDING", message: `Mapped fields are not returned by the component's bindings: ${stale.slice(0, 5).join(", ")}`, sectionId: typeof rawSection.id === "string" ? rawSection.id : undefined, componentId: typeof component.id === "string" ? component.id : "" });
     }
+    // panel_group members must exist in the same section; they are drawn inside the group, so their cells may overlap it.
+    const grouped = new Set<string>();
+    for (const component of components) {
+      if (component.type !== "panel_group" || !isRecord(component.props)) continue;
+      for (const item of list(component.props.items)) {
+        if (!isRecord(item) || typeof item.componentId !== "string") continue;
+        if (!components.some((candidate) => candidate.id === item.componentId))
+          issues.push({ severity: "error", code: "GROUP_ITEM_NOT_FOUND", message: "A panel group references a component that is not in this section", sectionId, componentId: String(component.id) });
+        else grouped.add(item.componentId);
+      }
+    }
     for (const device of DEVICES) {
-      const cells = components.map((component) => ({ id: component.id, cell: isRecord(component.layout) ? component.layout[device] : null }))
+      const cells = components.filter((component) => !grouped.has(String(component.id))).map((component) => ({ id: component.id, cell: isRecord(component.layout) ? component.layout[device] : null }))
         .filter((entry): entry is { id: string; cell: Json } => isRecord(entry.cell));
       overlap: for (let first = 0; first < cells.length; first++) for (let second = first + 1; second < cells.length; second++) {
         const a = cells[first]!.cell; const b = cells[second]!.cell;

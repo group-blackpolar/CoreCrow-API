@@ -56,7 +56,7 @@ export default {
               "Import operations report for Master BL, House BL, consignees, containers and metric tons. Each page crosses the cargo with its consignee, country of origin, ports and shipping line from the imported records."),
             chips: [{ icon: "filter", label: l("Datos de importación", "Import data") }, { icon: "calendar", label: l("Cobertura histórica y actual", "Historical and current coverage") }],
             aside: { icon: "bars", title: l("Análisis integral de la cadena de importación", "End-to-end import chain analysis"), body: l("De los registros a la visualización, para una toma de decisiones más rápida.", "From records to visualization, for faster decisions.") },
-            showBrand: true,
+            showBrand: true, backgroundImage: "/brand/shark-port-hero.webp", logoImage: "/brand/shark-logo.png",
           }, {}, { x: 0, y: 0, w: 12, h: 5 }, { w: 12, h: 8 }),
           kpi("kpi-from", 0, "first_date", l("Primer registro", "First record"), "date", "calendar", "blue", { subtitle: { mode: "text", text: l("Inicio de la cobertura", "Start of coverage") } }),
           kpi("kpi-to", 2, "last_date", l("Último registro", "Latest record"), "date", "clock", "slate", { subtitle: { mode: "relative_date" } }),
@@ -175,18 +175,17 @@ export default {
           { name: "carriers", query: agg({ groupBy: [f.houseCarrier], measures: [containers], orderBy: [{ key: "containers", direction: "DESC" }], limit: 30 }) },
         ];
       },
-      items: ({ f, binding }) => {
-        const T = { w: 12 };
-        return [
-          filterBar({ house_port_of_arrival: l("House Port of Arrival"), house_port_of_departure: l("Port of Departure") }),
-          item("table", "data_grid", dataGrid("Containers and Weight (MT) by House Consignee", [
-            col(f.houseConsignee, "House Consignee", "text", 260), col("containers", "Containers", "bar", 120), col("weight_mt", "House Weight (MT)", "decimal", 130), trendCol(), actionsCol(),
-          ], { trend: { binding: "trend", rowKeys: [f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 3, w: 6, h: 15 }, { ...T, h: 14 }),
-          item("monthly", "line_chart", { title: l("Weight per Month (MT)"), categoryKey: f.date, categoryFormat: "month", series: [{ key: "weight_mt", label: l("Peso (MT)", "Weight (MT)"), color: BLUE }], variant: "area", height: 240 }, { data: binding("weight_monthly") }, { x: 6, y: 3, w: 6, h: 6 }, { ...T, h: 8 }),
-          item("origin", "bar_chart", originBarProps("Containers per Origin - House BL", f.houseCountry, f.housePortOfDeparture, "Puertos de salida"), { data: binding("origin"), drill: binding("origin_ports") }, { x: 6, y: 9, w: 3, h: 9 }, { ...T, h: 8 }),
-          item("carriers", "donut_chart", carrierDonutProps("Volume per Shipping Line/Agency (Containers)", f.houseCarrier), { data: binding("carriers"), total: binding("containers_total") }, { x: 9, y: 9, w: 3, h: 9 }, { ...T, h: 8 }),
-        ];
-      },
+      items: ({ f, binding }) => [
+        filterBar({ house_port_of_arrival: l("House Port of Arrival"), house_port_of_departure: l("Port of Departure") }),
+        item("table", "data_grid", dataGrid("Containers and Weight (MT) by House Consignee", [
+          col(f.houseConsignee, "House Consignee", "text", 240), col("containers", "Containers", "bar", 112), col("weight_mt", "House Weight (MT)", "decimal", 120), trendCol(), actionsCol(),
+        ], { trend: { binding: "trend", rowKeys: [f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 2, w: 6, h: 16 }, { h: 14 }),
+        ...region("views", { x: 6, y: 2, w: 6, h: 16 }, [
+          { label: l("Peso por mes", "Weight per month"), weight: 1.3, item: item("monthly", "line_chart", { title: l("Weight per Month (MT)"), categoryKey: f.date, categoryFormat: "month", series: [{ key: "weight_mt", label: l("Peso (MT)", "Weight (MT)"), color: BLUE }], variant: "area", height: 240 }, { data: binding("weight_monthly") }, null) },
+          { label: l("Países", "Countries"), item: item("origin", "bar_chart", originBarProps("Containers per Origin - House BL", f.houseCountry, f.housePortOfDeparture, "Puertos de salida"), { data: binding("origin"), drill: binding("origin_ports") }, null) },
+          { label: l("Líneas navieras", "Shipping lines"), item: item("carriers", "donut_chart", carrierDonutProps("Volume per Shipping Line/Agency (Containers)", f.houseCarrier), { data: binding("carriers"), total: binding("containers_total") }, null) },
+        ]),
+      ],
     }),
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -211,16 +210,18 @@ export default {
       ],
       items: ({ f, binding }) => [
         filterBar({ master_bill_of_lading_nbr: l("Master Bill of Lading Number") }),
-        item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {}, tooltip: l("TEUs contados una vez por Master BL", "TEUs counted once per Master BL") }, { data: binding("teus_total") }, { x: 0, y: 3, w: 5, h: 3 }, { h: 2 }),
+        item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {}, tooltip: l("TEUs contados una vez por Master BL", "TEUs counted once per Master BL") }, { data: binding("teus_total") }, { x: 0, y: 2, w: 6, h: 2 }, { h: 2 }),
         item("table", "data_grid", dataGrid("Consignees and ports", [
-          col(f.masterConsignee, "Master Consignee", "text", 200), col(f.masterPortOfDeparture, "Port of Departure", "text", 150), col(f.masterPortOfArrival, "Master Port of Arrival", "text", 160),
-          col("containers", "Containers", "bar", 110), col("master_teus", "Master TEUs", "number", 100),
-        ], { search: true, exportable: true }), { data: binding("results") }, { x: 0, y: 6, w: 5, h: 16 }, { h: 14 }),
-        item("origin", "bar_chart", originBarProps("Containers per Origin", f.masterCountry, f.masterPortOfDeparture, "Puertos de salida"), { data: binding("origin"), drill: binding("origin_ports") }, { x: 5, y: 3, w: 4, h: 9 }, { h: 8 }),
-        item("consignees", "bar_chart", barProps("Containers by Master Consignee", f.masterConsignee, GREEN), { data: binding("consignees") }, { x: 9, y: 3, w: 3, h: 9 }, { h: 8 }),
-        item("yearly", "bar_chart", { ...barProps("Master Containers per Year", f.date, BLUE), horizontal: false, categoryFormat: "year" }, { data: binding("yearly") }, { x: 5, y: 12, w: 3, h: 10 }, { h: 8 }),
-        item("carriers", "donut_chart", carrierDonutProps("Containers per Shipping Line/Agency", f.masterCarrier, "bottom"), { data: binding("carriers"), total: binding("containers_total") }, { x: 8, y: 12, w: 2, h: 10 }, { h: 8 }),
-        item("entry", "donut_chart", carrierDonutProps("Containers per Entry Port", f.masterPortOfArrival, "bottom"), { data: binding("entry_ports"), total: binding("containers_total") }, { x: 10, y: 12, w: 2, h: 10 }, { h: 8 }),
+          col(f.masterConsignee, "Master Consignee", "text", 170), col(f.masterPortOfDeparture, "Port of Departure", "text", 130), col(f.masterPortOfArrival, "Master Port of Arrival", "text", 140),
+          col("containers", "Containers", "bar", 100), col("master_teus", "Master TEUs", "number", 90),
+        ], { search: true, exportable: true }), { data: binding("results") }, { x: 0, y: 4, w: 6, h: 14 }, { h: 14 }),
+        ...region("views", { x: 6, y: 2, w: 6, h: 16 }, [
+          { label: l("Origen", "Origin"), item: item("origin", "bar_chart", originBarProps("Containers per Origin", f.masterCountry, f.masterPortOfDeparture, "Puertos de salida"), { data: binding("origin"), drill: binding("origin_ports") }, null) },
+          { label: l("Consignatarios", "Consignees"), item: item("consignees", "bar_chart", barProps("Containers by Master Consignee", f.masterConsignee, GREEN), { data: binding("consignees") }, null) },
+          { label: l("Por año", "Per year"), item: item("yearly", "bar_chart", { ...barProps("Master Containers per Year", f.date, BLUE), horizontal: false, categoryFormat: "year" }, { data: binding("yearly") }, null) },
+          { label: l("Navieras", "Carriers"), item: item("carriers", "donut_chart", carrierDonutProps("Containers per Shipping Line/Agency", f.masterCarrier), { data: binding("carriers"), total: binding("containers_total") }, null) },
+          { label: l("Puerto de arribo", "Entry port"), item: item("entry", "donut_chart", carrierDonutProps("Containers per Entry Port", f.masterPortOfArrival), { data: binding("entry_ports"), total: binding("containers_total") }, null) },
+        ], 150),
       ],
     }),
 
@@ -245,14 +246,14 @@ export default {
       ],
       items: ({ f, binding }) => [
         filterBar({ house_port_of_departure: l("House Port of Departure") }),
-        item("kpi-weight", "kpi_card", { label: l("House Weight (MT)"), valueKey: "weight_mt", format: "decimal", decimals: 0, icon: "scale", tone: "green", variant: "trend", comparison: {} }, { data: binding("weight_total") }, { x: 0, y: 3, w: 4, h: 3 }, { h: 2 }),
-        item("kpi-containers", "kpi_card", { label: l("Containers"), valueKey: "containers", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: binding("containers_total") }, { x: 4, y: 3, w: 4, h: 3 }, { h: 2 }),
-        item("kpi-consignees", "kpi_card", { label: l("House Consignees"), valueKey: "house_consignees", format: "number", icon: "buildings", tone: "cyan", variant: "compact" }, { data: binding("consignees_total") }, { x: 8, y: 3, w: 4, h: 3 }, { h: 2 }),
+        item("kpi-weight", "kpi_card", { label: l("House Weight (MT)"), valueKey: "weight_mt", format: "decimal", decimals: 0, icon: "scale", tone: "green", variant: "trend", comparison: {} }, { data: binding("weight_total") }, { x: 0, y: 2, w: 4, h: 2 }, { h: 2 }),
+        item("kpi-containers", "kpi_card", { label: l("Containers"), valueKey: "containers", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: binding("containers_total") }, { x: 4, y: 2, w: 4, h: 2 }, { h: 2 }),
+        item("kpi-consignees", "kpi_card", { label: l("House Consignees"), valueKey: "house_consignees", format: "number", icon: "buildings", tone: "cyan", variant: "compact" }, { data: binding("consignees_total") }, { x: 8, y: 2, w: 4, h: 2 }, { h: 2 }),
         item("table", "data_grid", dataGrid("Containers and Weight (MT) by House Consignee", [
           col("year_ref", "Year", "year", 70), col(f.date, "Month", "month", 90), col(f.houseConsignee, "House Consignee", "text", 230), col(f.houseCarrier, "House Carrier", "text", 170),
           col(f.housePortOfDeparture, "House Port of Departure", "text", 190), col(f.houseCountry, "Country of Origin", "text", 150), col("containers", "Containers", "number", 100),
           col("house_metric_tons", "House Metric Tons", "decimal", 130), trendCol(), actionsCol(),
-        ], { trend: { binding: "trend", rowKeys: [f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true, defaultSort: { key: f.date, direction: "DESC" }, pageSizes: [20, 50, 100, 200], defaultPageSize: 50 }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 6, w: 12, h: 12 }, { h: 14 }),
+        ], { trend: { binding: "trend", rowKeys: [f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true, defaultSort: { key: f.date, direction: "DESC" }, pageSizes: [20, 50, 100, 200], defaultPageSize: 50 }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 4, w: 12, h: 14 }, { h: 14 }),
       ],
     }),
 
@@ -281,14 +282,14 @@ export default {
       },
       items: ({ f, binding }) => [
         filterBar({ master_country_of_origin: l("Master Country of Origin") }),
-        item("kpi-weight", "kpi_card", { label: l("House Weight (MT)"), valueKey: "weight_mt", format: "decimal", decimals: 0, icon: "scale", tone: "green", variant: "trend", comparison: {} }, { data: binding("weight_total") }, { x: 0, y: 3, w: 4, h: 3 }, { h: 2 }),
-        item("kpi-containers", "kpi_card", { label: l("Containers"), valueKey: "containers", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: binding("containers_total") }, { x: 4, y: 3, w: 4, h: 3 }, { h: 2 }),
-        item("kpi-consignees", "kpi_card", { label: l("House Consignees"), valueKey: "house_consignees", format: "number", icon: "buildings", tone: "cyan", variant: "compact" }, { data: binding("consignees_total") }, { x: 8, y: 3, w: 4, h: 3 }, { h: 2 }),
+        item("kpi-weight", "kpi_card", { label: l("House Weight (MT)"), valueKey: "weight_mt", format: "decimal", decimals: 0, icon: "scale", tone: "green", variant: "trend", comparison: {} }, { data: binding("weight_total") }, { x: 0, y: 2, w: 4, h: 2 }, { h: 2 }),
+        item("kpi-containers", "kpi_card", { label: l("Containers"), valueKey: "containers", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: binding("containers_total") }, { x: 4, y: 2, w: 4, h: 2 }, { h: 2 }),
+        item("kpi-consignees", "kpi_card", { label: l("House Consignees"), valueKey: "house_consignees", format: "number", icon: "buildings", tone: "cyan", variant: "compact" }, { data: binding("consignees_total") }, { x: 8, y: 2, w: 4, h: 2 }, { h: 2 }),
         item("table", "data_grid", dataGrid("Containers and Weight (MT) by Master and House Consignee", [
           col("year_ref", "Year", "year", 70), col(f.date, "Month", "month", 90), col(f.masterConsignee, "Master Consignee", "text", 210), col(f.houseConsignee, "House Consignee", "text", 210),
           col(f.houseCarrier, "Carrier", "text", 160), col(f.housePortOfDeparture, "House Port of Departure", "text", 190), col("weight_mt", "Weight (MT)", "decimal", 110),
           col("containers", "Containers", "number", 100), trendCol(), actionsCol(),
-        ], { trend: { binding: "trend", rowKeys: [f.masterConsignee, f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true, defaultSort: { key: f.date, direction: "DESC" }, pageSizes: [20, 50, 100, 200], defaultPageSize: 50 }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 6, w: 12, h: 12 }, { h: 14 }),
+        ], { trend: { binding: "trend", rowKeys: [f.masterConsignee, f.houseConsignee], categoryKey: f.date, valueKey: "containers" }, search: true, defaultSort: { key: f.date, direction: "DESC" }, pageSizes: [20, 50, 100, 200], defaultPageSize: 50 }), { data: binding("results"), trend: binding("results_trend") }, { x: 0, y: 4, w: 12, h: 14 }, { h: 14 }),
       ],
     }),
 
@@ -311,14 +312,14 @@ export default {
       ],
       items: ({ f, binding }) => [
         filterBar({ master_country_of_origin: l("Top Country") }),
-        item("kpi-containers", "kpi_card", { label: l("Containers"), valueKey: "containers", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: binding("containers_total") }, { x: 0, y: 3, w: 3, h: 3 }, { h: 2 }),
-        item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {} }, { data: binding("teus_total") }, { x: 3, y: 3, w: 3, h: 3 }, { h: 2 }),
-        item("kpi-ff", "kpi_card", { label: l("Freight forwarders", "Freight forwarders"), valueKey: "forwarders", format: "number", icon: "users", tone: "green", variant: "compact" }, { data: binding("forwarders_total") }, { x: 6, y: 3, w: 2, h: 3 }, { h: 2 }),
+        item("kpi-containers", "kpi_card", { label: l("Containers"), valueKey: "containers", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: binding("containers_total") }, { x: 0, y: 2, w: 3, h: 2 }, { h: 2 }),
+        item("kpi-teus", "kpi_card", { label: l("Master TEUs"), valueKey: "master_teus", format: "number", icon: "container", tone: "violet", variant: "trend", comparison: {} }, { data: binding("teus_total") }, { x: 3, y: 2, w: 3, h: 2 }, { h: 2 }),
+        item("kpi-ff", "kpi_card", { label: l("Freight forwarders", "Freight forwarders"), valueKey: "forwarders", format: "number", icon: "users", tone: "green", variant: "compact" }, { data: binding("forwarders_total") }, { x: 6, y: 2, w: 2, h: 2 }, { h: 2 }),
         item("table", "data_grid", dataGrid("Top Freight Forwarders for Imports (Master BL)", [
           col("rank", "#", "rank", 56), col(f.masterConsignee, "Master Consignee / Freight Forwarder", "text", 320),
           col("containers", "Containers", "number", 130, { heat: true }), col("master_teus", "Master TEUs", "number", 130, { heat: true }), trendCol(), actionsCol(),
-        ], { trend: { binding: "trend", rowKeys: [f.masterConsignee], categoryKey: f.date, valueKey: "containers" }, search: true, pageSizes: [15, 25, 50, 100], defaultPageSize: 15 }), { data: binding("ranking"), trend: binding("results_trend") }, { x: 0, y: 6, w: 8, h: 12 }, { h: 14 }),
-        item("top", "bar_chart", barProps("Containers per freight forwarder", f.masterConsignee, BLUE), { data: binding("top_bars") }, { x: 8, y: 3, w: 4, h: 15 }, { h: 9 }),
+        ], { trend: { binding: "trend", rowKeys: [f.masterConsignee], categoryKey: f.date, valueKey: "containers" }, search: true, pageSizes: [15, 25, 50, 100], defaultPageSize: 15 }), { data: binding("ranking"), trend: binding("results_trend") }, { x: 0, y: 4, w: 8, h: 14 }, { h: 14 }),
+        item("top", "bar_chart", barProps("Containers per freight forwarder", f.masterConsignee, BLUE), { data: binding("top_bars") }, { x: 8, y: 2, w: 4, h: 16 }, { h: 9 }),
       ],
     }),
   ],
@@ -370,6 +371,7 @@ function document(name, items) {
     let x = 0; let y = 0; let rowHeight = 0;
     const placed = new Map();
     for (const entry of items) {
+      if (entry.member) continue; // drawn inside its panel group
       const size = { w: 12, h: Math.max(2, entry.desktop.h > 6 ? Math.round(entry.desktop.h * 0.7) : entry.desktop.h), ...(entry[device] ?? {}) };
       if (entry.type === "kpi_card" && device === "tablet") size.w = 6;
       if (x + size.w > 12) { x = 0; y += rowHeight; rowHeight = 0; }
@@ -380,16 +382,17 @@ function document(name, items) {
   };
   const tablet = flow("tablet");
   const mobile = flow("mobile");
-  // Layouts below are authored under a 3-row filter band; the compact filter bar needs 2, so the body moves up one row.
-  if (items.some((entry) => entry.type === "filter_bar")) for (const entry of items) if (entry.type !== "filter_bar" && entry.desktop.y >= 3) entry.desktop = { ...entry.desktop, y: entry.desktop.y - 1 };
   return {
     schemaVersion: 1, defaultLocale: "es", fallbackLocales: ["en"],
     sections: [{
       id: "dashboard", name: name, order: 0, layout: { variant: "grid", gap: "sm", rowHeight: ROW_HEIGHT, fit: true },
-      components: items.map((entry, index) => ({
-        id: entry.id, type: entry.type, schemaVersion: 1, props: entry.props, bindings: entry.bindings, order: index,
-        layout: { desktop: entry.desktop, tablet: tablet.get(entry.id), mobile: { ...mobile.get(entry.id), w: 12, x: 0 } },
-      })),
+      components: items.map((entry, index) => {
+        const owner = entry.member ? items.find((candidate) => candidate.id === entry.member) : entry; // a member shares its group's cell
+        return {
+          id: entry.id, type: entry.type, schemaVersion: 1, props: entry.props, bindings: entry.bindings, order: index,
+          layout: { desktop: owner.desktop, tablet: tablet.get(owner.id), mobile: { ...mobile.get(owner.id), w: 12, x: 0 } },
+        };
+      }),
     }],
   };
 }
@@ -420,15 +423,26 @@ const barProps = (title, categoryKey, color) => ({ title: l(title), categoryKey,
 const originBarProps = (title, countryKey, portKey, drillTitle) => ({ ...barProps(title, countryKey, BLUE), drill: { binding: "drill", categoryKey: portKey, title: l(drillTitle, "Departure ports") } });
 const carrierDonutProps = (title, categoryKey, legend = "right") => ({ title: l(title), categoryKey, valueKey: "containers", maxSlices: 5, totalKey: "containers", height: 240, variant: "donut", showTotal: true, centerLabel: l("Contenedores", "Containers"), legend });
 
-/** The common "table on the left (≈60 %), map + bars + donut stacked on the right" body of Search By and Master Consignee List. */
+/**
+ * Several charts that share one region. NORTH measures the region: tall enough, they are stacked (heights by weight, so a map can
+ * outweigh a legend); otherwise one is shown at a time behind tabs. Members keep their own component entry but are drawn only here.
+ */
+function region(id, desktop, members, minItemHeight = 170) {
+  const group = item(id, "panel_group", { items: members.map((member) => ({ componentId: member.item.id, label: member.label, ...(member.weight ? { weight: member.weight } : {}) })), minItemHeight }, {}, desktop, { h: 10 }, { h: 10 });
+  return [group, ...members.map((member) => ({ ...member.item, desktop, member: id }))];
+}
+
+/** The common body of Search By and the Master list: table on the left (~58 %), one region of charts on the right. */
 function standardBody(f, binding, parts) {
   void f; void binding;
   return [
     filterBar(),
-    item("table", "data_grid", parts.table.props, parts.table.bindings, { x: 0, y: 3, w: 7, h: 15 }, { h: 14 }),
-    item("map", "geo_map", parts.map.props, parts.map.bindings, { x: 7, y: 3, w: 5, h: 5 }, { h: 8 }),
-    item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, { x: 7, y: 8, w: 5, h: 5 }, { h: 8 }),
-    item("carriers", "donut_chart", parts.donut.props, parts.donut.bindings, { x: 7, y: 13, w: 5, h: 5 }, { h: 8 }),
+    item("table", "data_grid", parts.table.props, parts.table.bindings, { x: 0, y: 2, w: 7, h: 16 }, { h: 14 }),
+    ...region("views", { x: 7, y: 2, w: 5, h: 16 }, [
+      { label: l("Mapa", "Map"), weight: 1.7, item: item("map", "geo_map", parts.map.props, parts.map.bindings, null) },
+      { label: l("Países", "Countries"), item: item("origin", "bar_chart", parts.bars.props, parts.bars.bindings, null) },
+      { label: l("Líneas navieras", "Shipping lines"), item: item("carriers", "donut_chart", parts.donut.props, parts.donut.bindings, null) },
+    ]),
   ];
 }
 

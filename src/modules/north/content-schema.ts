@@ -113,6 +113,16 @@ const catalog = {
     chips: z.array(z.object({ icon: iconName.optional(), label: localized }).strict()).max(4).optional(),
     aside: z.object({ icon: iconName.optional(), title: localized, body: localized.optional() }).strict().optional(),
     showBrand: z.boolean().optional(),
+    // A picture shipped with NORTH under /brand/ (same origin, never an external URL). Absent or missing file: an illustrated backdrop is drawn.
+    backgroundImage: z.string().regex(/^\/brand\/[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
+    logoImage: z.string().regex(/^\/brand\/[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
+  }).strict(),
+  // Shows sibling components of the same section either all at once (stacked, when the box is tall enough for `minItemHeight` each)
+  // or one at a time behind tabs. The members keep their own component entry (and layout cell) but are drawn only here.
+  panel_group: z.object({
+    title: localized.optional(),
+    items: z.array(z.object({ componentId: resourceId, label: localized, weight: z.number().min(0.5).max(4).optional() }).strict()).min(2).max(6),
+    minItemHeight: z.number().int().min(100).max(500).optional(),
   }).strict(),
   // Cards that open other panels of the organization (`panelSlug`) or an external page (`href`).
   link_cards: z.object({
