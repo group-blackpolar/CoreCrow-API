@@ -6,6 +6,7 @@ import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { authorize } from "../authorization/service.js";
+import { readOrganizationPolicy } from "./policy.js";
 import { canManageRole, isPermission, type Permission } from "../authorization/policy.js";
 import { groupsRepository as groups } from "../authorization/groups-repository.js";
 import { hash as legacyHash } from "../security/crypto.js";
@@ -117,7 +118,8 @@ function view<T extends {
 type IssueInput = {
   kind: InvitationKind;
   email?: string;
-  role: Exclude<TenantRole, "OWNER">;
+  /** Omitted: the organization's default role. */
+  role?: Exclude<TenantRole, "OWNER">;
   expiresInHours?: number;
   maxUses?: number;
   groupIds?: string[];
@@ -128,7 +130,7 @@ async function validateIssue(
   tx: Transaction,
   actorId: string,
   organizationId: string,
-  input: IssueInput,
+  input: IssueInput & { role: Exclude<TenantRole, "OWNER"> },
 ) {
   const actor = await authorize(tx, actorId, organizationId, "invitations.manage");
   if (!canManageRole(actor.role, input.role, input.role))
@@ -154,9 +156,13 @@ async function createInvitation(
   tx: Transaction,
   actorId: string,
   organizationId: string,
-  input: IssueInput,
+  raw: IssueInput,
 ) {
-  const grants = await validateIssue(tx, actorId, organizationId, input);
+  const policy = await readOrganizationPolicy(tx, organizationId);
+  const input = { ...raw, role: raw.role ?? policy.defaultMemberRole };
+  const validated = await validateIssue(tx, actorId, organizationId, input);
+  // Groups the creator did not choose come from the organization's defaults, which its administrators already approved.
+  const grants = { ...validated, groupIds: raw.groupIds === undefined ? policy.defaultGroupIds : validated.groupIds };
   const email = input.email ? normalizedEmail(input.email) : undefined;
   const replaced = email
     ? await repo.revokePendingEmailInvitations(tx, organizationId, email)
@@ -408,9 +414,11 @@ export const invitations = {
   async createMember(
     userId: string,
     organizationId: string,
-    input: { name: string; localPart?: string; password?: string; role: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
+    raw: { name: string; localPart?: string; password?: string; role?: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
   ) {
     const slug = (await transaction((tx) => repo.organization(tx, organizationId)))?.slug ?? "org";
+    const policy = await transaction((tx) => readOrganizationPolicy(tx, organizationId));
+    const input = { ...raw, role: raw.role ?? policy.defaultMemberRole };
     const generated = input.password ? null : generatedPassword(slug);
     const password = input.password ?? generated!;
     const passwordHash = await hashPassword(password);
@@ -418,8 +426,8 @@ export const invitations = {
       return await transaction(async (tx) => {
         const actor = await authorize(tx, userId, organizationId, "members.manage");
         if (!canManageRole(actor.role, input.role, input.role)) fail(403, "FORBIDDEN", "Cannot assign this role");
-        const groupIds = [...new Set(input.groupIds ?? [])];
-        if (groupIds.length) await authorize(tx, userId, organizationId, "permissions.manage");
+        const groupIds = [...new Set(input.groupIds ?? policy.defaultGroupIds)];
+        if (input.groupIds?.length) await authorize(tx, userId, organizationId, "permissions.manage");
         for (const groupId of groupIds) if (!(await groups.group(tx, organizationId, groupId))) fail(404, "NOT_FOUND", "Group not found");
         const organization = await repo.organization(tx, organizationId);
         if (!organization || organization.status !== "ACTIVE") fail(404, "NOT_FOUND", "Organization not found");
@@ -460,14 +468,16 @@ export const invitations = {
   addExistingMember(
     userId: string,
     organizationId: string,
-    input: { email: string; role: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
+    raw: { email: string; role?: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
   ) {
     return transaction(async (tx) => {
       const actor = await authorize(tx, userId, organizationId, "members.manage");
+      const policy = await readOrganizationPolicy(tx, organizationId);
+      const input = { ...raw, role: raw.role ?? policy.defaultMemberRole };
       if (!canManageRole(actor.role, input.role, input.role))
         fail(403, "FORBIDDEN", "Cannot assign this role");
-      const groupIds = [...new Set(input.groupIds ?? [])];
-      if (groupIds.length) await authorize(tx, userId, organizationId, "permissions.manage");
+      const groupIds = [...new Set(input.groupIds ?? policy.defaultGroupIds)];
+      if (input.groupIds?.length) await authorize(tx, userId, organizationId, "permissions.manage");
       for (const groupId of groupIds)
         if (!(await groups.group(tx, organizationId, groupId)))
           fail(404, "NOT_FOUND", "Group not found");

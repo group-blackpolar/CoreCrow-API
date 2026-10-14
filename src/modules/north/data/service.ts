@@ -63,6 +63,42 @@ async function datasetDependencies(tx: Parameters<typeof repo.membershipPrincipa
   return { bindings: bindings.length, panels: new Set(bindings.map((binding) => binding.panelId)).size, runningImports };
 }
 
+const IMPORT_PURGE_BATCH = 1000;
+
+/** Deletes (or, with dryRun, counts) import records that never produced data and are older than the cutoff. Runs inside the caller's transaction. */
+export async function purgeImportRecords(
+  tx: Parameters<typeof repo.membershipPrincipal>[0],
+  input: { organizationId: string; datasetId?: string; olderThanDays: number; dryRun: boolean; actorId?: string },
+) {
+  const { organizationId, datasetId } = input;
+  const cutoff = new Date(Date.now() - input.olderThanDays * 86_400_000);
+  const jobs = await tx.northDatasetImportJob.findMany({
+    where: { organizationId, ...(datasetId ? { datasetId } : {}), status: { in: purgeableImportStatuses }, updatedAt: { lte: cutoff }, batch: { is: null } },
+    select: { id: true, datasetId: true, storageKey: true },
+    orderBy: { updatedAt: "asc" },
+    take: IMPORT_PURGE_BATCH,
+  });
+  if (input.dryRun || jobs.length === 0) return { matched: jobs.length, purged: 0, storageKeys: [] as string[] };
+  const ids = jobs.map((job) => job.id);
+  await tx.$executeRaw`SELECT set_config('corecrow.allow_dataset_erase', 'on', true)`;
+  await tx.northDatasetImportJob.updateMany({ where: { id: { in: ids } }, data: { activationMappingId: null } });
+  await tx.northDatasetImportAnalysis.deleteMany({ where: { organizationId, importId: { in: ids } } });
+  await tx.northDatasetImportMappingVersion.deleteMany({ where: { organizationId, importId: { in: ids } } });
+  await tx.northDatasetImportJob.deleteMany({ where: { id: { in: ids } } });
+  await audit.append(tx, {
+    ...(input.actorId ? { actorId: input.actorId } : {}), organizationId, action: "NORTH_DATASET_IMPORTS_PURGED", targetType: "NorthDataset", targetId: datasetId ?? organizationId,
+    metadata: { purged: ids.length, olderThanDays: input.olderThanDays, automatic: !input.actorId },
+  });
+  return { matched: jobs.length, purged: ids.length, storageKeys: jobs.map((job) => job.storageKey) };
+}
+
+/** Blobs go after the database commit and are best effort: a leftover object is harmless, a dangling row would not be. */
+export async function deleteImportBlobs(storageKeys: string[]) {
+  if (storageKeys.length === 0) return;
+  const storage = datasetImportStorageFromEnvironment();
+  await Promise.allSettled(storageKeys.map(async (key) => storage.delete(key)));
+}
+
 export const northData = {
   list(userId: string, organizationId: string) {
     return transaction(async (tx) => {
@@ -316,27 +352,12 @@ export const northData = {
    * Security/compliance audit rows are a separate store and are untouched; this action itself is audited.
    */
   async purgeImports(userId: string, organizationId: string, datasetId: string, input: { olderThanDays: number; dryRun: boolean }) {
-    const keys = await transaction(async (tx) => {
+    const result = await transaction(async (tx) => {
       await authorizeDataset(tx, userId, organizationId, datasetId, "north.data.manage");
-      const cutoff = new Date(Date.now() - input.olderThanDays * 86_400_000);
-      const jobs = await tx.northDatasetImportJob.findMany({
-        where: { organizationId, datasetId, status: { in: purgeableImportStatuses }, updatedAt: { lte: cutoff }, batch: { is: null } },
-        select: { id: true, storageKey: true },
-        take: 1000,
-      });
-      if (input.dryRun || jobs.length === 0) return { jobs, storageKeys: [] as string[], purged: 0 };
-      const ids = jobs.map((job) => job.id);
-      await tx.$executeRaw`SELECT set_config('corecrow.allow_dataset_erase', 'on', true)`;
-      await tx.northDatasetImportJob.updateMany({ where: { id: { in: ids } }, data: { activationMappingId: null } });
-      await tx.northDatasetImportAnalysis.deleteMany({ where: { organizationId, datasetId, importId: { in: ids } } });
-      await tx.northDatasetImportMappingVersion.deleteMany({ where: { organizationId, datasetId, importId: { in: ids } } });
-      await tx.northDatasetImportJob.deleteMany({ where: { id: { in: ids } } });
-      await audit.append(tx, { actorId: userId, organizationId, action: "NORTH_DATASET_IMPORTS_PURGED", targetType: "NorthDataset", targetId: datasetId, metadata: { purged: ids.length, olderThanDays: input.olderThanDays } });
-      return { jobs, storageKeys: jobs.map((job) => job.storageKey), purged: ids.length };
+      return purgeImportRecords(tx, { organizationId, datasetId, olderThanDays: input.olderThanDays, dryRun: input.dryRun, actorId: userId });
     });
-    const storage = datasetImportStorageFromEnvironment();
-    await Promise.allSettled(keys.storageKeys.map(async (key) => storage.delete(key)));
-    return { matched: keys.jobs.length, purged: keys.purged, dryRun: input.dryRun };
+    await deleteImportBlobs(result.storageKeys);
+    return { matched: result.matched, purged: result.purged, dryRun: input.dryRun };
   },
 
   /** What a dataset still feeds: shown before archiving/erasing and used to refuse an unsafe erase. */
@@ -383,8 +404,7 @@ export const northData = {
       });
       return jobs.map((job) => job.storageKey);
     }, { timeoutMilliseconds: 120_000 });
-    const storage = datasetImportStorageFromEnvironment();
-    await Promise.allSettled(storageKeys.map(async (key) => storage.delete(key)));
+    await deleteImportBlobs(storageKeys);
     return null;
   },
 };
