@@ -86,6 +86,9 @@ export async function bootstrapNorthOrganization(tx: Transaction, organizationId
  * Restrict foreign keys accept; datasets, assets and members are never touched (a binding only references a dataset).
  * SYSTEM resources and the organization's home panel are protected.
  */
+// NorthPanelRevision is append-only at the DB; permanent erasure opts in for this transaction only (see migration 20261014120000).
+const allowRevisionErase = (tx: Transaction) => tx.$executeRaw`SELECT set_config('corecrow.allow_panel_revision_erase', 'on', true)`;
+
 async function eraseSubcategories(tx: Transaction, organizationId: string, subcategoryIds: string[]) {
   if (!subcategoryIds.length) return { panels: 0 };
   const panels = await tx.northPanel.findMany({ where: { organizationId, subcategoryId: { in: subcategoryIds } }, select: { id: true, resourceKind: true } });
@@ -96,6 +99,7 @@ async function eraseSubcategories(tx: Transaction, organizationId: string, subca
   if (panelIds.length) {
     await tx.northPanel.updateMany({ where: { id: { in: panelIds } }, data: { publishedRevisionId: null, draftRevisionId: null } });
     await tx.northAnalyticsBinding.deleteMany({ where: { organizationId, panelId: { in: panelIds } } });
+    await allowRevisionErase(tx);
     await tx.northPanelRevision.deleteMany({ where: { organizationId, panelId: { in: panelIds } } });
     await tx.northPanel.deleteMany({ where: { organizationId, id: { in: panelIds } } });
   }
@@ -264,6 +268,7 @@ export const northTaxonomy = {
       if (current!.resourceKind === "SYSTEM" || organization?.homePanelId === id) fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be deleted");
       await tx.northPanel.update({ where: { id }, data: { publishedRevisionId: null, draftRevisionId: null } });
       await tx.northAnalyticsBinding.deleteMany({ where: { organizationId, panelId: id } });
+      await allowRevisionErase(tx);
       await tx.northPanelRevision.deleteMany({ where: { organizationId, panelId: id } });
       await tx.northPanel.delete({ where: { id } });
       await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_DELETED", targetType: "NorthPanel", targetId: id });

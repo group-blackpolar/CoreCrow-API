@@ -200,7 +200,21 @@ export async function buildApp(
       message = status === 429 ? "Too many requests" : "Invalid request";
     }
     if (status >= 500)
-      req.log.error({ requestId: req.id, code }, "Request failed");
+      req.log.error(
+        {
+          requestId: req.id,
+          code,
+          method: req.method,
+          route: req.routeOptions?.url,
+          err: {
+            type: error.name,
+            code: (error as { code?: unknown }).code,
+            message: error.message,
+            stack: error.stack,
+          },
+        },
+        "Request failed",
+      );
     return reply
       .code(status)
       .send({ error: { code, message, requestId: req.id, ...details } });
