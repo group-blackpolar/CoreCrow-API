@@ -81,6 +81,7 @@ function view<T extends {
   expiresAt: Date;
   acceptedAt: Date | null;
   revokedAt: Date | null;
+  archivedAt: Date | null;
   createdAt: Date;
   maxUses: number;
   useCount: number;
@@ -99,6 +100,7 @@ function view<T extends {
     expiresAt: invitation.expiresAt,
     acceptedAt: invitation.acceptedAt,
     revokedAt: invitation.revokedAt,
+    archivedAt: invitation.archivedAt,
     createdAt: invitation.createdAt,
     maxUses: invitation.maxUses,
     useCount: invitation.useCount,
@@ -215,10 +217,10 @@ async function deliverEmail(
 }
 
 export const invitations = {
-  list(userId: string, organizationId: string) {
+  list(userId: string, organizationId: string, archived = false) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "invitations.read");
-      return (await repo.invitations(tx, organizationId)).map(view);
+      return (await repo.invitations(tx, organizationId, archived)).map(view);
     });
   },
   async issue(userId: string, organizationId: string, input: IssueInput) {
@@ -485,6 +487,32 @@ export const invitations = {
         metadata: { role: input.role, groupCount: groupIds.length },
       });
       return membership;
+    });
+  },
+  /** Archive hides a finished invitation (revoked, expired or accepted) from the working list; pending ones must be revoked first. */
+  archive(userId: string, organizationId: string, invitationId: string, archived: boolean) {
+    return transaction(async (tx) => {
+      const actor = await authorize(tx, userId, organizationId, "invitations.manage");
+      const invitation = await repo.invitationById(tx, invitationId, organizationId);
+      if (!invitation) fail(404, "NOT_FOUND", "Invitation not found");
+      if (!canManageRole(actor.role, invitation.role)) fail(403, "FORBIDDEN", "Cannot manage this invitation");
+      if (archived && invitationStatus(invitation) === "PENDING") fail(409, "INVITATION_PENDING", "Revoke a pending invitation before archiving it");
+      if (Boolean(invitation.archivedAt) !== archived) await repo.setArchived(tx, invitationId, archived ? new Date() : null);
+      await audit.append(tx, { actorId: userId, organizationId, action: archived ? "invitation.archive" : "invitation.restore", targetType: "invitation", targetId: invitationId });
+    });
+  },
+  /** Permanent removal is only for credentials that were never used: revoked or expired, never accepted. Accepted invitations are history. */
+  deletePermanently(userId: string, organizationId: string, invitationId: string) {
+    return transaction(async (tx) => {
+      const actor = await authorize(tx, userId, organizationId, "invitations.manage");
+      const invitation = await repo.invitationById(tx, invitationId, organizationId);
+      if (!invitation) fail(404, "NOT_FOUND", "Invitation not found");
+      if (!canManageRole(actor.role, invitation.role)) fail(403, "FORBIDDEN", "Cannot manage this invitation");
+      const status = invitationStatus(invitation);
+      if (invitation.acceptedAt || invitation.useCount > 0 || status === "ACCEPTED") fail(409, "INVITATION_ACCEPTED", "Accepted invitations are part of the membership history");
+      if (status === "PENDING") fail(409, "INVITATION_PENDING", "Revoke a pending invitation before deleting it");
+      await repo.deleteInvitation(tx, invitationId);
+      await audit.append(tx, { actorId: userId, organizationId, action: "invitation.delete", targetType: "invitation", targetId: invitationId, metadata: { kind: invitation.kind, status } });
     });
   },
   revoke(userId: string, organizationId: string, invitationId: string) {

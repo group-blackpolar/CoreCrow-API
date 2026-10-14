@@ -179,4 +179,29 @@ test("DELETE paths regression", { skip: !process.env.TEST_DATABASE_URL }, async 
     const r2 = await q();
     assert.equal(r2.statusCode, 409, "authorized; only fails because the test dataset has no active revision");
   });
+
+  await t.test("invitations: pending cannot be archived/deleted, revoked can; accepted stays as history; viewers cannot", async () => {
+    const pending = expect(await call("POST", `${org}/invitations`, owner.cookie, { kind: "CODE", role: "VIEWER" }), 201);
+    assert.equal((await call("POST", `${org}/invitations/${pending.id}/archive`, owner.cookie)).statusCode, 409);
+    assert.equal((await del(`${org}/invitations/${pending.id}/permanent`, owner.cookie)).statusCode, 409);
+    ok(await del(`${org}/invitations/${pending.id}`, owner.cookie));
+    const outsider = await verifiedAccount("inv-outsider");
+    assert.ok([403, 404].includes((await del(`${org}/invitations/${pending.id}/permanent`, outsider.cookie)).statusCode));
+    expect(await call("POST", `${org}/invitations/${pending.id}/archive`, owner.cookie), 200);
+    assert.equal(expect(await call("GET", `${org}/invitations`, owner.cookie), 200).some((i: { id: string }) => i.id === pending.id), false);
+    const archived = expect(await call("GET", `${org}/invitations?archived=true`, owner.cookie), 200);
+    assert.equal(archived.find((i: { id: string }) => i.id === pending.id)?.status, "REVOKED");
+    expect(await call("POST", `${org}/invitations/${pending.id}/restore`, owner.cookie), 200);
+    ok(await del(`${org}/invitations/${pending.id}/permanent`, owner.cookie));
+    assert.equal(await prisma.invitation.count({ where: { id: pending.id } }), 0);
+    assert.equal(await prisma.auditLog.count({ where: { action: "invitation.delete", targetId: pending.id } }), 1);
+    // an accepted invitation is membership history: it can be archived but never deleted
+    const used = expect(await call("POST", `${org}/invitations`, owner.cookie, { kind: "CODE", role: "VIEWER" }), 201);
+    const joiner = await verifiedAccount("inv-joiner");
+    expect(await call("POST", "/v1/invitations/accept", joiner.cookie, { token: used.token }), 200);
+    await prisma.invitation.update({ where: { id: used.id }, data: { maxUses: 1 } });
+    assert.equal((await del(`${org}/invitations/${used.id}/permanent`, owner.cookie)).statusCode, 409);
+    assert.equal((await call("POST", `${org}/invitations/${used.id}/archive`, owner.cookie)).statusCode, 200);
+    assert.equal(await prisma.invitation.count({ where: { id: used.id } }), 1);
+  });
 });

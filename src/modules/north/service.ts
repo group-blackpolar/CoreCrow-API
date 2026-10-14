@@ -10,6 +10,7 @@ import { validateNorthSlug } from "./slug.js";
 import { cloneNorthPanelContent, northContent } from "./content-service.js";
 import { northPanelAudienceAllows } from "./audience.js";
 import { northResourceLimits } from "./limits.js";
+import { authorizeDataset } from "./data/authorization.js";
 
 type CreateMetadata = {
   name: Localized; description?: Localized | null; icon?: string | null; color?: string | null;
@@ -452,6 +453,31 @@ async function grantTarget(tx: Transaction, organizationId: string, input: Grant
 }
 
 export const northPermissions = {
+  /**
+   * One step that lets a role (VIEWER, MEMBER, BILLING_ADMIN) render dashboards backed by the given datasets: the
+   * organization-scoped `north.data.query` grant plus an ALLOW ACL rule per dataset. Both gates are required by
+   * authorizeDataset; neither exports, edits nor reads raw tables beyond the bounded query contract. Idempotent.
+   */
+  grantRoleDataAccess(userId: string, organizationId: string, input: { role: TenantRole; datasetIds: string[] }) {
+    return transaction(async (tx) => {
+      if (input.role === "OWNER" || input.role === "ADMIN") fail(422, "ROLE_ALREADY_PRIVILEGED", "Owners and admins already have data access");
+      await authorizeNorth(tx, userId, "north.permission.manage", { organizationId, scope: "ORGANIZATION" });
+      await requireGrantAuthority(tx, userId, "north.data.query", { organizationId, scope: "ORGANIZATION" });
+      const datasetIds = [...new Set(input.datasetIds)];
+      for (const datasetId of datasetIds) await authorizeDataset(tx, userId, organizationId, datasetId, "north.data.permission.manage");
+      const grantExists = await tx.northRoleGrant.findFirst({ where: { organizationId, role: input.role, capability: "north.data.query", scope: "ORGANIZATION" }, select: { id: true } });
+      if (!grantExists) await repo.grantRole(tx, { organizationId, role: input.role, capability: "north.data.query", scope: "ORGANIZATION" });
+      let rulesCreated = 0;
+      for (const datasetId of datasetIds) {
+        const existing = await tx.northDatasetAcl.findFirst({ where: { organizationId, datasetId, effect: "ALLOW", principalType: "ROLE", role: input.role }, select: { id: true } });
+        if (existing) continue;
+        await tx.northDatasetAcl.create({ data: { organizationId, datasetId, effect: "ALLOW", principalType: "ROLE", role: input.role, createdBy: userId } });
+        rulesCreated++;
+      }
+      await audit.append(tx, { actorId: userId, organizationId, action: "NORTH_ROLE_DATA_ACCESS_GRANTED", targetType: "Organization", targetId: organizationId, metadata: { role: input.role, datasets: datasetIds.length, rulesCreated, capabilityCreated: !grantExists } });
+      return { role: input.role, capabilityGranted: !grantExists, datasetIds, rulesCreated };
+    });
+  },
   list(userId: string, organizationId: string) { return transaction(async (tx) => { await authorizeNorth(tx, userId, "north.permission.read", { organizationId, scope: "ORGANIZATION" }); const [roles, groups, memberships] = await repo.scopedGrants(tx, organizationId); return { roles, groups, memberships }; }); },
   subjects(userId: string, organizationId: string) {
     return transaction(async (tx) => {

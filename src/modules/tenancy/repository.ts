@@ -139,9 +139,9 @@ export const tenantRepository = {
       });
     });
   },
-  invitations(tx: Transaction, organizationId: string) {
+  invitations(tx: Transaction, organizationId: string, archived = false) {
     return tx.invitation.findMany({
-      where: { organizationId },
+      where: { organizationId, archivedAt: archived ? { not: null } : null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 100,
       include: {
@@ -167,6 +167,12 @@ export const tenantRepository = {
         permissionGrants: { select: { permission: true } },
       },
     });
+  },
+  setArchived(tx: Transaction, id: string, archivedAt: Date | null) {
+    return tx.invitation.update({ where: { id }, data: { archivedAt } });
+  },
+  deleteInvitation(tx: Transaction, id: string) {
+    return tx.invitation.delete({ where: { id } });
   },
   revoke(tx: Transaction, id: string) {
     return tx.invitation.update({
