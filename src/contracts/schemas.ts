@@ -84,6 +84,7 @@ export const invitation = z.object({
   expiresAt: date,
   acceptedAt: date.nullable(),
   revokedAt: date.nullable(),
+  archivedAt: date.nullable(),
   createdAt: date,
   groupIds: z.array(id),
   permissions: z.array(z.string()),
@@ -414,6 +415,9 @@ export const error = z.object({
     requestId: z.string(),
     currentRevision: z.number().int().min(1).optional(),
     currentETag: z.string().optional(),
+    // DATASET_IN_USE: what still reads the dataset.
+    bindings: z.number().int().nonnegative().optional(),
+    panels: z.number().int().nonnegative().optional(),
   }),
 });
 export const health = z.object({

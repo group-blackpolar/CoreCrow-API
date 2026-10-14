@@ -122,6 +122,17 @@ export async function v1Routes(app: FastifyInstance) {
     run: ({ user, params, body }) => northData.update(user.id, params.organizationId, params.datasetId, body),
   });
   contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/dependencies", tag: "NORTH data",
+    summary: "Count the panel bindings and running imports that depend on a dataset", params: datasetParams,
+    response: z.object({ bindings: z.number().int().nonnegative(), panels: z.number().int().nonnegative(), runningImports: z.number().int().nonnegative() }),
+    run: ({ user, params }) => northData.dependencies(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/datasets/:datasetId", tag: "NORTH data",
+    summary: "Permanently erase an archived dataset that no analytics binding uses", params: datasetParams, response: z.null(),
+    run: ({ user, params }) => northData.erase(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/fields", tag: "NORTH data",
     summary: "List stable logical fields for an authorized dataset", params: datasetParams,
     response: z.array(s.northDatasetField),
@@ -212,6 +223,13 @@ export async function v1Routes(app: FastifyInstance) {
     summary: "List up to 100 authorized durable import jobs without internal object identifiers",
     params: datasetParams, response: z.array(s.northDatasetImport),
     run: ({ user, params }) => northDatasetImports.list(user.id, params.organizationId, params.datasetId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/purge", tag: "NORTH data imports",
+    summary: "Preview (dryRun) or purge failed, cancelled, rejected or abandoned import records that never produced data", params: datasetParams,
+    body: z.object({ olderThanDays: z.number().int().min(0).max(3650), dryRun: z.boolean().default(true) }).strict(),
+    response: z.object({ matched: z.number().int().nonnegative(), purged: z.number().int().nonnegative(), dryRun: z.boolean() }),
+    run: ({ user, params, body }) => northData.purgeImports(user.id, params.organizationId, params.datasetId, body),
   });
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId", tag: "NORTH data imports",
@@ -1097,8 +1115,34 @@ export async function v1Routes(app: FastifyInstance) {
     tag: "Multi-tenancy",
     summary: "List invitation state without returning credentials",
     params: s.orgParams,
+    query: z.object({ archived: z.enum(["true", "false"]).default("false") }),
     response: z.array(invitationView),
-    run: ({ user, params }) => invitations.list(user.id, params.organizationId),
+    run: ({ user, params, query }) => invitations.list(user.id, params.organizationId, query.archived === "true"),
+  });
+  for (const action of ["archive", "restore"] as const)
+    contract(app, {
+      method: "POST",
+      url: `/organizations/:organizationId/invitations/:id/${action}`,
+      tag: "Multi-tenancy",
+      summary: action === "archive" ? "Hide a finished invitation from the working list" : "Show an archived invitation again",
+      params: s.orgParams.extend({ id: s.id }),
+      response: z.null(),
+      run: async ({ user, params }) => {
+        await invitations.archive(user.id, params.organizationId, params.id, action === "archive");
+        return null;
+      },
+    });
+  contract(app, {
+    method: "DELETE",
+    url: "/organizations/:organizationId/invitations/:id/permanent",
+    tag: "Multi-tenancy",
+    summary: "Permanently delete a revoked or expired invitation that was never accepted",
+    params: s.orgParams.extend({ id: s.id }),
+    response: z.null(),
+    run: async ({ user, params }) => {
+      await invitations.deletePermanently(user.id, params.organizationId, params.id);
+      return null;
+    },
   });
   contract(app, {
     method: "POST",
@@ -1661,6 +1705,13 @@ export async function v1Routes(app: FastifyInstance) {
     method: "DELETE", url: "/platform/users/:id/north-capabilities/:capability", tag: "NORTH authorization",
     summary: "Revoke an explicit global NORTH capability as superadmin", params: z.object({ id: s.id, capability: z.enum(northGlobalCapabilities) }),
     response: z.null(), run: ({ user, params }) => northPlatformPermissions.revoke(user.id, params.id, params.capability),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/north/role-data-access", tag: "NORTH authorization",
+    summary: "Let a role run bounded queries on selected datasets (north.data.query grant plus dataset ACL) in one step", params: s.orgParams,
+    body: z.object({ role: s.role, datasetIds: z.array(s.id).min(1).max(50) }).strict(),
+    response: z.object({ role: s.role, capabilityGranted: z.boolean(), datasetIds: z.array(s.id), rulesCreated: z.number().int().nonnegative() }),
+    run: ({ user, params, body }) => northPermissions.grantRoleDataAccess(user.id, params.organizationId, body),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/north/permission-grants", tag: "NORTH authorization",

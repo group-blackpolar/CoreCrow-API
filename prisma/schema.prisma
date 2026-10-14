@@ -1107,6 +1107,7 @@ model Invitation {
   acceptedAt       DateTime?
   acceptedByUserId String?
   revokedAt        DateTime?
+  archivedAt       DateTime?
   createdAt        DateTime                    @default(now())
   organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   groupGrants      InvitationGroupGrant[]
@@ -1115,6 +1116,7 @@ model Invitation {
   @@unique([id, organizationId])
   @@index([organizationId, email])
   @@index([organizationId, kind, createdAt])
+  @@index([organizationId, archivedAt])
 }
 
 model InvitationGroupGrant {
