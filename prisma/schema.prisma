@@ -348,6 +348,7 @@ model Organization {
   updatedAt             DateTime                    @updatedAt
   memberships           Membership[]
   groups                OrganizationGroup[]
+  policy                OrganizationPolicy?
   invitations           Invitation[]
   subscriptions         Subscription[]
   entitlements          Entitlement[]
@@ -419,6 +420,29 @@ model Membership {
   @@index([userId])
 }
 
+/// Per-organization defaults: the role and groups given to new accounts when the creator does not choose, and how long
+/// operational import history is kept. Absent row = built-in defaults (MEMBER, no groups, no automatic purge).
+model OrganizationPolicy {
+  organizationId      String                   @id
+  defaultMemberRole   TenantRole               @default(MEMBER)
+  /// Days to keep failed/cancelled/rejected import records before the retention job purges them; null = never.
+  importRetentionDays Int?
+  updatedAt           DateTime                 @updatedAt
+  updatedBy           String?
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultGroups       OrganizationPolicyGroup[]
+}
+
+model OrganizationPolicyGroup {
+  organizationId String
+  groupId        String
+  policy         OrganizationPolicy @relation(fields: [organizationId], references: [organizationId], onDelete: Cascade)
+  group          OrganizationGroup  @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([organizationId, groupId])
+  @@index([groupId, organizationId])
+}
+
 model OrganizationGroup {
   id                    String                    @id @default(cuid())
   organizationId        String
@@ -433,6 +457,7 @@ model OrganizationGroup {
   northPermissionGrants NorthGroupGrant[]
   northPanelAudiences   NorthPanelAudienceGroup[]
   northDatasetAclRules  NorthDatasetAcl[]
+  policyDefaults        OrganizationPolicyGroup[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])

@@ -20396,7 +20396,6 @@ paths:
                     - BILLING_ADMIN
                     - MEMBER
                     - VIEWER
-                  default: MEMBER
                 groupIds:
                   type: array
                   items:
@@ -20404,7 +20403,6 @@ paths:
                     minLength: 1
                     maxLength: 128
                   maxItems: 50
-                  default: []
               required:
                 - email
               additionalProperties: false
@@ -21796,7 +21794,6 @@ paths:
                     - BILLING_ADMIN
                     - MEMBER
                     - VIEWER
-                  default: MEMBER
                 expiresInHours:
                   type: integer
                   minimum: 1
@@ -21812,7 +21809,6 @@ paths:
                     minLength: 1
                     maxLength: 128
                   maxItems: 50
-                  default: []
                 permissions:
                   type: array
                   items:
@@ -23951,7 +23947,6 @@ paths:
                     - BILLING_ADMIN
                     - MEMBER
                     - VIEWER
-                  default: MEMBER
                 groupIds:
                   type: array
                   items:
@@ -23959,7 +23954,6 @@ paths:
                     minLength: 1
                     maxLength: 128
                   maxItems: 50
-                  default: []
               required:
                 - name
               additionalProperties: false
@@ -32116,6 +32110,269 @@ paths:
                 enum:
                   - "null"
                 nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/policy:
+    get:
+      summary: Read the organization's defaults for new accounts and its
+        import-history retention
+      tags:
+        - Multi-tenancy
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  defaultMemberRole:
+                    type: string
+                    enum:
+                      - VIEWER
+                      - MEMBER
+                      - BILLING_ADMIN
+                  defaultGroupIds:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    maxItems: 50
+                  importRetentionDays:
+                    type: integer
+                    minimum: 1
+                    maximum: 3650
+                    nullable: true
+                required:
+                  - defaultMemberRole
+                  - defaultGroupIds
+                  - importRetentionDays
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    put:
+      summary: Set the default role and groups for new accounts and the import-history
+        retention (needs organization.update and permissions.manage)
+      tags:
+        - Multi-tenancy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                defaultMemberRole:
+                  type: string
+                  enum:
+                    - VIEWER
+                    - MEMBER
+                    - BILLING_ADMIN
+                defaultGroupIds:
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  maxItems: 50
+                importRetentionDays:
+                  type: integer
+                  minimum: 1
+                  maximum: 3650
+                  nullable: true
+              required:
+                - defaultMemberRole
+                - defaultGroupIds
+                - importRetentionDays
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  defaultMemberRole:
+                    type: string
+                    enum:
+                      - VIEWER
+                      - MEMBER
+                      - BILLING_ADMIN
+                  defaultGroupIds:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    maxItems: 50
+                  importRetentionDays:
+                    type: integer
+                    minimum: 1
+                    maximum: 3650
+                    nullable: true
+                required:
+                  - defaultMemberRole
+                  - defaultGroupIds
+                  - importRetentionDays
+                additionalProperties: false
         4XX:
           description: Default Response
           content:

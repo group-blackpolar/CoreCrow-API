@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import { prisma } from "./lib/database.js";
 import { startContactNotificationWorker } from "./modules/business/contact-notifications.js";
 import { ai } from "./modules/ai/service.js";
+import { startImportRetention } from "./modules/north/data/retention.js";
 if (process.env.NODE_ENV === "production") {
   if (
     !process.env.BETTER_AUTH_SECRET ||
@@ -20,15 +21,18 @@ if (process.env.NODE_ENV === "production") {
 }
 const app = await buildApp();
 let stopContactNotifications: (() => void) | undefined;
+let stopRetention: (() => void) | undefined;
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, async () => {
     stopContactNotifications?.();
+    stopRetention?.();
     await app.close();
     await prisma.$disconnect();
   });
 try {
   await app.listen({ port: Number(process.env.PORT ?? 4000), host: "0.0.0.0" });
   await ai.resumePendingRuns();
+  stopRetention = startImportRetention((error) => app.log.error({ error }, "Import retention sweep failed"));
   if (process.env.CONTACT_NOTIFICATIONS_ENABLED === "true")
     stopContactNotifications = startContactNotificationWorker((error) =>
       app.log.error({ error }, "Contact notification worker failed"),

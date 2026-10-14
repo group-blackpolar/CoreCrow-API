@@ -4,6 +4,7 @@ import { contract } from "../contracts/route.js";
 import * as s from "../contracts/schemas.js";
 import { tenants } from "../modules/tenancy/service.js";
 import { invitations } from "../modules/tenancy/invitation-service.js";
+import { organizationPolicy } from "../modules/tenancy/policy.js";
 import { storageSummary } from "../modules/north/storage-usage.js";
 import { platform } from "../modules/platform/service.js";
 import { billing } from "../modules/billing/service.js";
@@ -1075,6 +1076,7 @@ export async function v1Routes(app: FastifyInstance) {
     run: ({ user, params }) =>
       authorizationGroups.list(user.id, params.organizationId),
   });
+  const orgPolicy = z.object({ defaultMemberRole: z.enum(["VIEWER", "MEMBER", "BILLING_ADMIN"]), defaultGroupIds: z.array(s.id).max(50), importRetentionDays: z.number().int().min(1).max(3650).nullable() });
   const invitationView = s.invitation.extend({
     permissions: z.array(z.enum(permissions)),
   });
@@ -1084,10 +1086,10 @@ export async function v1Routes(app: FastifyInstance) {
       email: z.string().trim().email().max(254).optional(),
       role: z
         .enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"])
-        .default("MEMBER"),
+        .optional(),
       expiresInHours: z.number().int().min(1).max(720).optional(),
       maxUses: z.number().int().min(1).max(1000).optional(),
-      groupIds: z.array(s.id).max(50).default([]),
+      groupIds: z.array(s.id).max(50).optional(),
       permissions: z.array(z.enum(permissions)).max(50).default([]),
     })
     .strict()
@@ -1378,8 +1380,8 @@ export async function v1Routes(app: FastifyInstance) {
       name: z.string().trim().min(2).max(120),
       localPart: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9._-]{0,39}$/).optional(),
       password: z.string().min(12).max(128).optional(),
-      role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
-      groupIds: z.array(s.id).max(50).default([]),
+      role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).optional(),
+      groupIds: z.array(s.id).max(50).optional(),
     }).strict(),
     response: z.object({ membership: s.member, user: z.object({ id: s.id, email: z.string(), name: z.string() }), password: z.string().nullable() }),
     status: 201,
@@ -1409,8 +1411,8 @@ export async function v1Routes(app: FastifyInstance) {
     params: s.orgParams,
     body: z.object({
       email: z.string().trim().email().max(254),
-      role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).default("MEMBER"),
-      groupIds: z.array(s.id).max(50).default([]),
+      role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).optional(),
+      groupIds: z.array(s.id).max(50).optional(),
     }).strict(),
     response: s.member,
     status: 201,
@@ -1705,6 +1707,18 @@ export async function v1Routes(app: FastifyInstance) {
     method: "DELETE", url: "/platform/users/:id/north-capabilities/:capability", tag: "NORTH authorization",
     summary: "Revoke an explicit global NORTH capability as superadmin", params: z.object({ id: s.id, capability: z.enum(northGlobalCapabilities) }),
     response: z.null(), run: ({ user, params }) => northPlatformPermissions.revoke(user.id, params.id, params.capability),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/policy", tag: "Multi-tenancy",
+    summary: "Read the organization's defaults for new accounts and its import-history retention", params: s.orgParams,
+    response: orgPolicy,
+    run: ({ user, params }) => organizationPolicy.get(user.id, params.organizationId),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/policy", tag: "Multi-tenancy",
+    summary: "Set the default role and groups for new accounts and the import-history retention (needs organization.update and permissions.manage)", params: s.orgParams,
+    body: orgPolicy.strict(), response: orgPolicy,
+    run: ({ user, params, body }) => organizationPolicy.set(user.id, params.organizationId, body),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/north/role-data-access", tag: "NORTH authorization",
