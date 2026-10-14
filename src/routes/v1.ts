@@ -5,6 +5,7 @@ import * as s from "../contracts/schemas.js";
 import { tenants } from "../modules/tenancy/service.js";
 import { invitations } from "../modules/tenancy/invitation-service.js";
 import { organizationPolicy } from "../modules/tenancy/policy.js";
+import { accessSimulation } from "../modules/authorization/access-simulation.js";
 import { storageSummary } from "../modules/north/storage-usage.js";
 import { platform } from "../modules/platform/service.js";
 import { billing } from "../modules/billing/service.js";
@@ -311,6 +312,11 @@ export async function v1Routes(app: FastifyInstance) {
     summary: "Replace an audited panel-owned binding after tenant and dataset authorization", params: panelBindingDetailParams,
     body: bindingInput, response: s.northAnalyticsBinding,
     run: ({ user, params, body }) => northAnalyticsBindings.update(user.id, params.organizationId, params.panelId, params.bindingId, body),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId", tag: "NORTH analytics",
+    summary: "Delete a data binding that no draft or published version of the view uses", params: panelBindingDetailParams, response: z.null(),
+    run: ({ user, params }) => northAnalyticsBindings.remove(user.id, params.organizationId, params.panelId, params.bindingId),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/results", tag: "NORTH analytics",
@@ -1269,6 +1275,27 @@ export async function v1Routes(app: FastifyInstance) {
       );
       return null;
     },
+  });
+  const simulationResponse = z.object({
+    user: z.object({ id: s.id, name: z.string().nullable(), email: z.string(), status: z.string() }),
+    role: s.role, platformRole: z.string(),
+    groups: z.array(z.object({ id: s.id, name: z.string() })),
+    permissions: z.array(z.object({ permission: z.enum(permissions), origins: z.array(z.object({ type: z.enum(["ROLE", "GROUP", "DIRECT"]), id: s.id.optional(), name: z.string().optional() })) })),
+    data: z.object({
+      canQuery: z.boolean(), canManage: z.boolean(), truncated: z.boolean(),
+      datasets: z.array(z.object({ id: s.id, name: z.record(z.string(), z.string()), slug: z.string(), status: z.string(), canQuery: z.boolean(), reason: z.enum(["OK", "ARCHIVED", "NO_QUERY_CAPABILITY", "ACL_DENIED"]) })),
+    }),
+    views: z.object({
+      truncated: z.boolean(),
+      panels: z.array(z.object({ id: s.id, name: z.record(z.string(), z.string()), slug: z.string(), visible: z.boolean(), reason: z.enum(["OK", "NO_READ_PERMISSION", "AUDIENCE_DENIED", "UNSUPPORTED_POLICY"]) })),
+    }),
+    notes: z.object({ platformPrivileges: z.string().nullable() }),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/members/:userId/access-simulation", tag: "Authorization",
+    summary: "Read-only simulation of what a member can do and see (permissions with origin, dataset gates, published views); never impersonates", params: s.memberParams,
+    response: simulationResponse,
+    run: ({ user, params }) => accessSimulation.simulate(user.id, params.organizationId, params.userId),
   });
   contract(app, {
     method: "GET",
