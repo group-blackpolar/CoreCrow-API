@@ -161,4 +161,22 @@ test("DELETE paths regression", { skip: !process.env.TEST_DATABASE_URL }, async 
     await assert.rejects(prisma.northPanelRevision.deleteMany({ where: { panelId: keep.id } }), /append-only/);
     await assert.rejects(prisma.northPanelRevision.updateMany({ where: { panelId: keep.id }, data: { message: "x" } }), /append-only/);
   });
+
+  await t.test("VIEWER data access probe", async () => {
+    const viewer = await verifiedAccount("viewer2");
+    const code = expect(await call("POST", `${org}/invitations`, owner.cookie, { kind: "CODE", role: "VIEWER" }), 201);
+    expect(await call("POST", "/v1/invitations/accept", viewer.cookie, { token: code.token }), 200);
+    const ds = expect(await call("POST", `${org}/datasets`, owner.cookie, { name: { en: "V", es: "V" }, slug: "viewer-data" }), 201);
+    const q = () => call("POST", `${org}/datasets/${ds.id}/query`, viewer.cookie, { mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "n" }] });
+    const r0 = await q();
+    assert.equal(r0.statusCode, 403);
+    const g = await call("POST", `${org}/north/permission-grants`, owner.cookie, { subjectType: "ROLE", role: "VIEWER", capability: "north.data.query", scope: "ORGANIZATION" });
+    assert.equal(g.statusCode, 201);
+    const r1 = await q();
+    assert.equal(r1.statusCode, 403, "capability alone is not enough: the dataset ACL is a second gate");
+    const a = await call("POST", `${org}/datasets/${ds.id}/acl`, owner.cookie, { effect: "ALLOW", principalType: "ROLE", role: "VIEWER" });
+    assert.equal(a.statusCode, 201);
+    const r2 = await q();
+    assert.equal(r2.statusCode, 409, "authorized; only fails because the test dataset has no active revision");
+  });
 });
