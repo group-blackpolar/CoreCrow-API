@@ -1,4 +1,5 @@
 import { Prisma, type OrganizationStatus, type TenantRole } from "../../lib/database.js";
+import { assertDatasetOwnerAccess } from "../north/data/authorization.js";
 import { transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { tenantRepository as repo } from "./repository.js";
@@ -187,14 +188,26 @@ export const tenants = {
         (await repo.owners(tx, organizationId)) <= 1
       )
         fail(409, "LAST_OWNER", "An organization must retain an owner");
+      // Removing a member also ends what was tied to that membership only: their personal dataset access rules go, and the
+      // import history they requested moves to the person removing them (the original requester stays in `requestedBy`).
+      let released: { datasetIds: string[]; imports: number } | undefined;
+      if (!role) {
+        const rules = await tx.northDatasetAcl.findMany({ where: { organizationId, membershipId: target.id }, select: { datasetId: true } });
+        await tx.northDatasetAcl.deleteMany({ where: { organizationId, membershipId: target.id } });
+        const moved = await tx.northDatasetImportJob.updateMany({ where: { organizationId, requestedMembershipId: target.id }, data: { requestedMembershipId: actor.id } });
+        released = { datasetIds: [...new Set(rules.map((rule) => rule.datasetId))], imports: moved.count };
+      }
       const result = role
         ? await repo.setRole(tx, target.id, role)
         : await repo.remove(tx, target.id);
+      // Never leave a dataset that no organization owner can reach.
+      for (const datasetId of released?.datasetIds ?? []) await assertDatasetOwnerAccess(tx, organizationId, datasetId);
       await audit.append(tx, {
         actorId: userId,
         organizationId,
         action: role ? "membership.role.update" : "membership.remove",
         targetId: target.id,
+        ...(released ? { metadata: { datasetRulesRemoved: released.datasetIds.length, importsReassigned: released.imports } } : {}),
       });
       return result;
     });

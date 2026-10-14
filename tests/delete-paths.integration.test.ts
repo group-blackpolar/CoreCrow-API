@@ -137,8 +137,8 @@ test("DELETE paths regression", { skip: !process.env.TEST_DATABASE_URL }, async 
     const ds = await call("POST", `${org}/datasets`, ed.cookie, { name: { en: "E", es: "E" }, slug: "editor-data" });
     console.log("ADMIN creates dataset ->", ds.statusCode, ds.body.slice(0, 120));
     const r = await del(`${org}/members/${ed.id}`, owner.cookie);
-    // Known gap (documented in the audit): the dataset ACL FK blocks it with 409 instead of offering a transfer.
-    assert.equal(r.statusCode, 409);
+    // Was a 409 (dataset ACL FK); the member's personal rules are now released with the membership.
+    assert.equal(r.statusCode, 200, r.body);
   });
 
   await t.test("panel with saved revisions: category / panel delete", async () => {

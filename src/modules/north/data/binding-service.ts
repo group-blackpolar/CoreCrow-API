@@ -158,6 +158,21 @@ export const northAnalyticsBindings = {
       return bindingView(binding);
     });
   },
+  /** Removes a binding no live revision uses; a draft or published revision that still reads it blocks the removal. */
+  remove(userId: string, organizationId: string, panelId: string, bindingId: string) {
+    return transaction(async (tx) => {
+      const panel = await panelForManagement(tx, userId, organizationId, panelId);
+      const binding = await tx.northAnalyticsBinding.findFirst({ where: { id: bindingId, organizationId, panelId } });
+      if (!binding) fail(404, "NOT_FOUND", "Binding not found");
+      const live = [panel.draftRevisionId, panel.publishedRevisionId].filter((id): id is string => Boolean(id));
+      const revisions = await tx.northPanelRevision.findMany({ where: { id: { in: live }, panelId, organizationId }, select: { id: true, document: true } });
+      if (revisions.some((revision) => referenced(revision.document as unknown as NorthPanelDocument, binding)))
+        fail(409, "BINDING_IN_USE", "A draft or published version of this view still uses this data source; remove it from the view first");
+      await tx.northAnalyticsBinding.delete({ where: { id_panelId_organizationId: { id: bindingId, panelId, organizationId } } });
+      await audit.append(tx, { actorId: userId, organizationId, action: "ANALYTICS_BINDING_DELETED", targetType: "NorthAnalyticsBinding", targetId: bindingId, metadata: { panelId, datasetId: binding.datasetId } });
+      return null;
+    });
+  },
   async validateReference(organizationId: string, reference: { sourceType: "metric" | "dataset"; sourceId: string; datasetId?: string }, actorId: string, tx: Transaction | undefined, panelId?: string) {
     if (reference.sourceType !== "dataset" || !reference.datasetId || !panelId || !tx) return false;
     const binding = await tx.northAnalyticsBinding.findFirst({ where: { id: reference.sourceId, organizationId, panelId, datasetId: reference.datasetId } });

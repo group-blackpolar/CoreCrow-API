@@ -12569,6 +12569,113 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+    delete:
+      summary: Delete a data binding that no draft or published version of the view uses
+      tags:
+        - NORTH analytics
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: panelId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: bindingId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                enum:
+                  - "null"
+                nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/panels/{panelId}/analytics-bindings/{bindingId}/results:
     post:
       summary: Resolve only a binding referenced by this exact published panel and
@@ -23049,6 +23156,312 @@ paths:
                 enum:
                   - "null"
                 nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/members/{userId}/access-simulation:
+    get:
+      summary: Read-only simulation of what a member can do and see (permissions with
+        origin, dataset gates, published views); never impersonates
+      tags:
+        - Authorization
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: userId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      name:
+                        type: string
+                        nullable: true
+                      email:
+                        type: string
+                      status:
+                        type: string
+                    required:
+                      - id
+                      - name
+                      - email
+                      - status
+                    additionalProperties: false
+                  role:
+                    type: string
+                    enum:
+                      - OWNER
+                      - ADMIN
+                      - BILLING_ADMIN
+                      - MEMBER
+                      - VIEWER
+                  platformRole:
+                    type: string
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        name:
+                          type: string
+                      required:
+                        - id
+                        - name
+                      additionalProperties: false
+                  permissions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        permission:
+                          type: string
+                          enum:
+                            - organization.read
+                            - organization.update
+                            - members.read
+                            - members.manage
+                            - invitations.read
+                            - invitations.manage
+                            - groups.read
+                            - groups.manage
+                            - permissions.manage
+                            - audit.read
+                            - commerce.read
+                            - billing.read
+                            - billing.manage
+                            - documents.read
+                            - documents.create
+                            - documents.update
+                            - documents.delete
+                            - documents.download
+                            - documents.send
+                            - documents.manage
+                        origins:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                                enum:
+                                  - ROLE
+                                  - GROUP
+                                  - DIRECT
+                              id:
+                                type: string
+                                minLength: 1
+                                maxLength: 128
+                              name:
+                                type: string
+                            required:
+                              - type
+                            additionalProperties: false
+                      required:
+                        - permission
+                        - origins
+                      additionalProperties: false
+                  data:
+                    type: object
+                    properties:
+                      canQuery:
+                        type: boolean
+                      canManage:
+                        type: boolean
+                      truncated:
+                        type: boolean
+                      datasets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                            name:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            slug:
+                              type: string
+                            status:
+                              type: string
+                            canQuery:
+                              type: boolean
+                            reason:
+                              type: string
+                              enum:
+                                - OK
+                                - ARCHIVED
+                                - NO_QUERY_CAPABILITY
+                                - ACL_DENIED
+                          required:
+                            - id
+                            - name
+                            - slug
+                            - status
+                            - canQuery
+                            - reason
+                          additionalProperties: false
+                    required:
+                      - canQuery
+                      - canManage
+                      - truncated
+                      - datasets
+                    additionalProperties: false
+                  views:
+                    type: object
+                    properties:
+                      truncated:
+                        type: boolean
+                      panels:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                            name:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            slug:
+                              type: string
+                            visible:
+                              type: boolean
+                            reason:
+                              type: string
+                              enum:
+                                - OK
+                                - NO_READ_PERMISSION
+                                - AUDIENCE_DENIED
+                                - UNSUPPORTED_POLICY
+                          required:
+                            - id
+                            - name
+                            - slug
+                            - visible
+                            - reason
+                          additionalProperties: false
+                    required:
+                      - truncated
+                      - panels
+                    additionalProperties: false
+                  notes:
+                    type: object
+                    properties:
+                      platformPrivileges:
+                        type: string
+                        nullable: true
+                    required:
+                      - platformPrivileges
+                    additionalProperties: false
+                required:
+                  - user
+                  - role
+                  - platformRole
+                  - groups
+                  - permissions
+                  - data
+                  - views
+                  - notes
+                additionalProperties: false
         4XX:
           description: Default Response
           content:
