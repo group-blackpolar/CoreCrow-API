@@ -349,6 +349,7 @@ model Organization {
   memberships           Membership[]
   groups                OrganizationGroup[]
   policy                OrganizationPolicy?
+  accessTemplates       AccessTemplate[]
   invitations           Invitation[]
   subscriptions         Subscription[]
   entitlements          Entitlement[]
@@ -445,6 +446,47 @@ model OrganizationPolicyGroup {
   @@index([groupId, organizationId])
 }
 
+/// Reusable bundle applied when an account is created or on request: a role, direct permissions, groups and dataset access.
+model AccessTemplate {
+  id             String                  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  role           TenantRole              @default(MEMBER)
+  permissions    String[]                @default([])
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  updatedBy      String?
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  datasets       AccessTemplateDataset[]
+  groups         AccessTemplateGroup[]
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+}
+
+model AccessTemplateDataset {
+  templateId     String
+  organizationId String
+  datasetId      String
+  template       AccessTemplate @relation(fields: [templateId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  dataset        NorthDataset   @relation(fields: [datasetId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([templateId, datasetId])
+  @@index([datasetId, organizationId])
+}
+
+model AccessTemplateGroup {
+  templateId     String
+  organizationId String
+  groupId        String
+  template       AccessTemplate    @relation(fields: [templateId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  group          OrganizationGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([templateId, groupId])
+  @@index([groupId, organizationId])
+}
+
 model OrganizationGroup {
   id                    String                    @id @default(cuid())
   organizationId        String
@@ -460,6 +502,7 @@ model OrganizationGroup {
   northPanelAudiences   NorthPanelAudienceGroup[]
   northDatasetAclRules  NorthDatasetAcl[]
   policyDefaults        OrganizationPolicyGroup[]
+  accessTemplates       AccessTemplateGroup[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -590,6 +633,7 @@ model NorthDataset {
   revisions              NorthDatasetRevision[]          @relation("NorthDatasetRevisions")
   activeRevision         NorthDatasetRevision?           @relation("ActiveDatasetRevision", fields: [activeRevisionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
   analyticsBindings      NorthAnalyticsBinding[]
+  accessTemplates        AccessTemplateDataset[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])
@@ -1087,6 +1131,8 @@ model OrganizationGroupMember {
   organizationId String
   groupId        String
   membershipId   String
+  /// The group that gave the account its alias (name.group@org.bp). At most one per membership (partial unique index).
+  isPrimary      Boolean           @default(false)
   createdAt      DateTime          @default(now())
   group          OrganizationGroup @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Cascade)
   membership     Membership        @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
