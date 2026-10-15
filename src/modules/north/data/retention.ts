@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/database.js";
 import { transaction } from "../../../shared/transaction.js";
+import { purgeExpiredGrants } from "../../authorization/access-requests.js";
 import { deleteImportBlobs, purgeImportRecords } from "./service.js";
 
 const ADVISORY_LOCK = 7_240_011; // one retention sweep at a time across API instances
@@ -28,7 +29,8 @@ export async function runImportRetention() {
 /** Hourly check, first run one minute after boot. Disabled with NORTH_RETENTION_ENABLED=false. */
 export function startImportRetention(onError: (error: unknown) => void) {
   if (process.env.NORTH_RETENTION_ENABLED === "false") return () => undefined;
-  const tick = () => { runImportRetention().catch(onError); };
+  // Expired temporary grants are already ignored when permissions are resolved; the sweep only tidies them away.
+  const tick = () => { runImportRetention().catch(onError); purgeExpiredGrants().catch(onError); };
   const first = setTimeout(tick, 60_000);
   const timer = setInterval(tick, 3_600_000);
   return () => { clearTimeout(first); clearInterval(timer); };

@@ -30,7 +30,7 @@ export const accessSimulation = {
       const [user, groupRows, directRows] = await Promise.all([
         tx.user.findUnique({ where: { id: targetUserId }, select: { id: true, name: true, email: true, role: true, status: true } }),
         tx.groupPermissionGrant.findMany({ where: { organizationId, group: { memberships: { some: { membershipId: membership.id } } } }, select: { permission: true, group: { select: { id: true, name: true } } } }),
-        tx.membershipPermissionGrant.findMany({ where: { organizationId, membershipId: membership.id }, select: { permission: true } }),
+        tx.membershipPermissionGrant.findMany({ where: { organizationId, membershipId: membership.id, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { permission: true } }),
       ]);
       const groups = await tx.organizationGroup.findMany({ where: { organizationId, memberships: { some: { membershipId: membership.id } } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
 

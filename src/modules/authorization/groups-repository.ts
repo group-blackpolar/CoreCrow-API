@@ -77,9 +77,17 @@ export const groupsRepository = {
     membershipId: string,
   ) {
     return tx.membershipPermissionGrant.findMany({
-      where: { organizationId, membershipId },
+      where: { organizationId, membershipId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
       orderBy: { permission: "asc" },
       select: { permission: true },
+    });
+  },
+  /** Active direct grants with their expiry, for the admin screen. */
+  directGrantDetails(tx: Transaction, organizationId: string, membershipId: string) {
+    return tx.membershipPermissionGrant.findMany({
+      where: { organizationId, membershipId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+      orderBy: { permission: "asc" },
+      select: { permission: true, expiresAt: true, grantedBy: true },
     });
   },
   grantDirect(
@@ -87,11 +95,14 @@ export const groupsRepository = {
     organizationId: string,
     membershipId: string,
     permission: string,
+    options: { expiresAt?: Date | null; grantedBy?: string } = {},
   ) {
+    // Re-granting replaces the expiry: an administrator extending (or making permanent) a temporary grant is explicit.
+    const data = { expiresAt: options.expiresAt ?? null, grantedBy: options.grantedBy ?? null };
     return tx.membershipPermissionGrant.upsert({
       where: { membershipId_permission: { membershipId, permission } },
-      create: { organizationId, membershipId, permission },
-      update: {},
+      create: { organizationId, membershipId, permission, ...data },
+      update: data,
     });
   },
   revokeDirect(tx: Transaction, membershipId: string, permission: string) {
