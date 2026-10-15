@@ -7,6 +7,7 @@ import { invitations } from "../modules/tenancy/invitation-service.js";
 import { organizationPolicy } from "../modules/tenancy/policy.js";
 import { accessSimulation } from "../modules/authorization/access-simulation.js";
 import { accessRequests } from "../modules/authorization/access-requests.js";
+import { accessTemplates } from "../modules/authorization/access-templates.js";
 import { storageSummary } from "../modules/north/storage-usage.js";
 import { platform } from "../modules/platform/service.js";
 import { billing } from "../modules/billing/service.js";
@@ -1316,6 +1317,42 @@ export async function v1Routes(app: FastifyInstance) {
     response: z.array(z.object({ permission: z.enum(permissions), expiresAt: s.date.nullable(), grantedBy: s.id.nullable() })),
     run: ({ user, params }) => authorizationGroups.directDetails(user.id, params.organizationId, params.userId),
   });
+  const templateView = z.object({
+    id: s.id, name: z.string(), description: z.string().nullable(), role: z.enum(["VIEWER", "MEMBER", "BILLING_ADMIN", "ADMIN"]),
+    permissions: z.array(z.enum(permissions)), datasetIds: z.array(s.id), groupIds: z.array(s.id), updatedAt: s.date,
+  });
+  const templateInput = z.object({
+    name: z.string().trim().min(2).max(80), description: z.string().trim().max(300).nullable().optional(),
+    role: z.enum(["VIEWER", "MEMBER", "BILLING_ADMIN", "ADMIN"]), permissions: z.array(z.enum(permissions)).max(50).default([]),
+    datasetIds: z.array(s.id).max(100).default([]), groupIds: z.array(s.id).max(50).default([]),
+  }).strict();
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/access-templates", tag: "Authorization",
+    summary: "List the organization's access templates (needs members.manage or permissions.manage)", params: s.orgParams, response: z.array(templateView),
+    run: ({ user, params }) => accessTemplates.list(user.id, params.organizationId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/access-templates", tag: "Authorization",
+    summary: "Create an access template: role, direct permissions, groups and dataset access", params: s.orgParams, body: templateInput, response: templateView, status: 201,
+    run: ({ user, params, body }) => accessTemplates.save(user.id, params.organizationId, null, body),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/access-templates/:templateId", tag: "Authorization",
+    summary: "Replace an access template", params: s.orgParams.extend({ templateId: s.id }), body: templateInput, response: templateView,
+    run: ({ user, params, body }) => accessTemplates.save(user.id, params.organizationId, params.templateId, body),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/access-templates/:templateId", tag: "Authorization",
+    summary: "Delete an access template (accounts already created keep what they were given)", params: s.orgParams.extend({ templateId: s.id }), response: z.null(),
+    run: ({ user, params }) => accessTemplates.remove(user.id, params.organizationId, params.templateId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/members/:userId/apply-template", tag: "Authorization",
+    summary: "Apply an access template to an existing member (role, permissions, groups and dataset access with the query capability)", params: s.memberParams,
+    body: z.object({ templateId: s.id }).strict(),
+    response: z.object({ templateId: s.id, role: z.enum(["VIEWER", "MEMBER", "BILLING_ADMIN", "ADMIN"]), datasets: z.number().int().nonnegative(), capabilityGranted: z.boolean() }),
+    run: ({ user, params, body }) => accessTemplates.applyToMember(user.id, params.organizationId, params.userId, body.templateId),
+  });
   const simulationResponse = z.object({
     user: z.object({ id: s.id, name: z.string().nullable(), email: z.string(), status: z.string() }),
     role: s.role, platformRole: z.string(),
@@ -1450,6 +1487,8 @@ export async function v1Routes(app: FastifyInstance) {
       password: z.string().min(12).max(128).optional(),
       role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).optional(),
       groupIds: z.array(s.id).max(50).optional(),
+      templateId: s.id.optional(),
+      primaryGroupId: s.id.optional(),
     }).strict(),
     response: z.object({ membership: s.member, user: z.object({ id: s.id, email: z.string(), name: z.string() }), password: z.string().nullable() }),
     status: 201,
@@ -1481,6 +1520,8 @@ export async function v1Routes(app: FastifyInstance) {
       email: z.string().trim().email().max(254),
       role: z.enum(["ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"]).optional(),
       groupIds: z.array(s.id).max(50).optional(),
+      templateId: s.id.optional(),
+      primaryGroupId: s.id.optional(),
     }).strict(),
     response: s.member,
     status: 201,

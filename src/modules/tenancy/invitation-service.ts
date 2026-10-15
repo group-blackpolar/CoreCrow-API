@@ -7,6 +7,7 @@ import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { authorize } from "../authorization/service.js";
 import { readOrganizationPolicy } from "./policy.js";
+import { applyTemplateToMembership, loadTemplate } from "../authorization/access-templates.js";
 import { canManageRole, isPermission, type Permission } from "../authorization/policy.js";
 import { groupsRepository as groups } from "../authorization/groups-repository.js";
 import { hash as legacyHash } from "../security/crypto.js";
@@ -36,6 +37,12 @@ export function generatedPassword(slug: string) {
 export const organizationDomain = (slug: string) => `${slug.toLowerCase()}.bp`;
 
 /** `Samuel Perez` -> `samuel`: the first word, accents removed, only characters that are safe in an address. */
+/** Alias fragment for a group: lowercase ASCII letters and digits only, at most 20 characters ("Finanzas Chile" -> "finanzaschile"). */
+export function groupAliasSlug(name: string) {
+  const clean = name.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
+  return clean || "grupo";
+}
+
 export function localPartOf(value: string) {
   const first = value.trim().split(/\s+/)[0] ?? "";
   const clean = first.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase().replace(/[^a-z0-9._-]/g, "").replace(/^[^a-z0-9]+/, "").slice(0, 40);
@@ -414,11 +421,12 @@ export const invitations = {
   async createMember(
     userId: string,
     organizationId: string,
-    raw: { name: string; localPart?: string; password?: string; role?: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
+    raw: { name: string; localPart?: string; password?: string; role?: Exclude<TenantRole, "OWNER">; groupIds?: string[]; templateId?: string; primaryGroupId?: string },
   ) {
     const slug = (await transaction((tx) => repo.organization(tx, organizationId)))?.slug ?? "org";
     const policy = await transaction((tx) => readOrganizationPolicy(tx, organizationId));
-    const input = { ...raw, role: raw.role ?? policy.defaultMemberRole };
+    const template = raw.templateId ? await transaction((tx) => loadTemplate(tx, organizationId, raw.templateId!)) : null;
+    const input = { ...raw, role: raw.role ?? (template?.role as Exclude<TenantRole, "OWNER"> | undefined) ?? policy.defaultMemberRole };
     const generated = input.password ? null : generatedPassword(slug);
     const password = input.password ?? generated!;
     const passwordHash = await hashPassword(password);
@@ -426,23 +434,30 @@ export const invitations = {
       return await transaction(async (tx) => {
         const actor = await authorize(tx, userId, organizationId, "members.manage");
         if (!canManageRole(actor.role, input.role, input.role)) fail(403, "FORBIDDEN", "Cannot assign this role");
-        const groupIds = [...new Set(input.groupIds ?? policy.defaultGroupIds)];
+        const groupIds = [...new Set(input.groupIds ?? (template ? template.groupIds : policy.defaultGroupIds))];
         if (input.groupIds?.length) await authorize(tx, userId, organizationId, "permissions.manage");
-        for (const groupId of groupIds) if (!(await groups.group(tx, organizationId, groupId))) fail(404, "NOT_FOUND", "Group not found");
+        const found = [];
+        for (const groupId of groupIds) { const group = await groups.group(tx, organizationId, groupId); if (!group) fail(404, "NOT_FOUND", "Group not found"); found.push(group); }
+        if (input.primaryGroupId && !groupIds.includes(input.primaryGroupId)) fail(422, "PRIMARY_GROUP_NOT_ASSIGNED", "The primary group must be one of the account's groups");
+        const primary = input.primaryGroupId ? found.find((group) => group.id === input.primaryGroupId) : undefined;
         const organization = await repo.organization(tx, organizationId);
         if (!organization || organization.status !== "ACTIVE") fail(404, "NOT_FOUND", "Organization not found");
         const domain = organizationDomain(organization.slug);
         const base = localPartOf(input.localPart ?? input.name);
-        let email = `${base}@${domain}`;
+        // Alias: name@org.bp, or name.group@org.bp when a primary group is chosen. It is the login, so it is fixed at creation.
+        const addressOf = (name: string) => (primary ? `${name}.${groupAliasSlug(primary.name)}@${domain}` : `${name}@${domain}`);
+        let email = addressOf(base);
         if (input.localPart) {
           if (await repo.userByEmail(tx, email)) fail(409, "IDENTITY_EXISTS", "That address is already taken");
         } else {
-          for (let n = 2; await repo.userByEmail(tx, email); n += 1) email = `${base}${n}@${domain}`;
+          for (let n = 2; await repo.userByEmail(tx, email); n += 1) email = addressOf(`${base}${n}`);
         }
         const user = await identities.create(tx, { name: input.name.trim(), email, role: "USER", emailVerified: true }, passwordHash);
         const membership = await repo.addMember(tx, organizationId, user.id, input.role);
         await repo.addInvitationGrants(tx, organizationId, membership.id, groupIds, []);
-        await audit.append(tx, { actorId: userId, organizationId, action: "membership.create_user", targetType: "membership", targetId: membership.id, metadata: { role: input.role, passwordGenerated: Boolean(generated), groupCount: groupIds.length } });
+        if (primary) await tx.organizationGroupMember.update({ where: { groupId_membershipId: { groupId: primary.id, membershipId: membership.id } }, data: { isPrimary: true } });
+        const applied = template ? await applyTemplateToMembership(tx, userId, organizationId, membership.id, template, { groups: false }) : null;
+        await audit.append(tx, { actorId: userId, organizationId, action: "membership.create_user", targetType: "membership", targetId: membership.id, metadata: { role: input.role, passwordGenerated: Boolean(generated), groupCount: groupIds.length, ...(template ? { templateId: template.id, datasets: applied?.datasets ?? 0 } : {}), ...(primary ? { primaryGroupId: primary.id } : {}) } });
         return { membership, user: { id: user.id, email, name: input.name.trim() }, password: generated };
       });
     } catch (error) {
@@ -468,19 +483,21 @@ export const invitations = {
   addExistingMember(
     userId: string,
     organizationId: string,
-    raw: { email: string; role?: Exclude<TenantRole, "OWNER">; groupIds?: string[] },
+    raw: { email: string; role?: Exclude<TenantRole, "OWNER">; groupIds?: string[]; templateId?: string; primaryGroupId?: string },
   ) {
     return transaction(async (tx) => {
       const actor = await authorize(tx, userId, organizationId, "members.manage");
       const policy = await readOrganizationPolicy(tx, organizationId);
-      const input = { ...raw, role: raw.role ?? policy.defaultMemberRole };
+      const template = raw.templateId ? await loadTemplate(tx, organizationId, raw.templateId) : null;
+      const input = { ...raw, role: raw.role ?? (template?.role as Exclude<TenantRole, "OWNER"> | undefined) ?? policy.defaultMemberRole };
       if (!canManageRole(actor.role, input.role, input.role))
         fail(403, "FORBIDDEN", "Cannot assign this role");
-      const groupIds = [...new Set(input.groupIds ?? policy.defaultGroupIds)];
+      const groupIds = [...new Set(input.groupIds ?? (template ? template.groupIds : policy.defaultGroupIds))];
       if (input.groupIds?.length) await authorize(tx, userId, organizationId, "permissions.manage");
       for (const groupId of groupIds)
         if (!(await groups.group(tx, organizationId, groupId)))
           fail(404, "NOT_FOUND", "Group not found");
+      if (input.primaryGroupId && !groupIds.includes(input.primaryGroupId)) fail(422, "PRIMARY_GROUP_NOT_ASSIGNED", "The primary group must be one of the account's groups");
       const target = await repo.userByEmail(tx, normalizedEmail(input.email));
       if (!target || target.status !== "ACTIVE" || !target.emailVerified)
         fail(404, "USER_NOT_FOUND", "No verified account exists for this email");
@@ -488,6 +505,8 @@ export const invitations = {
         fail(409, "ALREADY_MEMBER", "The user already belongs to this organization");
       const membership = await repo.addMember(tx, organizationId, target.id, input.role);
       await repo.addInvitationGrants(tx, organizationId, membership.id, groupIds, []);
+      if (input.primaryGroupId) await tx.organizationGroupMember.update({ where: { groupId_membershipId: { groupId: input.primaryGroupId, membershipId: membership.id } }, data: { isPrimary: true } });
+      if (template) await applyTemplateToMembership(tx, userId, organizationId, membership.id, template, { groups: false });
       await audit.append(tx, {
         actorId: userId,
         organizationId,
