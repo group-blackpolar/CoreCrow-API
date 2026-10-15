@@ -7,7 +7,7 @@ export const authorizationRepository = {
     membershipId: string,
   ) {
     return tx.membershipPermissionGrant.findMany({
-      where: { organizationId, membershipId },
+      where: { organizationId, membershipId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
       select: { permission: true },
     });
   },

@@ -204,11 +204,19 @@ export const authorizationGroups = {
       return grants.map((grant) => grant.permission);
     });
   },
+  directDetails(userId: string, organizationId: string, targetUserId: string) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "permissions.manage");
+      const membership = await requireMembership(tx, organizationId, targetUserId);
+      return groups.directGrantDetails(tx, organizationId, membership.id);
+    });
+  },
   grantDirect(
     userId: string,
     organizationId: string,
     targetUserId: string,
     permission: Permission,
+    expiresAt?: Date | null,
   ) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "permissions.manage");
@@ -218,6 +226,7 @@ export const authorizationGroups = {
         organizationId,
         membership.id,
         permission,
+        { expiresAt: expiresAt ?? null, grantedBy: userId },
       );
       await audit.append(tx, {
         actorId: userId,
@@ -225,7 +234,7 @@ export const authorizationGroups = {
         action: "authorization.member.permission.grant",
         targetType: "membership",
         targetId: membership.id,
-        metadata: { permission },
+        metadata: { permission, expiresAt: expiresAt?.toISOString() ?? null },
       });
       return grant;
     });

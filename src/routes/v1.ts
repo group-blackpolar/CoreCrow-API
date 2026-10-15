@@ -6,6 +6,7 @@ import { tenants } from "../modules/tenancy/service.js";
 import { invitations } from "../modules/tenancy/invitation-service.js";
 import { organizationPolicy } from "../modules/tenancy/policy.js";
 import { accessSimulation } from "../modules/authorization/access-simulation.js";
+import { accessRequests } from "../modules/authorization/access-requests.js";
 import { storageSummary } from "../modules/north/storage-usage.js";
 import { platform } from "../modules/platform/service.js";
 import { billing } from "../modules/billing/service.js";
@@ -1067,6 +1068,8 @@ export async function v1Routes(app: FastifyInstance) {
     .object({ permission: z.enum(permissions) })
     .strict();
   const permissionGrant = z.object({ permission: z.enum(permissions) });
+  const ACCESS_STATUS = z.enum(["PENDING", "APPROVED", "DENIED", "CANCELLED"]);
+  const directPermissionBody = permissionBody.extend({ days: z.number().int().min(1).max(365).optional() }).strict();
   const groupView = s.organizationGroup.extend({
     memberUserIds: z.array(s.id),
     permissions: z.array(z.enum(permissions)),
@@ -1276,6 +1279,43 @@ export async function v1Routes(app: FastifyInstance) {
       return null;
     },
   });
+  const accessRequestView = z.object({
+    id: s.id, permission: z.enum(permissions), reason: z.string(), requestedDays: z.number().int().nullable(), status: ACCESS_STATUS,
+    decidedBy: s.id.nullable(), decidedAt: s.date.nullable(), decisionNote: z.string().nullable(), grantExpiresAt: s.date.nullable(), createdAt: s.date,
+    requester: z.object({ userId: s.id, name: z.string().nullable(), email: z.string() }).nullable(),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/access-requests", tag: "Authorization",
+    summary: "Ask for a registered permission with a reason (any member; one open request per permission)", params: s.orgParams,
+    body: z.object({ permission: z.string().min(1).max(64), reason: z.string().trim().min(5).max(500), days: z.number().int().min(1).max(365).optional() }).strict(),
+    response: accessRequestView, status: 201, rateLimit: 20,
+    run: ({ user, params, body }) => accessRequests.create(user.id, params.organizationId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/access-requests", tag: "Authorization",
+    summary: "List your own requests, or the whole queue with permissions.manage", params: s.orgParams,
+    query: z.object({ scope: z.enum(["mine", "all"]).default("mine"), status: ACCESS_STATUS.optional() }),
+    response: z.array(accessRequestView),
+    run: ({ user, params, query }) => accessRequests.list(user.id, params.organizationId, query.scope, query.status),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/access-requests/:requestId/cancel", tag: "Authorization",
+    summary: "Withdraw your own open request", params: s.orgParams.extend({ requestId: s.id }), response: z.null(),
+    run: ({ user, params }) => accessRequests.cancel(user.id, params.organizationId, params.requestId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/access-requests/:requestId/decision", tag: "Authorization",
+    summary: "Approve (optionally time-boxed) or deny a request; needs permissions.manage and holding the permission", params: s.orgParams.extend({ requestId: s.id }),
+    body: z.object({ decision: z.enum(["APPROVE", "DENY"]), note: z.string().trim().max(500).optional(), days: z.number().int().min(1).max(365).nullable().optional() }).strict(),
+    response: accessRequestView, rateLimit: 60,
+    run: ({ user, params, body }) => accessRequests.decide(user.id, params.organizationId, params.requestId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/members/:userId/permission-grants/details", tag: "Authorization",
+    summary: "Active direct grants of a member with their expiry", params: s.memberParams,
+    response: z.array(z.object({ permission: z.enum(permissions), expiresAt: s.date.nullable(), grantedBy: s.id.nullable() })),
+    run: ({ user, params }) => authorizationGroups.directDetails(user.id, params.organizationId, params.userId),
+  });
   const simulationResponse = z.object({
     user: z.object({ id: s.id, name: z.string().nullable(), email: z.string(), status: z.string() }),
     role: s.role, platformRole: z.string(),
@@ -1315,9 +1355,9 @@ export async function v1Routes(app: FastifyInstance) {
     method: "POST",
     url: "/organizations/:organizationId/members/:userId/permission-grants",
     tag: "Authorization",
-    summary: "Grant a registered permission directly to a member",
+    summary: "Grant a registered permission directly to a member, optionally for a number of days",
     params: s.memberParams,
-    body: permissionBody,
+    body: directPermissionBody,
     response: permissionGrant,
     status: 201,
     run: ({ user, params, body }) =>
@@ -1326,6 +1366,7 @@ export async function v1Routes(app: FastifyInstance) {
         params.organizationId,
         params.userId,
         body.permission,
+        body.days ? new Date(Date.now() + body.days * 86_400_000) : null,
       ),
   });
   contract(app, {

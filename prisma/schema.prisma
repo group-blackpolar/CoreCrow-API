@@ -415,6 +415,8 @@ model Membership {
   northDatasetAclRules  NorthDatasetAcl[]
   northDatasetImports   NorthDatasetImportJob[]
 
+  accessRequests AccessRequest[]
+
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
   @@index([userId])
@@ -1109,10 +1111,42 @@ model MembershipPermissionGrant {
   membershipId   String
   permission     String
   createdAt      DateTime   @default(now())
+  /// Temporary grant: ignored (and later purged) once this instant passes. Null = until revoked.
+  expiresAt      DateTime?
+  grantedBy      String?
   membership     Membership @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
 
   @@id([membershipId, permission])
   @@index([organizationId])
+  @@index([expiresAt])
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  CANCELLED
+}
+
+/// A member asks for one registered permission; an administrator approves (optionally time-boxed) or denies it.
+model AccessRequest {
+  id             String              @id @default(cuid())
+  organizationId String
+  membershipId   String
+  permission     String
+  reason         String
+  requestedDays  Int?
+  status         AccessRequestStatus @default(PENDING)
+  decidedBy      String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  grantExpiresAt DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  membership     Membership          @relation(fields: [membershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
+  @@index([membershipId, status])
 }
 
 model Invitation {
