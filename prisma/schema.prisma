@@ -62,6 +62,7 @@ model User {
   northDatasetMappingsMade   NorthDatasetImportMappingVersion[] @relation("NorthDatasetImportMappingCreator")
   northDatasetActivations    NorthDatasetImportJob[]     @relation("NorthDatasetActivationRequester")
   northDatasetRevisionsMade NorthDatasetRevision[]       @relation("NorthDatasetRevisionCreator")
+  northDatasetGroupsOwned   NorthDatasetGroup[]          @relation("NorthDatasetGroupOwner")
   northAnalyticsBindingsMade NorthAnalyticsBinding[]     @relation("NorthAnalyticsBindingCreator")
   aiConversations            AIConversation[]
   aiRuns                     AIRun[]
@@ -268,6 +269,11 @@ enum NorthDatasetStatus {
   ARCHIVED
 }
 
+enum NorthDatasetGroupStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum NorthDatasetFieldType {
   TEXT
   INTEGER
@@ -369,6 +375,7 @@ model Organization {
   northMembershipGrants NorthMembershipGrant[]
   northAssets           NorthAsset[]
   northDatasets         NorthDataset[]
+  northDatasetGroups    NorthDatasetGroup[]
   northDatasetFields    NorthDatasetField[]
   northDatasetSchemas   NorthDatasetSchemaVersion[]
   northDatasetAclRules  NorthDatasetAcl[]
@@ -617,10 +624,17 @@ model NorthDataset {
   status                 NorthDatasetStatus          @default(ACTIVE)
   currentSchemaVersionId String?
   activeRevisionId        String?
+  /// Optional Dataset Group; a dataset keeps working standalone when null.
+  groupId                String?
+  /// Period covered by this dataset (inclusive dates); any granularity, label is free text.
+  periodStart            DateTime?                   @db.Date
+  periodEnd              DateTime?                   @db.Date
+  periodLabel            String?
   createdBy              String
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
   organization           Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group                  NorthDatasetGroup?          @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Restrict)
   creator                User                        @relation("NorthDatasetCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   fields                 NorthDatasetField[]
   schemaVersions         NorthDatasetSchemaVersion[] @relation("NorthDatasetSchemaVersions")
@@ -634,6 +648,30 @@ model NorthDataset {
   activeRevision         NorthDatasetRevision?           @relation("ActiveDatasetRevision", fields: [activeRevisionId, id, organizationId], references: [id, datasetId, organizationId], onDelete: Restrict)
   analyticsBindings      NorthAnalyticsBinding[]
   accessTemplates        AccessTemplateDataset[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, createdAt, id])
+  @@index([organizationId, groupId, periodStart])
+}
+
+/// Logical collection of related datasets (client, source, category, periods). Data stays in the member datasets.
+model NorthDatasetGroup {
+  id             String                   @id @default(cuid())
+  organizationId String
+  slug           String
+  name           Json
+  description    Json?
+  category       String?
+  tags           String[]                 @default([])
+  metadata       Json                     @default("{}")
+  status         NorthDatasetGroupStatus  @default(ACTIVE)
+  ownerId        String
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner          User                     @relation("NorthDatasetGroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  datasets       NorthDataset[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])

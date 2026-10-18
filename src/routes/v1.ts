@@ -44,6 +44,7 @@ import { northSearch } from "../modules/north/search-service.js";
 import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
 import { northData } from "../modules/north/data/service.js";
+import { northDatasetGroups } from "../modules/north/data/group-service.js";
 import { northDatasetImports } from "../modules/north/data/import-service.js";
 import { northDatasetImportAnalysis } from "../modules/north/data/import-analysis-service.js";
 import { northDatasetImportActivation } from "../modules/north/data/import-activation-service.js";
@@ -68,6 +69,17 @@ export async function v1Routes(app: FastifyInstance) {
     createdAt: s.date,
   });
   const datasetParams = s.orgParams.extend({ datasetId: s.id });
+  const datasetGroupParams = s.orgParams.extend({ groupId: s.id });
+  const groupMetadata = z.object({
+    slug: z.string().trim().min(1).max(64),
+    name: s.localizedText,
+    description: s.localizedText.nullable().optional(),
+    category: z.string().trim().min(1).max(64).nullable().optional(),
+    tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+    metadata: z.record(z.unknown()).refine((value) => JSON.stringify(value).length <= 8192, "metadata too large").optional(),
+  }).strict();
+  const groupUpdate = groupMetadata.partial().extend({ status: s.northDatasetGroupStatus.optional() }).strict()
+    .refine((value) => Object.keys(value).length > 0);
   const datasetFieldParams = datasetParams.extend({ fieldId: s.id });
   const datasetSchemaParams = datasetParams.extend({ schemaVersionId: s.id });
   const datasetAclParams = datasetParams.extend({ aclId: s.id });
@@ -102,6 +114,56 @@ export async function v1Routes(app: FastifyInstance) {
     // SKIP_EXACT drops source rows whose mapped values are identical to an earlier row; the count is audited.
     duplicates: z.enum(["KEEP", "SKIP_EXACT"]).default("KEEP"),
   }).strict();
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups", tag: "NORTH dataset groups",
+    summary: "List dataset groups with a summary computed only from the datasets the caller may see", params: s.orgParams,
+    response: z.array(s.northDatasetGroup),
+    run: ({ user, params }) => northDatasetGroups.list(user.id, params.organizationId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/dataset-groups", tag: "NORTH dataset groups",
+    summary: "Create a dataset group", params: s.orgParams, body: groupMetadata, response: s.northDatasetGroup, status: 201,
+    run: ({ user, params, body }) => northDatasetGroups.create(user.id, params.organizationId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId", tag: "NORTH dataset groups",
+    summary: "Read a dataset group with its visible member datasets", params: datasetGroupParams, response: s.northDatasetGroupDetail,
+    run: ({ user, params }) => northDatasetGroups.read(user.id, params.organizationId, params.groupId),
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/dataset-groups/:groupId", tag: "NORTH dataset groups",
+    summary: "Edit group metadata, archive or restore it", params: datasetGroupParams, body: groupUpdate, response: s.northDatasetGroup,
+    run: ({ user, params, body }) => northDatasetGroups.update(user.id, params.organizationId, params.groupId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/dependencies", tag: "NORTH dataset groups",
+    summary: "Exact scope of deleting a group: member datasets, analytics bindings, panels and running imports", params: datasetGroupParams,
+    response: z.object({ datasets: z.number().int(), bindings: z.number().int(), panels: z.number().int(), runningImports: z.number().int() }),
+    run: ({ user, params }) => northDatasetGroups.dependencies(user.id, params.organizationId, params.groupId),
+  });
+  contract(app, {
+    method: "DELETE", url: "/organizations/:organizationId/dataset-groups/:groupId", tag: "NORTH dataset groups",
+    summary: "Delete an archived group; member datasets are detached, never erased", params: datasetGroupParams,
+    query: z.object({ detachDatasets: z.enum(["true", "false"]).default("false") }).strict(), response: z.null(),
+    run: ({ user, params, query }) => northDatasetGroups.delete(user.id, params.organizationId, params.groupId, { detachDatasets: query.detachDatasets === "true" }),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/audit", tag: "NORTH dataset groups",
+    summary: "Audit history of a group and of its datasets", params: datasetGroupParams,
+    query: z.object({ limit: z.coerce.number().int().min(1).max(200).default(50), before: s.date.optional() }).strict(),
+    response: z.array(z.object({ id: s.id, action: z.string(), actorId: s.id.nullable(), targetType: z.string().nullable(), targetId: z.string().nullable(), requestId: z.string().nullable(), metadata: z.record(z.unknown()), createdAt: s.date })),
+    run: ({ user, params, query }) => northDatasetGroups.audit(user.id, params.organizationId, params.groupId, { limit: query.limit, ...(query.before ? { before: new Date(query.before) } : {}) }),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/datasets/:datasetId/group", tag: "NORTH dataset groups",
+    summary: "Assign a dataset to a group (or null to detach) and set its covered period; overlapping periods need allowOverlap", params: datasetParams,
+    body: z.object({
+      groupId: s.id.nullable(), periodStart: s.dateOnly.nullable().optional(), periodEnd: s.dateOnly.nullable().optional(),
+      periodLabel: z.string().trim().min(1).max(60).nullable().optional(), allowOverlap: z.boolean().optional(),
+    }).strict(),
+    response: z.object({ id: s.id, groupId: s.id.nullable(), periodStart: s.dateOnly.nullable(), periodEnd: s.dateOnly.nullable(), periodLabel: z.string().nullable() }),
+    run: ({ user, params, body }) => northDatasetGroups.assign(user.id, params.organizationId, params.datasetId, body),
+  });
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",
     summary: "List up to 100 datasets authorized for the active membership", params: s.orgParams,

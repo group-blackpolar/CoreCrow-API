@@ -7133,6 +7133,2085 @@
         }
       }
     },
+    "/v1/organizations/{organizationId}/dataset-groups": {
+      "get": {
+        "summary": "List dataset groups with a summary computed only from the datasets the caller may see",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "organizationId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        }
+                      },
+                      "description": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "nullable": true
+                      },
+                      "category": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "ACTIVE",
+                          "ARCHIVED"
+                        ]
+                      },
+                      "ownerId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "summary": {
+                        "type": "object",
+                        "properties": {
+                          "datasetCount": {
+                            "type": "integer"
+                          },
+                          "rowCount": {
+                            "type": "integer"
+                          },
+                          "originalBytes": {
+                            "type": "number"
+                          },
+                          "periodStart": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "nullable": true
+                          },
+                          "periodEnd": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "nullable": true
+                          },
+                          "lastImportAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "datasetsWithIssues": {
+                            "type": "integer"
+                          },
+                          "health": {
+                            "type": "string",
+                            "enum": [
+                              "EMPTY",
+                              "OK",
+                              "ISSUES"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "datasetCount",
+                          "rowCount",
+                          "originalBytes",
+                          "periodStart",
+                          "periodEnd",
+                          "lastImportAt",
+                          "datasetsWithIssues",
+                          "health"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "slug",
+                      "name",
+                      "description",
+                      "category",
+                      "tags",
+                      "metadata",
+                      "status",
+                      "ownerId",
+                      "createdAt",
+                      "updatedAt",
+                      "summary"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a dataset group",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "name": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "description": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "nullable": true
+                  },
+                  "category": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "nullable": true
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "maxItems": 20
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "slug",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "nullable": true
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ]
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "datasetCount": {
+                          "type": "integer"
+                        },
+                        "rowCount": {
+                          "type": "integer"
+                        },
+                        "originalBytes": {
+                          "type": "number"
+                        },
+                        "periodStart": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "nullable": true
+                        },
+                        "periodEnd": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "nullable": true
+                        },
+                        "lastImportAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "datasetsWithIssues": {
+                          "type": "integer"
+                        },
+                        "health": {
+                          "type": "string",
+                          "enum": [
+                            "EMPTY",
+                            "OK",
+                            "ISSUES"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "datasetCount",
+                        "rowCount",
+                        "originalBytes",
+                        "periodStart",
+                        "periodEnd",
+                        "lastImportAt",
+                        "datasetsWithIssues",
+                        "health"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "slug",
+                    "name",
+                    "description",
+                    "category",
+                    "tags",
+                    "metadata",
+                    "status",
+                    "ownerId",
+                    "createdAt",
+                    "updatedAt",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/dataset-groups/{groupId}": {
+      "get": {
+        "summary": "Read a dataset group with its visible member datasets",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "groupId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "nullable": true
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ]
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "datasetCount": {
+                          "type": "integer"
+                        },
+                        "rowCount": {
+                          "type": "integer"
+                        },
+                        "originalBytes": {
+                          "type": "number"
+                        },
+                        "periodStart": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "nullable": true
+                        },
+                        "periodEnd": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "nullable": true
+                        },
+                        "lastImportAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "datasetsWithIssues": {
+                          "type": "integer"
+                        },
+                        "health": {
+                          "type": "string",
+                          "enum": [
+                            "EMPTY",
+                            "OK",
+                            "ISSUES"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "datasetCount",
+                        "rowCount",
+                        "originalBytes",
+                        "periodStart",
+                        "periodEnd",
+                        "lastImportAt",
+                        "datasetsWithIssues",
+                        "health"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "datasets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ACTIVE",
+                              "ARCHIVED"
+                            ]
+                          },
+                          "groupId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "nullable": true
+                          },
+                          "periodStart": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "nullable": true
+                          },
+                          "periodEnd": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "nullable": true
+                          },
+                          "periodLabel": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "rowCount": {
+                            "type": "integer"
+                          },
+                          "originalBytes": {
+                            "type": "number"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "slug",
+                          "name",
+                          "status",
+                          "groupId",
+                          "periodStart",
+                          "periodEnd",
+                          "periodLabel",
+                          "rowCount",
+                          "originalBytes",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "slug",
+                    "name",
+                    "description",
+                    "category",
+                    "tags",
+                    "metadata",
+                    "status",
+                    "ownerId",
+                    "createdAt",
+                    "updatedAt",
+                    "summary",
+                    "datasets"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Edit group metadata, archive or restore it",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "name": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "description": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "nullable": true
+                  },
+                  "category": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "nullable": true
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "maxItems": 20
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ACTIVE",
+                      "ARCHIVED"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "groupId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "nullable": true
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED"
+                      ]
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "datasetCount": {
+                          "type": "integer"
+                        },
+                        "rowCount": {
+                          "type": "integer"
+                        },
+                        "originalBytes": {
+                          "type": "number"
+                        },
+                        "periodStart": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "nullable": true
+                        },
+                        "periodEnd": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "nullable": true
+                        },
+                        "lastImportAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "datasetsWithIssues": {
+                          "type": "integer"
+                        },
+                        "health": {
+                          "type": "string",
+                          "enum": [
+                            "EMPTY",
+                            "OK",
+                            "ISSUES"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "datasetCount",
+                        "rowCount",
+                        "originalBytes",
+                        "periodStart",
+                        "periodEnd",
+                        "lastImportAt",
+                        "datasetsWithIssues",
+                        "health"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "slug",
+                    "name",
+                    "description",
+                    "category",
+                    "tags",
+                    "metadata",
+                    "status",
+                    "ownerId",
+                    "createdAt",
+                    "updatedAt",
+                    "summary"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete an archived group; member datasets are detached, never erased",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "in": "query",
+            "name": "detachDatasets",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "groupId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "enum": [
+                    "null"
+                  ],
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/dataset-groups/{groupId}/dependencies": {
+      "get": {
+        "summary": "Exact scope of deleting a group: member datasets, analytics bindings, panels and running imports",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "groupId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "datasets": {
+                      "type": "integer"
+                    },
+                    "bindings": {
+                      "type": "integer"
+                    },
+                    "panels": {
+                      "type": "integer"
+                    },
+                    "runningImports": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "datasets",
+                    "bindings",
+                    "panels",
+                    "runningImports"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/dataset-groups/{groupId}/audit": {
+      "get": {
+        "summary": "Audit history of a group and of its datasets",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "before",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "groupId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "action": {
+                        "type": "string"
+                      },
+                      "actorId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "nullable": true
+                      },
+                      "targetType": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "targetId": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "requestId": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "action",
+                      "actorId",
+                      "targetType",
+                      "targetId",
+                      "requestId",
+                      "metadata",
+                      "createdAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/datasets/{datasetId}/group": {
+      "put": {
+        "summary": "Assign a dataset to a group (or null to detach) and set its covered period; overlapping periods need allowOverlap",
+        "tags": [
+          "NORTH dataset groups"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "groupId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "nullable": true
+                  },
+                  "periodStart": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "nullable": true
+                  },
+                  "periodEnd": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "nullable": true
+                  },
+                  "periodLabel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "nullable": true
+                  },
+                  "allowOverlap": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "groupId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "datasetId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "groupId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    },
+                    "periodStart": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "nullable": true
+                    },
+                    "periodEnd": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "nullable": true
+                    },
+                    "periodLabel": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "groupId",
+                    "periodStart",
+                    "periodEnd",
+                    "periodLabel"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/organizations/{organizationId}/datasets": {
       "get": {
         "summary": "List up to 100 datasets authorized for the active membership",
@@ -7209,6 +9288,26 @@
                         "maxLength": 128,
                         "nullable": true
                       },
+                      "groupId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "nullable": true
+                      },
+                      "periodStart": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                      },
+                      "periodEnd": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                      },
+                      "periodLabel": {
+                        "type": "string",
+                        "nullable": true
+                      },
                       "createdBy": {
                         "type": "string",
                         "minLength": 1,
@@ -7231,6 +9330,10 @@
                       "slug",
                       "status",
                       "currentSchemaVersionId",
+                      "groupId",
+                      "periodStart",
+                      "periodEnd",
+                      "periodLabel",
                       "createdBy",
                       "createdAt",
                       "updatedAt"
@@ -7457,6 +9560,26 @@
                       "maxLength": 128,
                       "nullable": true
                     },
+                    "groupId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    },
+                    "periodStart": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "periodEnd": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "periodLabel": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "createdBy": {
                       "type": "string",
                       "minLength": 1,
@@ -7479,6 +9602,10 @@
                     "slug",
                     "status",
                     "currentSchemaVersionId",
+                    "groupId",
+                    "periodStart",
+                    "periodEnd",
+                    "periodLabel",
                     "createdBy",
                     "createdAt",
                     "updatedAt"
@@ -7677,6 +9804,26 @@
                       "maxLength": 128,
                       "nullable": true
                     },
+                    "groupId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    },
+                    "periodStart": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "periodEnd": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "periodLabel": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "createdBy": {
                       "type": "string",
                       "minLength": 1,
@@ -7699,6 +9846,10 @@
                     "slug",
                     "status",
                     "currentSchemaVersionId",
+                    "groupId",
+                    "periodStart",
+                    "periodEnd",
+                    "periodLabel",
                     "createdBy",
                     "createdAt",
                     "updatedAt"
@@ -7937,6 +10088,26 @@
                       "maxLength": 128,
                       "nullable": true
                     },
+                    "groupId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "nullable": true
+                    },
+                    "periodStart": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "periodEnd": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "periodLabel": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "createdBy": {
                       "type": "string",
                       "minLength": 1,
@@ -7959,6 +10130,10 @@
                     "slug",
                     "status",
                     "currentSchemaVersionId",
+                    "groupId",
+                    "periodStart",
+                    "periodEnd",
+                    "periodLabel",
                     "createdBy",
                     "createdAt",
                     "updatedAt"
