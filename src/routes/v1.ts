@@ -45,6 +45,8 @@ import { hasNorthCapability } from "../modules/north/authorization.js";
 import { authorize } from "../modules/authorization/service.js";
 import { northData } from "../modules/north/data/service.js";
 import { northDatasetGroups } from "../modules/north/data/group-service.js";
+import { northDatasetGroupQuery } from "../modules/north/data/group-query-service.js";
+import { northPipelines, PIPELINE_STEP_IDS } from "../modules/north/data/pipeline-service.js";
 import { northDatasetImports } from "../modules/north/data/import-service.js";
 import { northDatasetImportAnalysis } from "../modules/north/data/import-analysis-service.js";
 import { northDatasetImportActivation } from "../modules/north/data/import-activation-service.js";
@@ -138,7 +140,7 @@ export async function v1Routes(app: FastifyInstance) {
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/dependencies", tag: "NORTH dataset groups",
     summary: "Exact scope of deleting a group: member datasets, analytics bindings, panels and running imports", params: datasetGroupParams,
-    response: z.object({ datasets: z.number().int(), bindings: z.number().int(), panels: z.number().int(), runningImports: z.number().int() }),
+    response: z.object({ datasets: z.number().int(), scripts: z.number().int(), bindings: z.number().int(), panels: z.number().int(), runningImports: z.number().int() }),
     run: ({ user, params }) => northDatasetGroups.dependencies(user.id, params.organizationId, params.groupId),
   });
   contract(app, {
@@ -163,6 +165,110 @@ export async function v1Routes(app: FastifyInstance) {
     }).strict(),
     response: z.object({ id: s.id, groupId: s.id.nullable(), periodStart: s.dateOnly.nullable(), periodEnd: s.dateOnly.nullable(), periodLabel: z.string().nullable() }),
     run: ({ user, params, body }) => northDatasetGroups.assign(user.id, params.organizationId, params.datasetId, body),
+  });
+  const pipelineParam = z.object({
+    name: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/), type: z.enum(["string", "number", "boolean", "date"]), required: z.boolean(),
+    default: z.union([z.string().max(1024), z.number(), z.boolean()]).optional(), description: z.string().max(200).optional(),
+  }).strict();
+  const pipelineStep = z.object({ id: z.enum(PIPELINE_STEP_IDS), enabled: z.boolean() }).strict();
+  const scriptParams = datasetGroupParams.extend({ scriptId: s.id });
+  const pipelineVersion = z.object({ id: s.id, scriptId: s.id, version: z.number().int(), sourceSha256: z.string(), params: z.array(pipelineParam), steps: z.array(pipelineStep), note: z.string().nullable(), createdBy: s.id, createdAt: s.date, source: z.string().optional() });
+  const pipelineScript = z.object({ id: s.id, slug: z.string(), name: z.string(), description: z.string().nullable(), language: z.string(), status: s.northDatasetGroupStatus, versions: z.array(pipelineVersion) });
+  const pipelineRun = z.object({
+    id: s.id, groupId: s.id, datasetId: s.id.nullable(), importId: s.id.nullable(), scriptVersionId: s.id, kind: z.enum(["TEST", "REPROCESS", "IMPORT"]),
+    status: z.enum(["QUEUED", "BLOCKED", "RUNNING", "SUCCEEDED", "FAILED"]), params: z.record(z.unknown()), stats: z.record(z.unknown()).nullable(), report: z.record(z.unknown()).nullable(),
+    errorCode: z.string().nullable(), requestedBy: s.id, createdAt: s.date, startedAt: s.date.nullable(), finishedAt: s.date.nullable(),
+  });
+  const groupQueryInput = z.object({ query: datasetQuerySchema, datasetIds: z.array(s.id).max(50).optional(), periodFrom: s.dateOnly.nullable().optional(), periodTo: s.dateOnly.nullable().optional() }).strict();
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/dataset-groups/:groupId/query", tag: "NORTH dataset groups",
+    summary: "Query a dataset group as one collection: fields are named by key, results merge the member datasets (aggregates only across several datasets)", params: datasetGroupParams,
+    body: groupQueryInput, rateLimit: 30,
+    response: z.object({
+      mode: z.enum(["ROWS", "AGGREGATE"]), groupId: s.id,
+      datasets: z.array(z.object({ id: s.id, slug: z.string(), activeRevisionId: s.id })), skipped: z.array(z.object({ id: s.id, slug: z.string(), reason: z.string() })),
+      columns: z.array(z.object({ key: z.string(), type: z.string() })).max(40), rows: z.array(z.record(s.northDatasetQueryScalar)).max(1_000),
+      rowCount: z.number().int().nonnegative(), totalRows: z.number().int().nonnegative().optional(), executedAt: s.date,
+    }),
+    run: ({ user, params, body }) => northDatasetGroupQuery.execute(user.id, params.organizationId, params.groupId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/fields", tag: "NORTH dataset groups",
+    summary: "Field keys across the group's datasets: where each exists, type conflicts and gaps between periods", params: datasetGroupParams,
+    response: z.object({ datasets: z.array(z.string()), fields: z.array(z.object({ key: z.string(), types: z.array(z.string()), presentIn: z.array(z.string()), missingIn: z.array(z.string()), typeConflict: z.boolean() })) }),
+    run: ({ user, params }) => northDatasetGroupQuery.fields(user.id, params.organizationId, params.groupId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/pipeline", tag: "NORTH pipelines",
+    summary: "Scripts, versions and the published pipeline of a group; execution stays disabled until an isolated runner is configured", params: datasetGroupParams,
+    response: z.object({ runnerEnabled: z.boolean(), activeScriptVersionId: s.id.nullable(), scripts: z.array(pipelineScript) }),
+    run: ({ user, params }) => northPipelines.overview(user.id, params.organizationId, params.groupId),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/dataset-groups/:groupId/pipeline", tag: "NORTH pipelines",
+    summary: "Publish a script version as the group's pipeline (re-publishing an older version is the rollback); null unpublishes", params: datasetGroupParams,
+    body: z.object({ scriptVersionId: s.id.nullable() }).strict(), response: z.object({ activeScriptVersionId: s.id.nullable() }),
+    run: ({ user, params, body }) => northPipelines.publish(user.id, params.organizationId, params.groupId, body.scriptVersionId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/dataset-groups/:groupId/scripts", tag: "NORTH pipelines",
+    summary: "Register a pipeline script (source is added as immutable versions)", params: datasetGroupParams,
+    body: z.object({ slug: z.string().trim().min(2).max(64), name: z.string().trim().min(2).max(100), description: z.string().max(500).nullable().optional() }).strict(),
+    response: pipelineScript, status: 201,
+    run: ({ user, params, body }) => northPipelines.createScript(user.id, params.organizationId, params.groupId, body),
+  });
+  contract(app, {
+    method: "PATCH", url: "/organizations/:organizationId/dataset-groups/:groupId/scripts/:scriptId", tag: "NORTH pipelines",
+    summary: "Archive or restore a script", params: scriptParams, body: z.object({ status: s.northDatasetGroupStatus }).strict(), response: z.null(),
+    run: ({ user, params, body }) => northPipelines.setScriptStatus(user.id, params.organizationId, params.groupId, params.scriptId, body.status),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/dataset-groups/:groupId/scripts/:scriptId/versions", tag: "NORTH pipelines",
+    summary: "Save a new immutable version of a script with its declared parameters and stage switches", params: scriptParams,
+    body: z.object({ source: z.string().min(1).max(262_144), params: z.array(pipelineParam).max(20), steps: z.array(pipelineStep).max(PIPELINE_STEP_IDS.length), note: z.string().max(300).nullable().optional() }).strict(),
+    response: pipelineVersion, status: 201,
+    run: ({ user, params, body }) => northPipelines.createVersion(user.id, params.organizationId, params.groupId, params.scriptId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/scripts/:scriptId/versions/:versionId", tag: "NORTH pipelines",
+    summary: "Read one version including its source", params: scriptParams.extend({ versionId: s.id }), response: pipelineVersion,
+    run: ({ user, params }) => northPipelines.readVersion(user.id, params.organizationId, params.groupId, params.scriptId, params.versionId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/dataset-groups/:groupId/pipeline/runs", tag: "NORTH pipelines",
+    summary: "Record a TEST or REPROCESS run of a script version; BLOCKED (nothing executes) while no isolated runner is configured", params: datasetGroupParams,
+    body: z.object({ scriptVersionId: s.id.optional(), datasetId: s.id.nullable().optional(), kind: z.enum(["TEST", "REPROCESS"]), params: z.record(z.unknown()).default({}) }).strict(),
+    response: pipelineRun, status: 201, rateLimit: 20,
+    run: ({ user, params, body }) => northPipelines.run(user.id, params.organizationId, params.groupId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/dataset-groups/:groupId/pipeline/runs", tag: "NORTH pipelines",
+    summary: "Run history: which script version, parameters and outcome processed each dataset", params: datasetGroupParams,
+    query: z.object({ datasetId: s.id.optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).strict(), response: z.array(pipelineRun),
+    run: ({ user, params, query }) => northPipelines.runs(user.id, params.organizationId, params.groupId, query),
+  });
+  const partParams = datasetImportParams.extend({ partNumber: z.coerce.number().int().min(1).max(10_000) });
+  const multipartState = z.object({ partSize: z.number().int(), partCount: z.number().int(), uploadedParts: z.array(z.number().int()) });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/multipart", tag: "NORTH data imports",
+    summary: "Start (or resume) a resumable multipart upload; returns the part layout and the parts already stored", params: datasetImportParams,
+    response: multipartState, status: 201,
+    run: ({ user, params }) => northDatasetImports.multipartStart(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/multipart", tag: "NORTH data imports",
+    summary: "Parts already stored for a resumable upload", params: datasetImportParams, response: multipartState,
+    run: ({ user, params }) => northDatasetImports.multipartState(user.id, params.organizationId, params.datasetId, params.importId),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/multipart/parts/:partNumber", tag: "NORTH data imports",
+    summary: "Short-lived signed URL for one part", params: partParams, response: s.northSignedObjectRequest, rateLimit: 600,
+    run: ({ user, params }) => northDatasetImports.multipartSignPart(user.id, params.organizationId, params.datasetId, params.importId, params.partNumber),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/multipart/complete", tag: "NORTH data imports",
+    summary: "Assemble the object once every part is stored with its expected size; then call confirm", params: datasetImportParams, response: s.northDatasetImport,
+    run: ({ user, params }) => northDatasetImports.multipartComplete(user.id, params.organizationId, params.datasetId, params.importId),
   });
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/datasets", tag: "NORTH data",

@@ -274,6 +274,20 @@ enum NorthDatasetGroupStatus {
   ARCHIVED
 }
 
+enum NorthPipelineRunKind {
+  TEST
+  REPROCESS
+  IMPORT
+}
+
+enum NorthPipelineRunStatus {
+  QUEUED
+  BLOCKED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 enum NorthDatasetFieldType {
   TEXT
   INTEGER
@@ -668,11 +682,15 @@ model NorthDatasetGroup {
   metadata       Json                     @default("{}")
   status         NorthDatasetGroupStatus  @default(ACTIVE)
   ownerId        String
+  /// Published pipeline script version (immutable row); null = no pipeline.
+  activeScriptVersionId String?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
   organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   owner          User                     @relation("NorthDatasetGroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   datasets       NorthDataset[]
+  scripts        NorthPipelineScript[]
+  pipelineRuns   NorthPipelineRun[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])
@@ -819,6 +837,9 @@ model NorthDatasetImportJob {
   activationMappingId     String?
   activationRequestedBy   String?
   activationMode          NorthDatasetRevisionMode     @default(REPLACE_DATASET)
+  /// Resumable S3 multipart upload (null = single signed PUT).
+  multipartUploadId       String?
+  multipartPartSize       Int?
   /// Period covered by the file, required for APPEND (inclusive dates).
   periodStart             DateTime?                    @db.Date
   periodEnd               DateTime?                    @db.Date
@@ -1735,4 +1756,71 @@ model AIUsage {
 
   @@index([organizationId, createdAt])
   @@index([runId])
+}
+
+/// A named processing script owned by a dataset group. Source lives in immutable versions; nothing here is ever executed in-process.
+model NorthPipelineScript {
+  id             String                      @id @default(cuid())
+  organizationId String
+  groupId        String
+  slug           String
+  name           String
+  description    String?
+  language       String                      @default("python")
+  status         NorthDatasetGroupStatus     @default(ACTIVE)
+  createdBy      String
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  group          NorthDatasetGroup           @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  versions       NorthPipelineScriptVersion[]
+
+  @@unique([id, organizationId])
+  @@unique([groupId, slug])
+  @@index([organizationId, groupId, status])
+}
+
+model NorthPipelineScriptVersion {
+  id             String              @id @default(cuid())
+  organizationId String
+  scriptId       String
+  version        Int
+  source         String
+  sourceSha256   String
+  /// Declared parameters: [{ name, type: string|number|boolean|date, required, default?, description? }].
+  params         Json                @default("[]")
+  /// Ordered pipeline stages with an enabled flag: [{ id, enabled }].
+  steps          Json                @default("[]")
+  note           String?
+  createdBy      String
+  createdAt      DateTime            @default(now())
+  script         NorthPipelineScript @relation(fields: [scriptId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  runs           NorthPipelineRun[]
+
+  @@unique([scriptId, version])
+  @@unique([id, organizationId])
+}
+
+/// One execution (or blocked attempt) of a script version: exact version, parameters, outcome and statistics.
+model NorthPipelineRun {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  groupId         String
+  datasetId       String?
+  importId        String?
+  scriptVersionId String
+  kind            NorthPipelineRunKind
+  status          NorthPipelineRunStatus @default(QUEUED)
+  params          Json                   @default("{}")
+  stats           Json?
+  report          Json?
+  errorCode       String?
+  requestedBy     String
+  createdAt       DateTime               @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  group           NorthDatasetGroup      @relation(fields: [groupId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  scriptVersion   NorthPipelineScriptVersion @relation(fields: [scriptVersionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@index([organizationId, groupId, createdAt])
+  @@index([organizationId, datasetId, createdAt])
 }

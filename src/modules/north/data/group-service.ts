@@ -209,6 +209,7 @@ export const northDatasetGroups = {
       const dependencies = await groupDependencies(tx, organizationId, groupId);
       if (dependencies.datasets > 0 && !input.detachDatasets)
         throw new DomainError(409, "DATASET_GROUP_NOT_EMPTY", "The group still has datasets; move them or confirm detaching them", dependencies);
+      if (dependencies.scripts > 0) fail(409, "DATASET_GROUP_HAS_PIPELINE_HISTORY", "The group owns pipeline scripts whose history must be kept; archive the group instead");
       if (dependencies.runningImports > 0) fail(409, "DATASET_IMPORT_RUNNING", "Wait for running imports to finish or cancel them");
       await tx.northDataset.updateMany({ where: { organizationId, groupId }, data: { groupId: null } });
       await tx.northDatasetGroup.delete({ where: { id: groupId } });
@@ -241,5 +242,6 @@ async function groupDependencies(tx: Transaction, organizationId: string, groupI
         tx.northDatasetImportJob.count({ where: { organizationId, datasetId: { in: ids }, status: { in: ["ANALYZING", "ACTIVATING", "SECURITY_PENDING", "CANCEL_REQUESTED"] } } }),
       ])
     : [[], 0];
-  return { datasets: ids.length, bindings: bindings.length, panels: new Set(bindings.map((binding) => binding.panelId)).size, runningImports };
+  const scripts = await tx.northPipelineScript.count({ where: { organizationId, groupId } });
+  return { datasets: ids.length, scripts, bindings: bindings.length, panels: new Set(bindings.map((binding) => binding.panelId)).size, runningImports };
 }
