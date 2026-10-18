@@ -341,9 +341,11 @@ export async function v1Routes(app: FastifyInstance) {
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/imports/:importId/activate", tag: "NORTH data imports",
-    summary: "Queue asynchronous immutable REPLACE_DATASET materialization and atomic activation", params: datasetImportParams,
-    body: z.object({ mappingId: s.id, mode: z.literal("REPLACE_DATASET") }).strict(), response: s.northDatasetImport, status: 202,
-    run: ({ user, params, body }) => northDatasetImportActivation.activate(user.id, params.organizationId, params.datasetId, params.importId, body.mappingId),
+    summary: "Queue asynchronous materialization and atomic activation: REPLACE_DATASET swaps the data, APPEND adds a period (needs periodStart/periodEnd; refuses duplicate files and overlapping periods)", params: datasetImportParams,
+    body: z.object({ mappingId: s.id, mode: z.enum(["REPLACE_DATASET", "APPEND"]), periodStart: s.dateOnly.nullable().optional(), periodEnd: s.dateOnly.nullable().optional() }).strict()
+      .refine((value) => value.mode === "REPLACE_DATASET" || Boolean(value.periodStart && value.periodEnd), { message: "APPEND needs periodStart and periodEnd" }),
+    response: s.northDatasetImport, status: 202,
+    run: ({ user, params, body }) => northDatasetImportActivation.activate(user.id, params.organizationId, params.datasetId, params.importId, body),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/datasets/:datasetId/query", tag: "NORTH data queries",

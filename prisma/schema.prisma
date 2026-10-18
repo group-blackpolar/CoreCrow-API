@@ -330,6 +330,7 @@ enum NorthDatasetImportScanStatus {
 
 enum NorthDatasetRevisionMode {
   REPLACE_DATASET
+  APPEND
 }
 
 model Organization {
@@ -817,6 +818,10 @@ model NorthDatasetImportJob {
   lastErrorCode           String?
   activationMappingId     String?
   activationRequestedBy   String?
+  activationMode          NorthDatasetRevisionMode     @default(REPLACE_DATASET)
+  /// Period covered by the file, required for APPEND (inclusive dates).
+  periodStart             DateTime?                    @db.Date
+  periodEnd               DateTime?                    @db.Date
   materializationAttempts Int                          @default(0)
   createdAt               DateTime                     @default(now())
   updatedAt               DateTime                     @updatedAt
