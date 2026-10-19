@@ -7,7 +7,7 @@ Definition: `scripts/dashboards/shark-import-ctr.mjs` (provision with `scripts/p
 
 | Metric | Definition | Why |
 | --- | --- | --- |
-| Containers | `COUNT_DISTINCT container_number` | 554,345 distinct containers over 796,260 rows (a container repeats across rows) |
+| Containers | `COUNT(*)` rows | the reference counts rows (796,260); distinct container numbers would be 554,345 because a container repeats across rows |
 | TEUs | `SUM teus` distinct by `bill_of_lading_nbr` | `teus` is a bill-level value repeated on each of its rows and blank on ~32 % of rows; a plain SUM gives 1,497,409 vs 1,448,102 distinct by bill (+3.4 %) |
 | Year columns / lines | conditional measures (`when` on `arrival_date`) | one column per year in the same row, NULL (gap / dash) where a year has no rows |
 | Month axis | `MONTH_OF_YEAR` granularity | calendar month 1-12 across years, one series per year |

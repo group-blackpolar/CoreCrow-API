@@ -4,7 +4,7 @@
 //   node scripts/provision-view.mjs scripts/dashboards/shark-import-ctr.mjs --org shark [--only <panel-slug>] [--publish]
 //
 // Metric rules (audited on the 796,260-row dataset, see docs/import-ctr.md):
-//   Containers  COUNT_DISTINCT container_number     rows repeat per BL, 554,345 distinct containers
+//   Containers  COUNT of rows (one row = one container line; the source file counts rows, 796,260)
 //   TEUs        SUM teus DISTINCT BY bill_of_lading_nbr   the TEU value belongs to the BL and is repeated on its rows (a plain SUM overstates by ~3.4%)
 // Per-year series use conditional measures (`when`), month series group by calendar month number (MONTH_OF_YEAR).
 const ES = {
@@ -73,7 +73,7 @@ export default {
           item("units", "definition_list", {
             title: l("Métricas", "Metrics"), icon: "info",
             items: [
-              { id: "containers", icon: "container", tone: "blue", term: l("Containers"), text: l("Números de contenedor únicos.", "Unique container numbers.") },
+              { id: "containers", icon: "container", tone: "blue", term: l("Containers"), text: l("Número de registros (filas) de contenedor.", "Number of container records (rows).") },
               { id: "teus", icon: "container", tone: "violet", term: l("TEUs"), text: l("Se cuentan una vez por conocimiento de embarque (Bill of Lading).", "Counted once per bill of lading.") },
               { id: "year", icon: "calendar", tone: "slate", term: l("Año y mes", "Year and month"), text: l("Según la fecha de arribo.", "Based on the arrival date.") },
               { id: "filters", icon: "filter", tone: "cyan", term: l("Filtros", "Filters"), text: l("Los filtros de cada página aplican a todos sus componentes.", "The filters of each page apply to all of its components.") },
@@ -119,9 +119,9 @@ export default {
       pageFilters: ({ f }) => [{ fieldId: f.country, operator: "NE", value: null }],
       bindings: ({ f, containers }) => [
         { name: "yearly", query: agg({ groupBy: [f.date], granularity: { [f.date]: "YEAR" }, measures: [containers], orderBy: [{ key: f.date, direction: "ASC" }], limit: 10 }) },
-        { name: "ports_year", query: agg({ groupBy: [f.date], granularity: { [f.date]: "YEAR" }, measures: MAIN_PORTS.map(([key, name]) => measure("COUNT_DISTINCT", f.container, `port_${key}`, { when: [{ fieldId: f.poa, operator: "EQ", value: name }] })), orderBy: [{ key: f.date, direction: "ASC" }], limit: 10 }) },
+        { name: "ports_year", query: agg({ groupBy: [f.date], granularity: { [f.date]: "YEAR" }, measures: MAIN_PORTS.map(([key, name]) => measure("COUNT", null, `port_${key}`, { when: [{ fieldId: f.poa, operator: "EQ", value: name }] })), orderBy: [{ key: f.date, direction: "ASC" }], limit: 10 }) },
         { name: "monthly", query: agg({ groupBy: [f.date], granularity: { [f.date]: "MONTH_OF_YEAR" }, measures: yearMeasures(f, containers), orderBy: [{ key: f.date, direction: "ASC" }], limit: 12 }) },
-        { name: "regions", query: agg({ groupBy: [f.country], measures: [...yearMeasures(f, containers), measure("COUNT_DISTINCT", f.container, "total")], orderBy: [{ key: "total", direction: "DESC" }], limit: 10 }) },
+        { name: "regions", query: agg({ groupBy: [f.country], measures: [...yearMeasures(f, containers), measure("COUNT", null, "total")], orderBy: [{ key: "total", direction: "DESC" }], limit: 10 }) },
       ],
       items: ({ f, binding }) => [
         titleBar("Imports by Year - Only containers with origin country", l("Imports by Year - Only containers with origin country")),
@@ -168,8 +168,8 @@ export default {
       panel: { name: l("Consignees by Port - Year Comparison"), slug: "consignees-by-port", icon: "buildings", audienceType: "ALL_MEMBERS" },
       filters: [text("poa"), text("consignee"), when("date")],
       bindings: ({ f, containers }) => [
-        { name: "pivot", query: agg({ groupBy: [f.consignee], measures: [...yearMeasures(f, containers), measure("COUNT_DISTINCT", f.container, "total")], orderBy: [{ key: "total", direction: "DESC" }], limit: 200, includeTotal: true, searchFieldIds: [f.consignee] }) },
-        { name: "pivot_total", query: agg({ measures: [...yearMeasures(f, containers), measure("COUNT_DISTINCT", f.container, "total")] }) },
+        { name: "pivot", query: agg({ groupBy: [f.consignee], measures: [...yearMeasures(f, containers), measure("COUNT", null, "total")], orderBy: [{ key: "total", direction: "DESC" }], limit: 200, includeTotal: true, searchFieldIds: [f.consignee] }) },
+        { name: "pivot_total", query: agg({ measures: [...yearMeasures(f, containers), measure("COUNT", null, "total")] }) },
       ],
       items: ({ f, binding }) => [
         titleBar("Consignees by Port - Year Comparison", l("Consignees by Port - Year Comparison")),
@@ -244,7 +244,7 @@ export default {
 /** Containers of each year next to each other in the same row (conditional measures over the arrival date). */
 function yearMeasures(f, containers) {
   void containers;
-  return YEARS.map((year) => measure("COUNT_DISTINCT", f.container, `y${year}`, { when: [{ fieldId: f.date, operator: "GTE", value: `${year}-01-01` }, { fieldId: f.date, operator: "LTE", value: `${year}-12-31` }] }));
+  return YEARS.map((year) => measure("COUNT", null, `y${year}`, { when: [{ fieldId: f.date, operator: "GTE", value: `${year}-01-01` }, { fieldId: f.date, operator: "LTE", value: `${year}-12-31` }] }));
 }
 const yearLines = (title, dateKey) => ({ title: l(title), categoryKey: dateKey, categoryFormat: "monthOfYear", series: [2025, 2024, 2026].map((year) => ({ key: `y${year}`, label: l(String(year), String(year)), color: YEAR_COLORS[year] })), variant: "line", height: 240 });
 const donutProps = (title, categoryKey) => ({ title: l(title), categoryKey, valueKey: "containers", maxSlices: 5, totalKey: "containers", height: 240, variant: "donut", showTotal: true, centerLabel: l("Contenedores", "Containers"), legend: "right" });
@@ -260,7 +260,7 @@ function panel(spec) {
     panel: spec.panel,
     bindings: ({ fieldId }) => {
       const f = fieldsOf(fieldId);
-      const containers = measure("COUNT_DISTINCT", f.container, "containers");
+      const containers = measure("COUNT", null, "containers");
       const teus = measure("SUM", f.teusField, "teus", { distinctBy: f.bl });
       // The same allowlist on every binding keeps the filter bar, counts and every component consistent.
       const allowed = spec.filters.map((entry) => ({ fieldId: f[entry.key], operators: entry.operators }));
