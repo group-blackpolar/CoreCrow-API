@@ -106,7 +106,30 @@ export const northDatasetQuery = {
   },
 };
 
+/**
+ * Result cache. A revision is immutable, so (org, dataset, active revision, query) fully determines the result: a new import
+ * activates a new revision id and old entries are simply never hit again. Callers authorize BEFORE calling, so a hit leaks nothing.
+ * Concurrent identical queries share one execution. In-process only (ponytail: per-container; Redis if several API replicas matter).
+ */
+const CACHE_TTL_MS = 10 * 60_000;
+const CACHE_MAX_ENTRIES = 500;
+const CACHE_MAX_ROWS = 2_000;
+const resultCache = new Map<string, { at: number; value: Promise<unknown> }>();
+
 export async function executeDatasetQuery(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery) {
+  const active = await tx.northDataset.findFirst({ where: { id: datasetId, organizationId, status: "ACTIVE" }, select: { activeRevisionId: true } });
+  if (!active?.activeRevisionId) return executeDatasetQueryUncached(tx, organizationId, datasetId, query);
+  const key = `${organizationId}|${datasetId}|${active.activeRevisionId}|${JSON.stringify(query)}`;
+  const hit = resultCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as ReturnType<typeof executeDatasetQueryUncached>;
+  const value = executeDatasetQueryUncached(tx, organizationId, datasetId, query);
+  resultCache.set(key, { at: Date.now(), value });
+  if (resultCache.size > CACHE_MAX_ENTRIES) resultCache.delete(resultCache.keys().next().value!);
+  value.then((result) => { if ((result as { rows?: unknown[] }).rows!.length > CACHE_MAX_ROWS) resultCache.delete(key); }, () => resultCache.delete(key));
+  return value;
+}
+
+async function executeDatasetQueryUncached(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery) {
       const dataset = await tx.northDataset.findFirst({ where: { id: datasetId, organizationId, status: "ACTIVE" }, include: { activeRevision: { include: { schemaVersion: { include: { fields: true } } } } } });
       if (!dataset?.activeRevision) fail(409, "DATASET_REVISION_NOT_ACTIVE", "Dataset has no active revision");
       const revision = dataset.activeRevision;
