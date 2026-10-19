@@ -47,8 +47,7 @@ function filterValue(field: Field, value: Exclude<Scalar, null>): Prisma.Sql {
   return Prisma.sql`${value}::timestamptz`;
 }
 
-function filterSql(filter: Filter, field: Field) {
-  const expression = typed(field);
+function filterSql(filter: Filter, field: Field, expression: Prisma.Sql = typed(field)) {
   if (filter.operator === "IN") {
     if (!Array.isArray(filter.value)) fail(422, "DATASET_QUERY_FILTER_INVALID", "IN requires a list value");
     return Prisma.sql`${expression} IN (${Prisma.join(filter.value.map((item) => filterValue(field, item)))})`;
@@ -113,7 +112,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       const revision = dataset.activeRevision;
       const fields = new Map(revision.schemaVersion.fields.filter((field) => field.status === "ACTIVE").map((field) => [field.datasetFieldId, field]));
       const searchFields = query.search?.fieldIds ?? [];
-      const requested = query.mode === "ROWS" ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields] : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => [...(item.fieldId ? [item.fieldId] : []), ...(item.distinctBy ? [item.distinctBy] : [])]), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields];
+      const requested = query.mode === "ROWS" ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields] : [...(query.groupBy ?? []), ...query.measures.flatMap((item) => [...(item.fieldId ? [item.fieldId] : []), ...(item.distinctBy ? [item.distinctBy] : []), ...(item.when ?? []).map((condition) => condition.fieldId)]), ...(query.filters ?? []).map((item) => item.fieldId), ...searchFields];
       if (requested.some((id) => !fields.has(id))) fail(422, "DATASET_QUERY_FIELD_INVALID", "Query references a field outside the active schema");
       if (searchFields.some((id) => fields.get(id)!.canonicalType !== "TEXT")) fail(422, "DATASET_QUERY_SEARCH_INVALID", "Search is only available on text fields");
       const filters = (query.filters ?? []).map((item) => filterSql(item, fields.get(item.fieldId)!));
@@ -144,15 +143,23 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       // Aggregates read a handful of the 26 JSON keys, but a plain GROUP BY over the table drags every full row (~1.5 kB) through
       // the sort. The referenced fields are projected ONCE into a MATERIALIZED CTE (a few short columns per row) and everything
       // else runs on it: the same result, ~4x faster on the 193k-row SHARK dataset (measured, see docs/master-house-performance.md).
-      const used = [...new Set([...groups, ...query.measures.flatMap((measure) => [measure.fieldId, measure.distinctBy]).filter((id): id is string => Boolean(id))])];
+      const used = [...new Set([...groups, ...query.measures.flatMap((measure) => [measure.fieldId, measure.distinctBy, ...(measure.when ?? []).map((condition) => condition.fieldId)]).filter((id): id is string => Boolean(id))])];
       const column = (id: string) => Prisma.raw(`"c${used.indexOf(id)}"`);
       const bucketed = (id: string, source: Prisma.Sql) => {
         const field = fields.get(id)!;
         const unit = granularity[id];
         if (!unit) return source;
         if (field.canonicalType !== "DATE" && field.canonicalType !== "DATETIME") fail(422, "DATASET_QUERY_GRANULARITY_INVALID", "Granularity requires a date or datetime field");
-        const bucket = Prisma.sql`date_trunc(${({ DAY: "day", MONTH: "month", QUARTER: "quarter", YEAR: "year" } as const)[unit]}, ${source})`;
+        if (unit === "MONTH_OF_YEAR") return Prisma.sql`date_part('month', ${source})::int`;
+        const bucket = Prisma.sql`date_trunc(${({ DAY: "day", MONTH: "month", QUARTER: "quarter", YEAR: "year" } as const)[unit as "DAY"]}, ${source})`;
         return field.canonicalType === "DATE" ? Prisma.sql`${bucket}::date` : bucket;
+      };
+      // A conditional measure: SQL FILTER over the same projected columns, so the conditions use the field types of the schema.
+      // A conditional COUNT with no matching rows is NULL, not 0: a month or year without data is a gap in a chart and a dash in a pivot, not a real zero.
+      const withWhen = (aggregate: Prisma.Sql, measure: { when?: Filter[]; operation?: string }) => {
+        if (!measure.when?.length) return aggregate;
+        const filtered = Prisma.sql`${aggregate} FILTER (WHERE ${Prisma.join(measure.when.map((condition) => filterSql(condition, fields.get(condition.fieldId)!, column(condition.fieldId))), " AND ")})`;
+        return measure.operation === "COUNT" || measure.operation === "COUNT_DISTINCT" ? Prisma.sql`NULLIF(${filtered}, 0)` : filtered;
       };
       const rawGroupExpressions = groups.map((id) => bucketed(id, typed(fields.get(id)!)));
       const groupExpressions = groups.map((id) => bucketed(id, column(id)));
@@ -171,7 +178,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
       const selects: Prisma.Sql[] = groupExpressions.map((expression, index) => Prisma.sql`${expression} AS ${Prisma.raw(`"g${index}"`)}`);
       for (const [index, measure] of query.measures.entries()) {
         const alias = Prisma.raw(`"m${index}"`);
-        if (measure.operation === "COUNT" && !measure.fieldId) selects.push(Prisma.sql`COUNT(*) AS ${alias}`);
+        if (measure.operation === "COUNT" && !measure.fieldId) selects.push(Prisma.sql`${withWhen(Prisma.sql`COUNT(*)`, measure)} AS ${alias}`);
         else {
           if (!measure.fieldId) fail(422, "DATASET_QUERY_MEASURE_INVALID", "Measure requires a field");
           const field = fields.get(measure.fieldId)!;
@@ -179,7 +186,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
           if (["SUM", "AVG"].includes(measure.operation) && !["INTEGER", "DECIMAL"].includes(field.canonicalType)) fail(422, "DATASET_QUERY_MEASURE_INVALID", "SUM and AVG require numeric fields");
           if (["MIN", "MAX"].includes(measure.operation) && field.canonicalType === "BOOLEAN") fail(422, "DATASET_QUERY_MEASURE_INVALID", "MIN and MAX do not support boolean fields");
           const aggregate = measure.operation === "COUNT_DISTINCT" ? Prisma.sql`COUNT(DISTINCT ${expression})` : Prisma.sql`${Prisma.raw(measure.operation)}(${expression})`;
-          selects.push(Prisma.sql`${measure.distinctBy ? Prisma.sql`${aggregate} FILTER (WHERE ${Prisma.raw(`"__rn${index}"`)} = 1)` : aggregate} AS ${alias}`);
+          selects.push(Prisma.sql`${measure.distinctBy ? Prisma.sql`${aggregate} FILTER (WHERE ${Prisma.raw(`"__rn${index}"`)} = 1)` : withWhen(aggregate, measure)} AS ${alias}`);
         }
       }
       const limit = query.limit ?? 100;
@@ -206,7 +213,7 @@ export async function executeDatasetQuery(tx: Transaction, organizationId: strin
         ${ordering.length ? Prisma.sql`ORDER BY ${Prisma.join(ordering)}` : Prisma.empty}
         LIMIT ${limit} OFFSET ${offset}`));
       const columns: ResultColumn[] = [
-        ...groups.map((fieldId) => ({ key: fieldId, fieldId, type: fields.get(fieldId)!.canonicalType })),
+        ...groups.map((fieldId) => ({ key: fieldId, fieldId, type: granularity[fieldId] === "MONTH_OF_YEAR" ? "INTEGER" as const : fields.get(fieldId)!.canonicalType })),
         ...query.measures.map((measure) => ({
           key: measure.alias,
           ...(measure.fieldId ? { fieldId: measure.fieldId } : {}),

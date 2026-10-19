@@ -20,3 +20,13 @@ test("report_cards and the centered hero validate; unsafe cards are refused", as
     { items: Array.from({ length: 13 }, (_, i) => card({ id: `c${i}` })) },
   ]) await assert.rejects(check([report(bad)]), undefined, JSON.stringify(bad).slice(0, 60));
 });
+
+test("title_bar, grid totals/zeroDash and monthOfYear charts validate; unknown props are refused", async () => {
+  const bar = { id: "t", type: "title_bar", schemaVersion: 1, order: 0, bindings: {}, layout, props: { text: { es: "Imports by Port" }, align: "left" } };
+  const grid = { id: "g", type: "data_grid", schemaVersion: 1, order: 1, bindings: {}, layout, props: { columns: [{ key: "a", label: { es: "A" }, kind: "text" }, { key: "y2024", label: { es: "2024" }, kind: "number", zeroDash: true }], totals: { binding: "totals", label: { es: "Total general" } } } };
+  const line = { id: "l", type: "line_chart", schemaVersion: 1, order: 2, bindings: {}, layout, props: { categoryKey: "m", categoryFormat: "monthOfYear", series: [{ key: "y2024", label: { es: "2024" }, color: "#84CC16" }] } };
+  await check([bar, grid, line]);
+  await assert.rejects(check([{ ...bar, props: { text: { es: "x" }, extra: 1 } }]));
+  await assert.rejects(check([{ ...grid, props: { ...grid.props, totals: { binding: "bad binding" } } }]));
+  await assert.rejects(check([{ ...line, props: { ...line.props, categoryFormat: "weekOfYear" } }]));
+});

@@ -13,7 +13,8 @@ export const datasetQueryFilter = z.object({
   if ((filter.operator === "IN") !== Array.isArray(filter.value))
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "IN requires a list value and every other operator a single value" });
 });
-export const datasetDateGranularity = z.enum(["DAY", "MONTH", "QUARTER", "YEAR"]);
+// MONTH_OF_YEAR groups by the calendar month number (1-12) across years, so one series per year can be compared month by month.
+export const datasetDateGranularity = z.enum(["DAY", "MONTH", "QUARTER", "YEAR", "MONTH_OF_YEAR"]);
 // Case-insensitive text search across a fixed, bounded set of TEXT fields (OR). Declared by the binding author, never by the reader.
 export const datasetQuerySearch = z.object({ fieldIds: z.array(queryFieldId).min(1).max(5), text: z.string().trim().min(1).max(200) }).strict();
 export const datasetQuerySchema = z.discriminatedUnion("mode", [
@@ -30,7 +31,9 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
     granularity: z.record(queryFieldId, datasetDateGranularity).optional(),
     // `distinctBy` (SUM only): sum the field once per distinct key inside each group. Needed when the value belongs to a parent
     // record repeated on every child row (e.g. a Master BL's TEUs repeated for each of its containers).
-    measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: queryFieldId.optional(), distinctBy: queryFieldId.optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(8),
+    // `when`: a conditional measure (SQL FILTER): only rows meeting every condition count, e.g. containers of one year next to the other years in
+    // the same row. It narrows that measure only; the query filters still apply to all of them. Not combinable with `distinctBy`.
+    measures: z.array(z.object({ operation: z.enum(["COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"]), fieldId: queryFieldId.optional(), distinctBy: queryFieldId.optional(), when: z.array(datasetQueryFilter).min(1).max(3).optional(), alias: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/) }).strict()).min(1).max(16),
     filters: z.array(datasetQueryFilter).max(10).optional(),
     orderBy: z.array(z.object({ key: queryFieldId, direction: z.enum(["ASC", "DESC"]) }).strict()).max(3).optional(),
     limit: z.number().int().min(1).max(1_000).optional(), offset: z.number().int().min(0).max(100_000).optional(),
@@ -56,6 +59,8 @@ export const datasetQuerySchema = z.discriminatedUnion("mode", [
   value.measures.forEach((measure, index) => {
     if (measure.distinctBy && (measure.operation !== "SUM" || !measure.fieldId))
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["measures", index, "distinctBy"], message: "distinctBy is only valid on a SUM over a field" });
+    if (measure.distinctBy && measure.when)
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["measures", index, "when"], message: "A conditional measure cannot also use distinctBy" });
   });
   const outputKeys = new Set([...groups, ...aliases]);
   const orderKeys = (value.orderBy ?? []).map((item) => item.key);
