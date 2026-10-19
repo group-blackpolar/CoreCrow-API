@@ -1,4 +1,4 @@
-// In-process transport for scripts/provision-view.mjs: the same eleven operations the provisioner performs over HTTP, executed through the
+// In-process transport for scripts/provision-view.mjs: the same operations the provisioner performs over HTTP, executed through the
 // SAME application services the routes call, as one named ACTOR (a real account that must be a member of the organization; every
 // authorization rule, audit entry and validation applies to that actor exactly as for an HTTP request).
 //
@@ -38,6 +38,10 @@ export async function servicesTransport({ dist, actorEmail }) {
       if (method === "GET" && path === "/organizations") return ok(await tenants.list(user));
       if ((match = /^\/organizations\/([^/]+)\/datasets$/.exec(path)) && method === "GET") return ok(await northData.list(user, match[1]));
       if ((match = /^\/organizations\/([^/]+)\/datasets\/([^/]+)\/fields$/.exec(path)) && method === "GET") return ok(await northData.fields(user, match[1], match[2]));
+      // Taxonomy creation (a definition may bring its own category, subcategories and panels): the same service calls the routes make.
+      if (method === "POST" && (match = /^\/organizations\/([^/]+)\/categories$/.exec(path))) return ok(await northTaxonomy.createCategory(user, match[1], body));
+      if (method === "POST" && (match = /^\/organizations\/([^/]+)\/categories\/([^/]+)\/subcategories$/.exec(path))) return ok(await northTaxonomy.createSubcategory(user, match[1], match[2], body));
+      if (method === "POST" && (match = /^\/organizations\/([^/]+)\/subcategories\/([^/]+)\/panels$/.exec(path))) return ok(await northTaxonomy.createPanel(user, match[1], match[2], body));
       if (method === "PATCH" && (match = /^\/organizations\/([^/]+)\/categories\/([^/]+)$/.exec(path))) return ok(await northTaxonomy.updateCategory(user, match[1], match[2], body));
       if (method === "PATCH" && (match = /^\/organizations\/([^/]+)\/subcategories\/([^/]+)$/.exec(path))) return ok(await northTaxonomy.updateSubcategory(user, match[1], match[2], body));
       if (method === "PATCH" && (match = /^\/organizations\/([^/]+)\/panels\/([^/]+)$/.exec(path))) return ok(await northTaxonomy.updatePanel(user, match[1], match[2], body));
