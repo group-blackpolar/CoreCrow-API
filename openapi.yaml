@@ -31285,6 +31285,146 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/organizations/{organizationId}/report-access:
+    get:
+      summary: Access state (ALLOWED, RESTRICTED, NOT_CONFIGURED) of up to 20 report
+        categories for the caller, in one server-authorized request
+      tags:
+        - NORTH taxonomy
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,63}(,[a-z0-9][a-z0-9-]{0,63}){0,19}$
+          in: query
+          name: categories
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    slug:
+                      type: string
+                    state:
+                      type: string
+                      enum:
+                        - ALLOWED
+                        - RESTRICTED
+                        - NOT_CONFIGURED
+                    target:
+                      type: object
+                      properties:
+                        categoryId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        categorySlug:
+                          type: string
+                        subcategoryId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        subcategorySlug:
+                          type: string
+                        panelSlug:
+                          type: string
+                      required:
+                        - categoryId
+                        - categorySlug
+                        - subcategoryId
+                        - subcategorySlug
+                        - panelSlug
+                      additionalProperties: false
+                      nullable: true
+                  required:
+                    - slug
+                    - state
+                    - target
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/navigation:
     get:
       summary: Read compact server-authorized organization navigation

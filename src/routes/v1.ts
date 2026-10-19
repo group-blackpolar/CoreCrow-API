@@ -1761,6 +1761,17 @@ export async function v1Routes(app: FastifyInstance) {
     })),
   }));
   contract(app, {
+    method: "GET", url: "/organizations/:organizationId/report-access", tag: "NORTH taxonomy",
+    summary: "Access state (ALLOWED, RESTRICTED, NOT_CONFIGURED) of up to 20 report categories for the caller, in one server-authorized request",
+    params: s.orgParams,
+    query: z.object({ categories: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}(,[a-z0-9][a-z0-9-]{0,63}){0,19}$/) }).strict(),
+    response: z.array(z.object({
+      slug: z.string(), state: z.enum(["ALLOWED", "RESTRICTED", "NOT_CONFIGURED"]),
+      target: z.object({ categoryId: s.id, categorySlug: z.string(), subcategoryId: s.id, subcategorySlug: z.string(), panelSlug: z.string() }).nullable(),
+    })),
+    run: ({ user, params, query }) => northTaxonomy.reportAccess(user.id, params.organizationId, [...new Set(query.categories.split(","))]),
+  });
+  contract(app, {
     method: "GET", url: "/organizations/:organizationId/navigation", tag: "NORTH taxonomy",
     summary: "Read compact server-authorized organization navigation", params: s.orgParams, response: navigation,
     run: ({ user, params }) => northTaxonomy.navigation(user.id, params.organizationId),
