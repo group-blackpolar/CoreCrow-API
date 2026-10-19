@@ -29,14 +29,14 @@ type Bound = { default: number; ceiling: number };
 
 /** Defaults are what a deployment gets with no configuration; ceilings can never be raised by the environment. */
 const bounds: Record<keyof DatasetImportLimits, Bound> = {
-  maximumCompressedBytes: { default: 50 * MIB, ceiling: 200 * MIB },
+  maximumCompressedBytes: { default: 100 * MIB, ceiling: 256 * MIB },
   maximumEntries: { default: 2_048, ceiling: 8_192 },
-  maximumEntryBytes: { default: 512 * MIB, ceiling: 2_048 * MIB },
-  maximumUncompressedBytes: { default: 768 * MIB, ceiling: 4_096 * MIB },
+  maximumEntryBytes: { default: 1_024 * MIB, ceiling: 2_048 * MIB },
+  maximumUncompressedBytes: { default: 1_536 * MIB, ceiling: 4_096 * MIB },
   maximumCompressionRatio: { default: 100, ceiling: 200 },
-  maximumRows: { default: 500_000, ceiling: 1_048_576 },
+  maximumRows: { default: 1_000_000, ceiling: 1_048_576 },
   maximumColumns: { default: 150, ceiling: 1_024 },
-  maximumCells: { default: 20_000_000, ceiling: 100_000_000 },
+  maximumCells: { default: 40_000_000, ceiling: 100_000_000 },
   maximumSheets: { default: 32, ceiling: 128 },
   maximumCellTextBytes: { default: 16 * 1024, ceiling: 64 * 1024 },
   sharedStringsMemoryBytes: { default: 32 * MIB, ceiling: 256 * MIB },

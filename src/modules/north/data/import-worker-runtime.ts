@@ -1,3 +1,4 @@
+import { IMPORT_MAX_BYTES_CEILING, IMPORT_MAX_BYTES_DEFAULT } from "./import-config.js";
 import { hostname } from "node:os";
 import { NorthDatasetImportWorker, type DatasetImportWorkerConfiguration } from "./import-worker.js";
 import { SecureXlsxArchiveValidator } from "./import-archive-validator.js";
@@ -11,7 +12,6 @@ import type { DatasetImportArchiveValidator } from "./import-archive-validator.j
 import { NorthDatasetImportMaterializationWorker } from "./import-materialization-worker.js";
 import { StreamingDatasetImportMaterializer, type DatasetImportMaterializer } from "./import-materialization-parser.js";
 
-const MEBIBYTE = 1024 * 1024;
 
 export type DatasetImportWorkerRuntimeConfiguration = {
   workerId: string;
@@ -125,9 +125,9 @@ export function datasetImportWorkerRuntimeConfiguration(
       maximumBytes: integer(
         environment,
         "NORTH_DATA_IMPORT_MAX_BYTES",
-        50 * MEBIBYTE,
+        IMPORT_MAX_BYTES_DEFAULT,
         1,
-        50 * MEBIBYTE,
+        IMPORT_MAX_BYTES_CEILING,
       ),
     },
   };

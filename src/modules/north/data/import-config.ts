@@ -1,3 +1,7 @@
+/** Hard ceiling for one XLSX upload; aligned with ClamAV StreamMaxLength (256M) and the nginx storage location. */
+export const IMPORT_MAX_BYTES_CEILING = 256 * 1024 * 1024;
+export const IMPORT_MAX_BYTES_DEFAULT = 100 * 1024 * 1024;
+
 export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 export type DatasetImportConfiguration = {
@@ -12,7 +16,7 @@ function positiveInteger(value: string | undefined, fallback: number) {
 
 export function datasetImportConfiguration(): DatasetImportConfiguration {
   return {
-    maximumBytes: positiveInteger(process.env.NORTH_DATA_IMPORT_MAX_BYTES, 100 * 1024 * 1024),
+    maximumBytes: Math.min(positiveInteger(process.env.NORTH_DATA_IMPORT_MAX_BYTES, IMPORT_MAX_BYTES_DEFAULT), IMPORT_MAX_BYTES_CEILING),
     uploadUrlTtlSeconds: positiveInteger(process.env.NORTH_DATA_IMPORT_UPLOAD_TTL_SECONDS, 15 * 60),
   };
 }

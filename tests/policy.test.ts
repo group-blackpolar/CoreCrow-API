@@ -137,7 +137,7 @@ test("dataset import worker validates every external dependency before polling",
     NORTH_DATA_IMPORT_CLAMAV_PORT: "3310",
   };
   const configuration = datasetImportWorkerRuntimeConfiguration(valid);
-  assert.equal(configuration.worker.maximumBytes, 50 * 1024 * 1024);
+  assert.equal(configuration.worker.maximumBytes, 100 * 1024 * 1024);
   assert.ok(configuration.worker.heartbeatMilliseconds < configuration.worker.leaseMilliseconds);
   await assert.rejects(
     createDatasetImportWorkerRuntime(configuration, { storage: new FakeObjectStorage(false) }),
@@ -165,9 +165,9 @@ test("dataset import worker validates every external dependency before polling",
   assert.throws(
     () => datasetImportWorkerRuntimeConfiguration({
       ...valid,
-      NORTH_DATA_IMPORT_MAX_BYTES: String(50 * 1024 * 1024 + 1),
+      NORTH_DATA_IMPORT_MAX_BYTES: String(256 * 1024 * 1024 + 1),
     }),
-    /NORTH_DATA_IMPORT_MAX_BYTES must be an integer between 1 and 52428800/,
+    /NORTH_DATA_IMPORT_MAX_BYTES must be an integer between 1 and 268435456/,
   );
 });
 
@@ -643,4 +643,15 @@ test("telemetry exposes only real sanitized aggregates", () => {
   assert.match(page, /data-latency="79"/);
   assert.doesNotMatch(page, /traffic-area/);
   assert.doesNotMatch(page, /Historial de tráfico/);
+});
+
+test("a 90 MB workbook is accepted under default limits; the hard ceiling still holds", async () => {
+  const { validateDatasetImportDeclaration } = await import("../src/modules/north/data/import-policy.js");
+  const { datasetImportConfiguration, XLSX_MIME } = await import("../src/modules/north/data/import-config.js");
+  const checksum = "a".repeat(64);
+  const declare = (size: number) => () => validateDatasetImportDeclaration({ filename: "local-import.xlsx", mime: XLSX_MIME, size, checksum }, datasetImportConfiguration());
+  assert.doesNotThrow(declare(90 * 1024 * 1024));
+  assert.throws(declare(101 * 1024 * 1024), /outside the configured limit/);
+  process.env.NORTH_DATA_IMPORT_MAX_BYTES = String(10 * 1024 * 1024 * 1024);
+  try { assert.equal(datasetImportConfiguration().maximumBytes, 256 * 1024 * 1024); } finally { delete process.env.NORTH_DATA_IMPORT_MAX_BYTES; }
 });

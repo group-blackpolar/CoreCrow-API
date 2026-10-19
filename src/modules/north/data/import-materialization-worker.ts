@@ -6,6 +6,7 @@ import { auditRepository } from "../../audit/repository.js";
 import type { DatasetImportMappingColumn } from "./import-analysis-types.js";
 import type { DatasetImportMaterializer, MaterializationColumn } from "./import-materialization-parser.js";
 import { datasetImportLimits } from "./import-limits.js";
+import { assertAppendAllowed } from "./import-append-policy.js";
 
 type Claimed = {
   id: string; organizationId: string; datasetId: string; storageKey: string; storageVersionId: string;
@@ -105,6 +106,12 @@ export class NorthDatasetImportMaterializationWorker {
     return transaction(async (tx) => {
       const current = await tx.northDatasetImportJob.findFirst({ where: this.where(job) });
       if (!current || current.cancellationRequestedAt) return false;
+      const append = current.activationMode === "APPEND";
+      // Re-checked inside the transaction: the request-time check cannot see a concurrent append.
+      const nextPeriod = append ? await assertAppendAllowed(tx, { organizationId: job.organizationId, datasetId: job.datasetId, importId: job.id, checksum: current.declaredChecksum, periodStart: current.periodStart, periodEnd: current.periodEnd }) : null;
+      const previous = append ? await tx.northDataset.findFirstOrThrow({ where: { id: job.datasetId, organizationId: job.organizationId }, select: { activeRevisionId: true } }) : null;
+      if (append && plan.created.some((field) => field.nullable === false) && previous?.activeRevisionId)
+        throw new DomainError(422, "IMPORT_APPEND_FIELD_NOT_NULLABLE", "New columns must be nullable because earlier periods do not have them");
       if (await tx.northDatasetImportBatch.findUnique({ where: { importId: job.id } })) throw new DomainError(409, "IMPORT_ALREADY_MATERIALIZED", "Import already has an immutable batch");
       for (const field of plan.created) await tx.northDatasetField.create({ data: { id: field.fieldId, organizationId: job.organizationId, datasetId: job.datasetId, key: field.key, displayName: field.displayName, canonicalType: field.canonicalType, nullable: field.nullable ?? true } });
       const activeFields = [...plan.activeFields, ...plan.created.map((field) => ({ id: field.fieldId, canonicalType: field.canonicalType, semanticType: null, nullable: field.nullable ?? true, status: "ACTIVE" as const }))];
@@ -134,14 +141,18 @@ export class NorthDatasetImportMaterializationWorker {
       if (parsed.rowCount !== ordinal || rowCount !== ordinal) throw new DomainError(503, "IMPORT_MATERIALIZER_UNAVAILABLE", "Workbook materializer is unavailable");
       const nextRevision = (await tx.northDatasetRevision.aggregate({ where: { organizationId: job.organizationId, datasetId: job.datasetId }, _max: { version: true } }))._max.version ?? 0;
       const revisionId = randomUUID();
-      await tx.northDatasetRevision.create({ data: { id: revisionId, organizationId: job.organizationId, datasetId: job.datasetId, schemaVersionId: schema.id, version: nextRevision + 1, mode: "REPLACE_DATASET", rowCount: ordinal, createdBy: job.activationRequestedBy } });
-      await tx.northDatasetRevisionBatch.create({ data: { organizationId: job.organizationId, datasetId: job.datasetId, revisionId, batchId, ordinal: 0 } });
-      const published = await tx.northDataset.updateMany({ where: { id: job.datasetId, organizationId: job.organizationId }, data: { currentSchemaVersionId: schema.id, activeRevisionId: revisionId } });
+      const baseRows = previous?.activeRevisionId ? (await tx.northDatasetRevision.findFirstOrThrow({ where: { id: previous.activeRevisionId }, select: { rowCount: true } })).rowCount : 0;
+      await tx.northDatasetRevision.create({ data: { id: revisionId, organizationId: job.organizationId, datasetId: job.datasetId, schemaVersionId: schema.id, version: nextRevision + 1, mode: append ? "APPEND" : "REPLACE_DATASET", rowCount: baseRows + ordinal, createdBy: job.activationRequestedBy } });
+      // APPEND keeps every earlier batch of the active revision (same order) and adds the new one last; nothing is rewritten.
+      const kept = previous?.activeRevisionId ? await tx.northDatasetRevisionBatch.findMany({ where: { revisionId: previous.activeRevisionId, organizationId: job.organizationId, datasetId: job.datasetId }, orderBy: { ordinal: "asc" } }) : [];
+      if (kept.length) await tx.northDatasetRevisionBatch.createMany({ data: kept.map((entry) => ({ organizationId: job.organizationId, datasetId: job.datasetId, revisionId, batchId: entry.batchId, ordinal: entry.ordinal })) });
+      await tx.northDatasetRevisionBatch.create({ data: { organizationId: job.organizationId, datasetId: job.datasetId, revisionId, batchId, ordinal: kept.length } });
+      const published = await tx.northDataset.updateMany({ where: { id: job.datasetId, organizationId: job.organizationId }, data: { currentSchemaVersionId: schema.id, activeRevisionId: revisionId, ...(nextPeriod ?? {}) } });
       if (published.count !== 1) throw new LeaseLostError();
       const completedAt = this.now();
       const completed = await tx.northDatasetImportJob.updateMany({ where: this.where(job, completedAt), data: { status: "SUCCEEDED", progress: 100, completedAt, claimedAt: null, claimExpiresAt: null, claimedBy: null, claimToken: null } });
       if (completed.count !== 1) throw new LeaseLostError();
-      await auditRepository.append(tx, { actorId: job.activationRequestedBy, organizationId: job.organizationId, action: "NORTH_DATASET_REVISION_ACTIVATED", targetType: "NorthDatasetRevision", targetId: revisionId, metadata: { datasetId: job.datasetId, importId: job.id, batchId, mode: "REPLACE_DATASET", rowCount: ordinal, duplicates: plan.duplicates, skippedDuplicates } });
+      await auditRepository.append(tx, { actorId: job.activationRequestedBy, organizationId: job.organizationId, action: "NORTH_DATASET_REVISION_ACTIVATED", targetType: "NorthDatasetRevision", targetId: revisionId, metadata: { datasetId: job.datasetId, importId: job.id, batchId, mode: append ? "APPEND" : "REPLACE_DATASET", rowCount: ordinal, duplicates: plan.duplicates, skippedDuplicates } });
       return true;
     }, { retries: 0, isolationLevel: "ReadCommitted", timeoutMilliseconds: this.configuration.transactionTimeoutMilliseconds ?? datasetImportLimits().materializationTimeoutMilliseconds + 120_000 });
   }

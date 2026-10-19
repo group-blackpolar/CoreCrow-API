@@ -43,8 +43,10 @@ boolean `NORTH_DATA_IMPORT_S3_FORCE_PATH_STYLE`. Optional operational tuning:
 - `NORTH_DATA_IMPORT_WORKER_LEASE_MS` (default 60000)
 - `NORTH_DATA_IMPORT_WORKER_HEARTBEAT_MS` (default 15000 and must be below the lease)
 - `NORTH_DATA_IMPORT_WORKER_RETRY_DELAY_MS` (default 60000)
-- `NORTH_DATA_IMPORT_MAX_BYTES` (default and maximum 52428800, matching the
-  compressed OOXML security limit)
+- `NORTH_DATA_IMPORT_MAX_BYTES` (default 104857600, maximum 268435456 = 256 MiB, the
+  ClamAV `StreamMaxLength`). Keep it equal to the API value; the compressed OOXML limit
+  (`NORTH_DATA_IMPORT_MAX_COMPRESSED_BYTES`, default 100 MiB, ceiling 256 MiB) and the nginx
+  `corecrow-dataset-imports` `client_max_body_size` must be at least as large
 
 Configuration is validated before the polling loop begins. Missing or invalid
 database, storage or scanner configuration, or a bucket whose versioning status

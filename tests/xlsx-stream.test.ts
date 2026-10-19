@@ -100,9 +100,9 @@ test("configurable limits are enforced for rows, columns, cells, cell text, entr
 test("environment overrides are clamped to hard ceilings and never unlimited", () => {
   const huge = datasetImportLimits({ NORTH_DATA_IMPORT_MAX_ROWS: "999999999999", NORTH_DATA_IMPORT_MAX_ENTRY_BYTES: "Infinity", NORTH_DATA_IMPORT_MAX_CELLS: "0", NORTH_DATA_IMPORT_MAX_COMPRESSED_BYTES: "-5" });
   assert.equal(huge.maximumRows, 1_048_576);
-  assert.equal(huge.maximumEntryBytes, 512 * 1024 * 1024);
-  assert.equal(huge.maximumCells, 20_000_000);
-  assert.equal(huge.maximumCompressedBytes, 50 * 1024 * 1024);
+  assert.equal(huge.maximumEntryBytes, 1024 * 1024 * 1024);
+  assert.equal(huge.maximumCells, 40_000_000);
+  assert.equal(huge.maximumCompressedBytes, 100 * 1024 * 1024);
   assert.equal(datasetImportLimits({ NORTH_DATA_IMPORT_MAX_ROWS: "1000" }).maximumRows, 1000);
 });
 

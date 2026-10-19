@@ -1,5 +1,10 @@
 import { Readable } from "node:stream";
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  ListPartsCommand,
+  UploadPartCommand,
   DeleteObjectCommand,
   GetBucketVersioningCommand,
   GetObjectCommand,
@@ -34,6 +39,12 @@ export interface ObjectStorage {
   openPrivateRead(key: string, versionId?: string): Promise<Readable>;
   assertImmutableVersioning(): Promise<void>;
   delete(key: string): Promise<void>;
+  /** Resumable upload: the client PUTs each part to its own signed URL; the server lists and verifies parts before completing. */
+  createMultipart(input: { key: string; mime: string }): Promise<{ uploadId: string }>;
+  signedPart(input: { key: string; uploadId: string; partNumber: number; size: number; ttlSeconds: number }): Promise<SignedObjectRequest>;
+  listParts(input: { key: string; uploadId: string }): Promise<Array<{ partNumber: number; size: number; etag: string }>>;
+  completeMultipart(input: { key: string; uploadId: string; parts: Array<{ partNumber: number; etag: string }> }): Promise<void>;
+  abortMultipart(input: { key: string; uploadId: string }): Promise<void>;
 }
 
 export type S3ObjectStorageConfiguration = {
@@ -165,6 +176,41 @@ export class S3ObjectStorage implements ObjectStorage {
     );
   }
 
+  async createMultipart(input: { key: string; mime: string }) {
+    const created = await this.client.send(new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: input.key, ContentType: input.mime }));
+    if (!created.UploadId) throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Multipart upload could not be started");
+    return { uploadId: created.UploadId };
+  }
+
+  async signedPart(input: { key: string; uploadId: string; partNumber: number; size: number; ttlSeconds: number }) {
+    const command = new UploadPartCommand({ Bucket: this.bucket, Key: input.key, UploadId: input.uploadId, PartNumber: input.partNumber, ContentLength: input.size });
+    return {
+      url: await getSignedUrl(this.signer, command, { expiresIn: input.ttlSeconds }),
+      method: "PUT" as const,
+      headers: { "content-length": String(input.size) },
+      expiresAt: expiresAt(input.ttlSeconds),
+    };
+  }
+
+  async listParts(input: { key: string; uploadId: string }) {
+    const parts: Array<{ partNumber: number; size: number; etag: string }> = [];
+    let marker: string | undefined;
+    do {
+      const page = await this.client.send(new ListPartsCommand({ Bucket: this.bucket, Key: input.key, UploadId: input.uploadId, PartNumberMarker: marker }));
+      for (const part of page.Parts ?? []) if (part.PartNumber && part.ETag !== undefined && part.Size !== undefined) parts.push({ partNumber: part.PartNumber, size: part.Size, etag: part.ETag });
+      marker = page.IsTruncated ? String(page.NextPartNumberMarker) : undefined;
+    } while (marker);
+    return parts;
+  }
+
+  async completeMultipart(input: { key: string; uploadId: string; parts: Array<{ partNumber: number; etag: string }> }) {
+    await this.client.send(new CompleteMultipartUploadCommand({ Bucket: this.bucket, Key: input.key, UploadId: input.uploadId, MultipartUpload: { Parts: input.parts.map((part) => ({ PartNumber: part.partNumber, ETag: part.etag })) } }));
+  }
+
+  async abortMultipart(input: { key: string; uploadId: string }) {
+    await this.client.send(new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: input.key, UploadId: input.uploadId }));
+  }
+
   async delete(key: string) {
     if (!this.purgeVersions) {
       await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
@@ -194,6 +240,11 @@ export class UnavailableObjectStorage implements ObjectStorage {
   openPrivateRead(): Promise<Readable> { return Promise.reject(this.unavailable()); }
   assertImmutableVersioning(): Promise<void> { return Promise.reject(this.unavailable()); }
   delete(): Promise<void> { return Promise.reject(this.unavailable()); }
+  createMultipart(): Promise<{ uploadId: string }> { return Promise.reject(this.unavailable()); }
+  signedPart(): Promise<SignedObjectRequest> { return Promise.reject(this.unavailable()); }
+  listParts(): Promise<Array<{ partNumber: number; size: number; etag: string }>> { return Promise.reject(this.unavailable()); }
+  completeMultipart(): Promise<void> { return Promise.reject(this.unavailable()); }
+  abortMultipart(): Promise<void> { return Promise.reject(this.unavailable()); }
 }
 
 export function createS3ObjectStorage(configuration: S3ObjectStorageConfiguration): ObjectStorage {
@@ -255,6 +306,31 @@ export class FakeObjectStorage implements ObjectStorage {
         "Dataset import storage must have object versioning enabled",
       );
   }
+  readonly uploads = new Map<string, { key: string; mime: string; parts: Map<number, Uint8Array> }>();
+  private nextUpload = 1;
+  async createMultipart(input: { key: string; mime: string }) {
+    const uploadId = `fake-upload-${this.nextUpload++}`;
+    this.uploads.set(uploadId, { key: input.key, mime: input.mime, parts: new Map() });
+    return { uploadId };
+  }
+  async signedPart(input: { key: string; uploadId: string; partNumber: number; ttlSeconds: number }) {
+    return { url: `https://storage.invalid/upload/${encodeURIComponent(input.key)}?uploadId=${input.uploadId}&partNumber=${input.partNumber}`, method: "PUT" as const, headers: {}, expiresAt: expiresAt(input.ttlSeconds) };
+  }
+  /** Test helper standing in for the browser's PUT of one part. */
+  putPart(uploadId: string, partNumber: number, bytes: Uint8Array) { this.uploads.get(uploadId)!.parts.set(partNumber, bytes); }
+  async listParts(input: { uploadId: string }) {
+    const upload = this.uploads.get(input.uploadId);
+    if (!upload) throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Upload is unavailable");
+    return [...upload.parts.entries()].sort(([a], [b]) => a - b).map(([partNumber, bytes]) => ({ partNumber, size: bytes.byteLength, etag: `etag-${partNumber}` }));
+  }
+  async completeMultipart(input: { uploadId: string; parts: Array<{ partNumber: number }> }) {
+    const upload = this.uploads.get(input.uploadId);
+    if (!upload) throw new DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "Upload is unavailable");
+    const bytes = Buffer.concat(input.parts.map((part) => upload.parts.get(part.partNumber)!));
+    this.put(upload.key, { bytes, mime: upload.mime, checksum: "" });
+    this.uploads.delete(input.uploadId);
+  }
+  async abortMultipart(input: { uploadId: string }) { this.uploads.delete(input.uploadId); }
   async delete(key: string) {
     if (this.failDelete) throw new DomainError(503, "OBJECT_DELETE_PENDING", "Object is inaccessible but physical deletion is pending");
     this.objects.delete(key);

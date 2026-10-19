@@ -426,6 +426,41 @@ export const northTaxonomy = {
       } return result;
     });
   },
+  /**
+   * Access summary for a set of report categories, for a landing screen that must show every report but open only the allowed ones.
+   * One request instead of one per card, with exactly the visibility rules of `navigation`/`resolve` (capability + panel audience).
+   * It reveals only that a report exists and whether the caller may open it: no names, counts or data of a restricted report.
+   * ALLOWED carries the first panel the caller can open; RESTRICTED = configured but nothing the caller may open;
+   * NOT_CONFIGURED = no published report under that category.
+   */
+  reportAccess(userId: string, organizationId: string, slugs: string[]) {
+    return transaction(async (tx) => {
+      const inspecting = isInspecting(userId, organizationId);
+      const membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
+      if (!membership && !inspecting) fail(404, "NOT_FOUND", "Organization not found");
+      const categories = await tx.northCategory.findMany({
+        where: { organizationId, slug: { in: slugs }, status: "ACTIVE", navigationHidden: false },
+        include: { subcategories: { where: { status: "ACTIVE", navigationHidden: false }, orderBy: [{ order: "asc" }, { id: "asc" }], include: { panels: { where: { status: "PUBLISHED", navigationHidden: false }, orderBy: [{ order: "asc" }, { id: "asc" }], include: { audienceRoles: true, audienceGroups: true, audiencePermissions: true, audienceMemberships: true } } } } },
+      });
+      const bySlug = new Map(categories.map((category) => [category.slug, category]));
+      const result = [];
+      for (const slug of slugs) {
+        const category = bySlug.get(slug);
+        const configured = category?.subcategories.some((subcategory) => subcategory.panels.length > 0) ?? false;
+        if (!category || !configured) { result.push({ slug, state: "NOT_CONFIGURED" as const, target: null }); continue; }
+        let target: { categoryId: string; categorySlug: string; subcategoryId: string; subcategorySlug: string; panelSlug: string } | null = null;
+        for (const subcategory of category.subcategories) {
+          for (const panel of subcategory.panels) {
+            const scope = { organizationId, scope: "PANEL" as const, categoryId: category.id, subcategoryId: subcategory.id, panelId: panel.id };
+            if (await hasNorthCapability(tx, userId, "north.panel.read", scope) && (inspecting && !membership || await audienceAllows(tx, userId, panel))) { target = { categoryId: category.id, categorySlug: category.slug, subcategoryId: subcategory.id, subcategorySlug: subcategory.slug, panelSlug: panel.slug }; break; }
+          }
+          if (target) break;
+        }
+        result.push(target ? { slug, state: "ALLOWED" as const, target } : { slug, state: "RESTRICTED" as const, target: null });
+      }
+      return result;
+    });
+  },
   resolve(userId: string, slugs: { organizationSlug: string; categorySlug: string; subcategorySlug: string; panelSlug: string; locale?: string }) {
     return transaction(async (tx) => {
       const organization = await tx.organization.findFirst({ where: { slug: slugs.organizationSlug, status: "ACTIVE" } }); if (!organization) fail(404, "NOT_FOUND", "Content not found");

@@ -13,6 +13,8 @@ import { northDatasetImportRepository as repo } from "./import-repository.js";
 import { datasetImportStorageFromEnvironment } from "./import-storage.js";
 
 const IDEMPOTENCY_OPERATION = "DATASET_IMPORT_PREPARE";
+/** Part size of resumable uploads (S3 minimum is 5 MiB except for the last part). */
+export const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 type ImportJob = NonNullable<Awaited<ReturnType<typeof repo.find>>>;
 type AuditAppender = typeof auditRepository.append;
 
@@ -194,7 +196,8 @@ export class NorthDatasetImportService {
           "IMPORT_STORAGE_IMMUTABILITY_UNAVAILABLE",
           "Dataset import storage did not provide an immutable object version",
         );
-      validateUploadedDatasetImport(job, inspected);
+      // A multipart object has no whole-file SHA-256 in its metadata; the worker re-hashes the stored bytes and rejects a mismatch.
+      validateUploadedDatasetImport(job, job.multipartUploadId ? { ...inspected, checksum: job.declaredChecksum } : inspected);
       storageVersionId = inspected.versionId;
       storageEtag = inspected.etag;
     } catch (error) {
@@ -256,7 +259,64 @@ export class NorthDatasetImportService {
     });
   }
 
-  cancel(userId: string, organizationId: string, datasetId: string, importId: string) {
+  private layout(job: ImportJob) {
+    const size = Number(job.declaredSize);
+    const partSize = job.multipartPartSize ?? MULTIPART_PART_BYTES;
+    const partCount = Math.ceil(size / partSize);
+    return { size, partSize, partCount, expected: (partNumber: number) => (partNumber < partCount ? partSize : size - partSize * (partCount - 1)) };
+  }
+
+  /** Starts (or returns) the resumable upload of an import that is still awaiting its bytes. Safe to call again after a reload. */
+  async multipartStart(userId: string, organizationId: string, datasetId: string, importId: string) {
+    const job = await transaction((tx) => this.authorizedJob(tx, userId, organizationId, datasetId, importId));
+    if (job.status !== "AWAITING_UPLOAD") fail(409, "IMPORT_UPLOAD_NOT_AVAILABLE", "This import no longer accepts an upload");
+    if (!job.multipartUploadId) {
+      const created = await this.dependencies.storage.createMultipart({ key: job.storageKey, mime: job.declaredMime });
+      const claimed = await transaction((tx) => tx.northDatasetImportJob.updateMany({ where: { id: importId, organizationId, datasetId, status: "AWAITING_UPLOAD", multipartUploadId: null }, data: { multipartUploadId: created.uploadId, multipartPartSize: MULTIPART_PART_BYTES } }));
+      if (claimed.count !== 1) await this.dependencies.storage.abortMultipart({ key: job.storageKey, uploadId: created.uploadId }).catch(() => undefined);
+    }
+    return this.multipartState(userId, organizationId, datasetId, importId);
+  }
+
+  async multipartState(userId: string, organizationId: string, datasetId: string, importId: string) {
+    const job = await transaction((tx) => this.authorizedJob(tx, userId, organizationId, datasetId, importId));
+    if (!job.multipartUploadId) fail(409, "IMPORT_MULTIPART_NOT_STARTED", "Start the resumable upload first");
+    const layout = this.layout(job);
+    const uploaded = job.status === "AWAITING_UPLOAD" ? await this.dependencies.storage.listParts({ key: job.storageKey, uploadId: job.multipartUploadId }) : [];
+    return { partSize: layout.partSize, partCount: layout.partCount, uploadedParts: uploaded.filter((part) => part.partNumber <= layout.partCount && part.size === layout.expected(part.partNumber)).map((part) => part.partNumber) };
+  }
+
+  async multipartSignPart(userId: string, organizationId: string, datasetId: string, importId: string, partNumber: number) {
+    const job = await transaction((tx) => this.authorizedJob(tx, userId, organizationId, datasetId, importId));
+    if (!job.multipartUploadId || job.status !== "AWAITING_UPLOAD") fail(409, "IMPORT_UPLOAD_NOT_AVAILABLE", "This import no longer accepts an upload");
+    const layout = this.layout(job);
+    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > layout.partCount) fail(422, "IMPORT_PART_INVALID", "Part number is outside the upload");
+    return this.dependencies.storage.signedPart({ key: job.storageKey, uploadId: job.multipartUploadId, partNumber, size: layout.expected(partNumber), ttlSeconds: this.dependencies.configuration.uploadUrlTtlSeconds });
+  }
+
+  /** Assembles the object only if the store holds exactly the expected parts; the client then calls `confirm` as for a single PUT. */
+  async multipartComplete(userId: string, organizationId: string, datasetId: string, importId: string) {
+    const job = await transaction((tx) => this.authorizedJob(tx, userId, organizationId, datasetId, importId));
+    if (!job.multipartUploadId || job.status !== "AWAITING_UPLOAD") fail(409, "IMPORT_UPLOAD_NOT_AVAILABLE", "This import no longer accepts an upload");
+    const layout = this.layout(job);
+    const parts = (await this.dependencies.storage.listParts({ key: job.storageKey, uploadId: job.multipartUploadId })).sort((a, b) => a.partNumber - b.partNumber);
+    const complete = parts.length === layout.partCount && parts.every((part, index) => part.partNumber === index + 1 && part.size === layout.expected(part.partNumber));
+    if (!complete) fail(422, "IMPORT_PARTS_INCOMPLETE", "Some parts are missing or have the wrong size; resume the upload");
+    await this.dependencies.storage.completeMultipart({ key: job.storageKey, uploadId: job.multipartUploadId, parts: parts.map((part) => ({ partNumber: part.partNumber, etag: part.etag })) });
+    return importView(job);
+  }
+
+  async cancel(userId: string, organizationId: string, datasetId: string, importId: string) {
+    const view = await this.cancelCore(userId, organizationId, datasetId, importId);
+    if (view.status === "CANCELLED") {
+      // Abandoned parts are billed storage: release them (best effort; a completed upload simply has nothing left to abort).
+      const job = await transaction((tx) => repo.find(tx, organizationId, datasetId, importId));
+      if (job?.multipartUploadId) await this.dependencies.storage.abortMultipart({ key: job.storageKey, uploadId: job.multipartUploadId }).catch(() => undefined);
+    }
+    return view;
+  }
+
+  private cancelCore(userId: string, organizationId: string, datasetId: string, importId: string) {
     return transaction(async (tx) => {
       const current = await this.authorizedJob(tx, userId, organizationId, datasetId, importId);
       if (current.status === "CANCELLED" || current.status === "CANCEL_REQUESTED") return importView(current);
@@ -314,4 +374,8 @@ export const northDatasetImports = {
   read: (...args: Parameters<NorthDatasetImportService["read"]>) => configured.read(...args),
   confirm: (...args: Parameters<NorthDatasetImportService["confirm"]>) => configured.confirm(...args),
   cancel: (...args: Parameters<NorthDatasetImportService["cancel"]>) => configured.cancel(...args),
+  multipartStart: (...args: Parameters<NorthDatasetImportService["multipartStart"]>) => configured.multipartStart(...args),
+  multipartState: (...args: Parameters<NorthDatasetImportService["multipartState"]>) => configured.multipartState(...args),
+  multipartSignPart: (...args: Parameters<NorthDatasetImportService["multipartSignPart"]>) => configured.multipartSignPart(...args),
+  multipartComplete: (...args: Parameters<NorthDatasetImportService["multipartComplete"]>) => configured.multipartComplete(...args),
 };

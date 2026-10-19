@@ -141,10 +141,32 @@ export const northDataset = z.object({
   slug: z.string(),
   status: northDatasetStatus,
   currentSchemaVersionId: id.nullable(),
+  groupId: id.nullable(),
+  periodStart: date.nullable(),
+  periodEnd: date.nullable(),
+  periodLabel: z.string().nullable(),
   createdBy: id,
   createdAt: date,
   updatedAt: date,
 });
+export const northDatasetGroupStatus = z.enum(["ACTIVE", "ARCHIVED"]);
+export const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const northDatasetGroupSummary = z.object({
+  datasetCount: z.number().int(), rowCount: z.number().int(), originalBytes: z.number(),
+  periodStart: dateOnly.nullable(), periodEnd: dateOnly.nullable(), lastImportAt: date.nullable(),
+  datasetsWithIssues: z.number().int(), health: z.enum(["EMPTY", "OK", "ISSUES"]),
+});
+export const northDatasetGroup = z.object({
+  id, organizationId: id, slug: z.string(), name: localizedText, description: localizedText.nullable(),
+  category: z.string().nullable(), tags: z.array(z.string()), metadata: z.record(z.unknown()),
+  status: northDatasetGroupStatus, ownerId: id, createdAt: date, updatedAt: date, summary: northDatasetGroupSummary,
+});
+export const northDatasetGroupMember = z.object({
+  id, slug: z.string(), name: localizedText, status: northDatasetStatus, groupId: id.nullable(),
+  periodStart: dateOnly.nullable(), periodEnd: dateOnly.nullable(), periodLabel: z.string().nullable(),
+  rowCount: z.number().int(), originalBytes: z.number(), updatedAt: date,
+});
+export const northDatasetGroupDetail = northDatasetGroup.extend({ datasets: z.array(northDatasetGroupMember) });
 export const northDatasetField = z.object({
   id,
   organizationId: id,
