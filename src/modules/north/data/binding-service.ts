@@ -138,7 +138,7 @@ export const northAnalyticsBindings = {
       const binding = await tx.northAnalyticsBinding.create({ data: { organizationId, panelId, datasetId: input.datasetId, name: input.name, query, allowedFilters, createdBy: userId } });
       await audit.append(tx, { actorId: userId, organizationId, action: "ANALYTICS_BINDING_CREATED", targetType: "NorthAnalyticsBinding", targetId: binding.id, metadata: { panelId, datasetId: input.datasetId } });
       return bindingView(binding);
-    });
+    }, readTransaction); // the validation runs the query for real: same time budget as a read, not the 5 s default
   },
   update(userId: string, organizationId: string, panelId: string, bindingId: string, input: BindingInput) {
     return transaction(async (tx) => {
@@ -156,7 +156,7 @@ export const northAnalyticsBindings = {
       });
       await audit.append(tx, { actorId: userId, organizationId, action: "ANALYTICS_BINDING_UPDATED", targetType: "NorthAnalyticsBinding", targetId: binding.id, metadata: { panelId, datasetId: input.datasetId } });
       return bindingView(binding);
-    });
+    }, readTransaction); // the validation runs the query for real: same time budget as a read, not the 5 s default
   },
   /** Removes a binding no live revision uses; a draft or published revision that still reads it blocks the removal. */
   remove(userId: string, organizationId: string, panelId: string, bindingId: string) {
