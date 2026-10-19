@@ -6564,6 +6564,7 @@ paths:
                               - MONTH
                               - QUARTER
                               - YEAR
+                              - MONTH_OF_YEAR
                         measures:
                           type: array
                           items:
@@ -6586,6 +6587,50 @@ paths:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
+                              when:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    fieldId:
+                                      type: string
+                                      minLength: 1
+                                      maxLength: 128
+                                    operator:
+                                      type: string
+                                      enum:
+                                        - EQ
+                                        - NE
+                                        - GT
+                                        - GTE
+                                        - LT
+                                        - LTE
+                                        - CONTAINS
+                                        - IN
+                                    value:
+                                      anyOf:
+                                        - anyOf:
+                                            - type: string
+                                              maxLength: 4096
+                                              nullable: true
+                                            - type: number
+                                            - type: boolean
+                                        - type: array
+                                          items:
+                                            anyOf:
+                                              - type: string
+                                                maxLength: 4096
+                                              - type: number
+                                              - type: boolean
+                                          minItems: 1
+                                          maxItems: 100
+                                  required:
+                                    - fieldId
+                                    - operator
+                                    - value
+                                  additionalProperties: false
+                                minItems: 1
+                                maxItems: 3
                               alias:
                                 type: string
                                 pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -6594,7 +6639,7 @@ paths:
                               - alias
                             additionalProperties: false
                           minItems: 1
-                          maxItems: 8
+                          maxItems: 16
                         filters:
                           type: array
                           items:
@@ -14655,6 +14700,7 @@ paths:
                           - MONTH
                           - QUARTER
                           - YEAR
+                          - MONTH_OF_YEAR
                     measures:
                       type: array
                       items:
@@ -14677,6 +14723,50 @@ paths:
                             type: string
                             minLength: 1
                             maxLength: 128
+                          when:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                fieldId:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 128
+                                operator:
+                                  type: string
+                                  enum:
+                                    - EQ
+                                    - NE
+                                    - GT
+                                    - GTE
+                                    - LT
+                                    - LTE
+                                    - CONTAINS
+                                    - IN
+                                value:
+                                  anyOf:
+                                    - anyOf:
+                                        - type: string
+                                          maxLength: 4096
+                                          nullable: true
+                                        - type: number
+                                        - type: boolean
+                                    - type: array
+                                      items:
+                                        anyOf:
+                                          - type: string
+                                            maxLength: 4096
+                                          - type: number
+                                          - type: boolean
+                                      minItems: 1
+                                      maxItems: 100
+                              required:
+                                - fieldId
+                                - operator
+                                - value
+                              additionalProperties: false
+                            minItems: 1
+                            maxItems: 3
                           alias:
                             type: string
                             pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -14685,7 +14775,7 @@ paths:
                           - alias
                         additionalProperties: false
                       minItems: 1
-                      maxItems: 8
+                      maxItems: 16
                     filters:
                       type: array
                       items:
@@ -15161,6 +15251,7 @@ paths:
                                   - MONTH
                                   - QUARTER
                                   - YEAR
+                                  - MONTH_OF_YEAR
                             measures:
                               type: array
                               items:
@@ -15183,6 +15274,50 @@ paths:
                                     type: string
                                     minLength: 1
                                     maxLength: 128
+                                  when:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        fieldId:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 128
+                                        operator:
+                                          type: string
+                                          enum:
+                                            - EQ
+                                            - NE
+                                            - GT
+                                            - GTE
+                                            - LT
+                                            - LTE
+                                            - CONTAINS
+                                            - IN
+                                        value:
+                                          anyOf:
+                                            - anyOf:
+                                                - type: string
+                                                  maxLength: 4096
+                                                  nullable: true
+                                                - type: number
+                                                - type: boolean
+                                            - type: array
+                                              items:
+                                                anyOf:
+                                                  - type: string
+                                                    maxLength: 4096
+                                                  - type: number
+                                                  - type: boolean
+                                              minItems: 1
+                                              maxItems: 100
+                                      required:
+                                        - fieldId
+                                        - operator
+                                        - value
+                                      additionalProperties: false
+                                    minItems: 1
+                                    maxItems: 3
                                   alias:
                                     type: string
                                     pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -15191,7 +15326,7 @@ paths:
                                   - alias
                                 additionalProperties: false
                               minItems: 1
-                              maxItems: 8
+                              maxItems: 16
                             filters:
                               type: array
                               items:
@@ -15585,6 +15720,7 @@ paths:
                               - MONTH
                               - QUARTER
                               - YEAR
+                              - MONTH_OF_YEAR
                         measures:
                           type: array
                           items:
@@ -15607,6 +15743,50 @@ paths:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
+                              when:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    fieldId:
+                                      type: string
+                                      minLength: 1
+                                      maxLength: 128
+                                    operator:
+                                      type: string
+                                      enum:
+                                        - EQ
+                                        - NE
+                                        - GT
+                                        - GTE
+                                        - LT
+                                        - LTE
+                                        - CONTAINS
+                                        - IN
+                                    value:
+                                      anyOf:
+                                        - anyOf:
+                                            - type: string
+                                              maxLength: 4096
+                                              nullable: true
+                                            - type: number
+                                            - type: boolean
+                                        - type: array
+                                          items:
+                                            anyOf:
+                                              - type: string
+                                                maxLength: 4096
+                                              - type: number
+                                              - type: boolean
+                                          minItems: 1
+                                          maxItems: 100
+                                  required:
+                                    - fieldId
+                                    - operator
+                                    - value
+                                  additionalProperties: false
+                                minItems: 1
+                                maxItems: 3
                               alias:
                                 type: string
                                 pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -15615,7 +15795,7 @@ paths:
                               - alias
                             additionalProperties: false
                           minItems: 1
-                          maxItems: 8
+                          maxItems: 16
                         filters:
                           type: array
                           items:
@@ -15947,6 +16127,7 @@ paths:
                                 - MONTH
                                 - QUARTER
                                 - YEAR
+                                - MONTH_OF_YEAR
                           measures:
                             type: array
                             items:
@@ -15969,6 +16150,50 @@ paths:
                                   type: string
                                   minLength: 1
                                   maxLength: 128
+                                when:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      fieldId:
+                                        type: string
+                                        minLength: 1
+                                        maxLength: 128
+                                      operator:
+                                        type: string
+                                        enum:
+                                          - EQ
+                                          - NE
+                                          - GT
+                                          - GTE
+                                          - LT
+                                          - LTE
+                                          - CONTAINS
+                                          - IN
+                                      value:
+                                        anyOf:
+                                          - anyOf:
+                                              - type: string
+                                                maxLength: 4096
+                                                nullable: true
+                                              - type: number
+                                              - type: boolean
+                                          - type: array
+                                            items:
+                                              anyOf:
+                                                - type: string
+                                                  maxLength: 4096
+                                                - type: number
+                                                - type: boolean
+                                            minItems: 1
+                                            maxItems: 100
+                                    required:
+                                      - fieldId
+                                      - operator
+                                      - value
+                                    additionalProperties: false
+                                  minItems: 1
+                                  maxItems: 3
                                 alias:
                                   type: string
                                   pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -15977,7 +16202,7 @@ paths:
                                 - alias
                               additionalProperties: false
                             minItems: 1
-                            maxItems: 8
+                            maxItems: 16
                           filters:
                             type: array
                             items:
@@ -16372,6 +16597,7 @@ paths:
                               - MONTH
                               - QUARTER
                               - YEAR
+                              - MONTH_OF_YEAR
                         measures:
                           type: array
                           items:
@@ -16394,6 +16620,50 @@ paths:
                                 type: string
                                 minLength: 1
                                 maxLength: 128
+                              when:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    fieldId:
+                                      type: string
+                                      minLength: 1
+                                      maxLength: 128
+                                    operator:
+                                      type: string
+                                      enum:
+                                        - EQ
+                                        - NE
+                                        - GT
+                                        - GTE
+                                        - LT
+                                        - LTE
+                                        - CONTAINS
+                                        - IN
+                                    value:
+                                      anyOf:
+                                        - anyOf:
+                                            - type: string
+                                              maxLength: 4096
+                                              nullable: true
+                                            - type: number
+                                            - type: boolean
+                                        - type: array
+                                          items:
+                                            anyOf:
+                                              - type: string
+                                                maxLength: 4096
+                                              - type: number
+                                              - type: boolean
+                                          minItems: 1
+                                          maxItems: 100
+                                  required:
+                                    - fieldId
+                                    - operator
+                                    - value
+                                  additionalProperties: false
+                                minItems: 1
+                                maxItems: 3
                               alias:
                                 type: string
                                 pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -16402,7 +16672,7 @@ paths:
                               - alias
                             additionalProperties: false
                           minItems: 1
-                          maxItems: 8
+                          maxItems: 16
                         filters:
                           type: array
                           items:
@@ -16741,6 +17011,7 @@ paths:
                                 - MONTH
                                 - QUARTER
                                 - YEAR
+                                - MONTH_OF_YEAR
                           measures:
                             type: array
                             items:
@@ -16763,6 +17034,50 @@ paths:
                                   type: string
                                   minLength: 1
                                   maxLength: 128
+                                when:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      fieldId:
+                                        type: string
+                                        minLength: 1
+                                        maxLength: 128
+                                      operator:
+                                        type: string
+                                        enum:
+                                          - EQ
+                                          - NE
+                                          - GT
+                                          - GTE
+                                          - LT
+                                          - LTE
+                                          - CONTAINS
+                                          - IN
+                                      value:
+                                        anyOf:
+                                          - anyOf:
+                                              - type: string
+                                                maxLength: 4096
+                                                nullable: true
+                                              - type: number
+                                              - type: boolean
+                                          - type: array
+                                            items:
+                                              anyOf:
+                                                - type: string
+                                                  maxLength: 4096
+                                                - type: number
+                                                - type: boolean
+                                            minItems: 1
+                                            maxItems: 100
+                                    required:
+                                      - fieldId
+                                      - operator
+                                      - value
+                                    additionalProperties: false
+                                  minItems: 1
+                                  maxItems: 3
                                 alias:
                                   type: string
                                   pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -16771,7 +17086,7 @@ paths:
                                 - alias
                               additionalProperties: false
                             minItems: 1
-                            maxItems: 8
+                            maxItems: 16
                           filters:
                             type: array
                             items:

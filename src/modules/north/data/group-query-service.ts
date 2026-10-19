@@ -52,7 +52,7 @@ function keysOf(query: DatasetQuery) {
   const search = query.search?.fieldIds ?? [];
   return query.mode === "ROWS"
     ? [...query.fields, ...(query.orderBy ?? []).map((item) => item.fieldId), ...(query.filters ?? []).map((item) => item.fieldId), ...search]
-    : [...(query.groupBy ?? []), ...query.measures.flatMap((m) => [m.fieldId, m.distinctBy].filter((id): id is string => Boolean(id))), ...(query.filters ?? []).map((item) => item.fieldId), ...search];
+    : [...(query.groupBy ?? []), ...query.measures.flatMap((m) => [m.fieldId, m.distinctBy, ...(m.when ?? []).map((condition) => condition.fieldId)].filter((id): id is string => Boolean(id))), ...(query.filters ?? []).map((item) => item.fieldId), ...search];
 }
 
 /** Rewrites field keys to the dataset's own field ids. */
@@ -66,7 +66,7 @@ function translate(query: DatasetQuery, member: Member, merged: boolean): Datase
   const groups = query.groupBy ?? [];
   const measures: Array<NonNullable<typeof query.measures>[number]> = [];
   for (const measure of query.measures) {
-    const mapped = { ...measure, ...(measure.fieldId ? { fieldId: id(measure.fieldId) } : {}), ...(measure.distinctBy ? { distinctBy: id(measure.distinctBy) } : {}) };
+    const mapped = { ...measure, ...(measure.fieldId ? { fieldId: id(measure.fieldId) } : {}), ...(measure.distinctBy ? { distinctBy: id(measure.distinctBy) } : {}), ...(measure.when ? { when: measure.when.map((condition) => ({ ...condition, fieldId: id(condition.fieldId) })) } : {}) };
     // AVG merges as SUM/COUNT of the same field; the two helper measures replace it for the partial query.
     if (merged && measure.operation === "AVG") measures.push({ ...mapped, operation: "SUM", alias: `__s_${measure.alias}` }, { ...mapped, operation: "COUNT", alias: `__c_${measure.alias}` });
     else measures.push(mapped);

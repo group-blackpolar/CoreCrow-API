@@ -74,6 +74,8 @@ const gridColumn = z.object({
   barTone: tone.optional(),
   // Discrete heat background proportional to the column maximum on the page.
   heat: z.boolean().optional(),
+  // Show 0 as "-" (a pivot cell with nothing in it).
+  zeroDash: z.boolean().optional(),
 }).strict();
 const insightRule = z.discriminatedUnion("rule", [
   // The leading entity of a ranking and its share of the ranking total.
@@ -100,8 +102,8 @@ const catalog = {
   // `categoryFormat` names the calendar unit of a date category axis (month "Aug 2026" or year "2026").
   // `drill` (bar charts): clicking a bar narrows the dashboard to that category and swaps the chart to the named binding
   // (e.g. countries -> ports of the selected country); the back control clears that selection.
-  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional(), showValues: z.boolean().optional(), valueFormat: valueFormat.optional(), categoryFormat: z.enum(["month", "year"]).optional(), drill: z.object({ binding: bindingName, categoryKey: resultKey, title: localized.optional() }).strict().optional() }).strict(),
-  line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional(), categoryFormat: z.enum(["month", "year"]).optional() }).strict(),
+  bar_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), horizontal: z.boolean().optional(), variant: z.enum(["grouped", "stacked"]).optional(), showValues: z.boolean().optional(), valueFormat: valueFormat.optional(), categoryFormat: z.enum(["month", "year", "monthOfYear"]).optional(), drill: z.object({ binding: bindingName, categoryKey: resultKey, title: localized.optional() }).strict().optional() }).strict(),
+  line_chart: z.object({ title: localized.optional(), categoryKey: resultKey, series: z.array(chartSeries).min(1).max(12), height: chartHeight.optional(), variant: z.enum(["line", "area"]).optional(), categoryFormat: z.enum(["month", "year", "monthOfYear"]).optional() }).strict(),
   donut_chart: z.object({ title: localized.optional(), categoryKey: resultKey, valueKey: resultKey, maxSlices: z.number().int().min(2).max(12).optional(), totalKey: resultKey.optional(), color: safeChartColor.optional(), height: chartHeight.optional(), variant: z.enum(["donut", "pie"]).optional(), centerLabel: localized.optional(), showTotal: z.boolean().optional(), legend: z.enum(["right", "bottom", "none"]).optional() }).strict(),
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
@@ -132,6 +134,8 @@ const catalog = {
     items: z.array(z.object({ id: resourceId, panelSlug: panelSlug.optional(), href: safeUrl.optional(), icon: iconName.optional(), tone: tone.optional(), title: localized, description: localized.optional() }).strict()
       .refine((item) => !(item.href && item.panelSlug), "A card takes href or panelSlug, not both")).min(1).max(12),
   }).strict(),
+  // Page title bar: a full-width band in the organization's primary (brand) colour with white text.
+  title_bar: z.object({ text: localized, align: align.optional() }).strict(),
   // Report entry cards: each points to a report CATEGORY of the organization by slug. The reader's access state (open / restricted /
   // not configured) is computed by CORECROW (GET /organizations/:id/report-access); nothing here grants or reveals anything.
   report_cards: z.object({
@@ -180,6 +184,8 @@ const catalog = {
     // Sparkline cells: one point per `categoryKey` bucket of `valueKey`, rows matched on `rowKeys`.
     trend: z.object({ binding: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/), rowKeys: z.array(resultKey).min(1).max(3), categoryKey: resultKey, valueKey: resultKey }).strict().optional(),
     height: z.number().int().min(240).max(1_200).optional(),
+    // Grand-total row: one row from the named binding (same filters, no grouping), shown under the table; the first column carries `label`.
+    totals: z.object({ binding: bindingName, label: localized.optional() }).strict().optional(),
   }).strict(),
   // Country bubble map: aggregated by a region key holding country names/ISO codes; never invents coordinates.
   geo_map: z.object({
