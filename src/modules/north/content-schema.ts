@@ -113,6 +113,8 @@ const catalog = {
     chips: z.array(z.object({ icon: iconName.optional(), label: localized }).strict()).max(4).optional(),
     aside: z.object({ icon: iconName.optional(), title: localized, body: localized.optional() }).strict().optional(),
     showBrand: z.boolean().optional(),
+    // Centered, taller variant (logo above the text) used by organization Home pages.
+    centered: z.boolean().optional(),
     // A picture shipped with NORTH under /brand/ (same origin, never an external URL). Absent or missing file: an illustrated backdrop is drawn.
     backgroundImage: z.string().regex(/^\/brand\/[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
     logoImage: z.string().regex(/^\/brand\/[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
@@ -129,6 +131,16 @@ const catalog = {
     title: localized.optional(), icon: iconName.optional(),
     items: z.array(z.object({ id: resourceId, panelSlug: panelSlug.optional(), href: safeUrl.optional(), icon: iconName.optional(), tone: tone.optional(), title: localized, description: localized.optional() }).strict()
       .refine((item) => !(item.href && item.panelSlug), "A card takes href or panelSlug, not both")).min(1).max(12),
+  }).strict(),
+  // Report entry cards: each points to a report CATEGORY of the organization by slug. The reader's access state (open / restricted /
+  // not configured) is computed by CORECROW (GET /organizations/:id/report-access); nothing here grants or reveals anything.
+  report_cards: z.object({
+    title: localized.optional(), icon: iconName.optional(),
+    items: z.array(z.object({
+      id: resourceId, categorySlug: panelSlug, title: localized, description: localized.optional(), icon: iconName.optional(), tone: tone.optional(),
+      // A picture shipped with NORTH under /brand/ (same origin, never an external URL).
+      image: z.string().regex(/^\/brand\/(?:(?!\.)[A-Za-z0-9._-]{1,40}\/)?(?!\.)[A-Za-z0-9._-]{1,80}\.(?:jpe?g|png|webp)$/).optional(),
+    }).strict()).min(1).max(12),
   }).strict(),
   // Term / explanation rows with an icon.
   definition_list: z.object({
