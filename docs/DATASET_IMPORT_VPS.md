@@ -111,7 +111,8 @@ NORTH_ASSET_S3_ENDPOINT="http://corecrow-minio:9000"
 NORTH_ASSET_S3_FORCE_PATH_STYLE=true
 CORECROW_CLAMAV_HOST="corecrow-clamav"
 CORECROW_CLAMAV_PORT=3310
-CORECROW_CLAMAV_TIMEOUT_MS=30000
+CORECROW_CLAMAV_TIMEOUT_MS=700000
+CORECROW_CLAMAV_DEADLINE_MS=900000
 CORECROW_CLAMAV_MAX_BYTES=262144000
 CORECROW_CLAMAV_CHUNK_BYTES=65536
 AWS_ACCESS_KEY_ID="<dataset-import-access-key>"
@@ -192,3 +193,7 @@ evidence needed for recovery and audit.
   enabled because the isolated parser needs bounded writable temporary storage;
   move that scratch space to an explicitly mounted, size-capped `tmpfs` only
   after a production-equivalent parser acceptance test proves compatibility.
+
+## Large workbooks and ClamAV (2026-10-19)
+
+A ~98 MB workbook failed with `IMPORT_MALWARE_SCANNER_UNAVAILABLE`. clamd scans inside the ZIP (~1 GB of XML): it hit its 120 s default `MaxScanTime` (`Heuristics.Limits.Exceeded.MaxScanTime`) while the client had already given up after `CORECROW_CLAMAV_TIMEOUT_MS=30000` waiting for the verdict. The compose file now sets `MaxFileSize 1100M`, `MaxScanSize 3000M`, `MaxScanTime 600000` and the API/worker use `CORECROW_CLAMAV_TIMEOUT_MS=700000` / `CORECROW_CLAMAV_DEADLINE_MS=900000`. After changing the compose file, recreate only the scanner: `docker compose --project-name corecrow-dataset --env-file /etc/blackpolar/corecrow-dataset.env -f <release>/deploy/dataset-services.compose.yml up -d --no-deps clamav`.

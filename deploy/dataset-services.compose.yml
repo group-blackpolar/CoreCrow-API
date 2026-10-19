@@ -38,8 +38,13 @@ services:
       # clamd stops reading a stream at StreamMaxLength and silently skips files above MaxFileSize. Align both with the
       # largest object CoreCrow will scan (250 MiB videos) and make an over-limit file an alert, never a silent "OK".
       CLAMD_CONF_StreamMaxLength: ${CLAMAV_STREAM_MAX_LENGTH:-256M}
-      CLAMD_CONF_MaxFileSize: ${CLAMAV_STREAM_MAX_LENGTH:-256M}
-      CLAMD_CONF_MaxScanSize: ${CLAMAV_MAX_SCAN_SIZE:-512M}
+      # An XLSX is a ZIP: clamd scans what is inside it. A ~100 MB workbook holds ~1 GB of worksheet XML (the import ceiling is
+      # 1 GiB per entry, 1.5 GiB expanded), so MaxFileSize/MaxScanSize/MaxScanTime must clear that or clamd reports
+      # Heuristics.Limits.Exceeded.* (AlertExceedsMax) and the import is quarantined/blocked. MaxScanTime must stay below
+      # CORECROW_CLAMAV_TIMEOUT_MS on the API/worker, which is how long the client waits for the verdict.
+      CLAMD_CONF_MaxFileSize: ${CLAMAV_MAX_FILE_SIZE:-1100M}
+      CLAMD_CONF_MaxScanSize: ${CLAMAV_MAX_SCAN_SIZE:-3000M}
+      CLAMD_CONF_MaxScanTime: ${CLAMAV_MAX_SCAN_TIME:-600000}
       CLAMD_CONF_AlertExceedsMax: "yes"
     volumes:
       - type: bind
