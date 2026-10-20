@@ -452,7 +452,7 @@ export const invitations = {
         } else {
           for (let n = 2; await repo.userByEmail(tx, email); n += 1) email = addressOf(`${base}${n}`);
         }
-        const user = await identities.create(tx, { name: input.name.trim(), email, role: "USER", emailVerified: true }, passwordHash);
+        const user = await identities.create(tx, { name: input.name.trim(), email, role: "USER", emailVerified: true, createdByOrganizationId: organizationId }, passwordHash);
         const membership = await repo.addMember(tx, organizationId, user.id, input.role);
         await repo.addInvitationGrants(tx, organizationId, membership.id, groupIds, []);
         if (primary) await tx.organizationGroupMember.update({ where: { groupId_membershipId: { groupId: primary.id, membershipId: membership.id } }, data: { isPrimary: true } });

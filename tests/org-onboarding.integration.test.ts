@@ -123,6 +123,31 @@ test("Organization onboarding integration", { skip: !process.env.TEST_DATABASE_U
     expect(await call("POST", `/v1/organizations/${organizationId}/members/new`, memberCookie, { name: "Nope", role: "MEMBER" }), 403);
   });
 
+  await t.test("organization-created accounts have no Personal Workspace (server-side) and are listed apart for operators", async () => {
+    const made = expect(await call("POST", `/v1/organizations/${organizationId}/members/new`, owner.cookie, { name: "Managed Person", password: "Managed-password-42", role: "MEMBER" }), 201);
+    const managedCookie = cookieOf(await signIn(made.user.email, "Managed-password-42"));
+    assert.equal(expect(await call("GET", "/v1/me", managedCookie), 200).createdByOrganizationId, organizationId);
+    assert.match(JSON.stringify(expect(await call("GET", "/v1/security/keys", managedCookie), 403)), /PERSONAL_WORKSPACE_UNAVAILABLE/);
+    expect(await call("POST", "/v1/security/keys", managedCookie, { name: "Managed key", scopes: ["organizations:read"] }), 403);
+    // Real-email accounts (self-registered, or created by accepting an emailed invitation) keep it.
+    assert.equal(expect(await call("GET", "/v1/me", owner.cookie), 200).createdByOrganizationId, null);
+    expect(await call("GET", "/v1/security/keys", owner.cookie), 200);
+    const invited = await prisma.user.findUniqueOrThrow({ where: { email: `${prefix}-newcomer@blackpolar.test` } });
+    assert.equal(invited.createdByOrganizationId, null);
+    // Platform listing: hidden by default, shown with organizationManaged=true.
+    await prisma.user.update({ where: { id: owner.id }, data: { role: "SUPERADMIN" } });
+    try {
+      const normal = expect(await call("GET", `/v1/platform/users?q=${encodeURIComponent(prefix)}&limit=100`, owner.cookie), 200);
+      assert.equal(normal.items.some((item: { id: string }) => item.id === made.user.id), false);
+      assert.equal(normal.items.some((item: { id: string }) => item.id === owner.id), true);
+      const managed = expect(await call("GET", `/v1/platform/users?organizationManaged=true&q=${encodeURIComponent(prefix)}&limit=100`, owner.cookie), 200);
+      assert.equal(managed.items.some((item: { id: string }) => item.id === made.user.id), true);
+      assert.equal(managed.items.some((item: { id: string }) => item.id === owner.id), false);
+    } finally {
+      await prisma.user.update({ where: { id: owner.id }, data: { role: "USER" } });
+    }
+  });
+
   await t.test("categories, subcategories and panels can be permanently deleted", async () => {
     const category = expect(await call("POST", `/v1/organizations/${organizationId}/categories`, owner.cookie, { name: { es: "Borrable", en: "Deletable" }, slug: "borrable" }), 201);
     const subcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${category.id}/subcategories`, owner.cookie, { name: { es: "Sub", en: "Sub" }, slug: "sub" }), 201);

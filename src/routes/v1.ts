@@ -28,6 +28,7 @@ import { createContact, listContacts } from "../modules/business/service.js";
 import { fail } from "../shared/errors.js";
 import { security, keyScopes } from "../modules/security/service.js";
 import { auidState, regenerateAuid, revealAuid } from "../modules/identity/admin-secret-service.js";
+import { requirePersonalWorkspace } from "../modules/identity/personal-workspace.js";
 import { changeTemporaryPassword } from "../modules/identity/temporary-password-service.js";
 import {
   confirmEmailVerificationCode,
@@ -622,7 +623,10 @@ export async function v1Routes(app: FastifyInstance) {
     tag: "Security",
     summary: "List your API keys without secrets",
     response: z.array(key),
-    run: ({ user }) => security.list(user.id),
+    run: ({ user }) => {
+      requirePersonalWorkspace(user);
+      return security.list(user.id);
+    },
   });
   contract(app, {
     method: "POST",
@@ -670,7 +674,10 @@ export async function v1Routes(app: FastifyInstance) {
       .strict(),
     response: key.extend({ token: z.string() }),
     status: 201,
-    run: ({ user, body }) => security.create(user.id, body),
+    run: ({ user, body }) => {
+      requirePersonalWorkspace(user);
+      return security.create(user.id, body);
+    },
   });
   contract(app, {
     method: "DELETE",
@@ -778,8 +785,8 @@ export async function v1Routes(app: FastifyInstance) {
     method: "GET",
     url: "/platform/users",
     tag: "Platform administration",
-    summary: "Search and page non-secret identity summaries (operator only)",
-    query: pageQuery,
+    summary: "Search and page non-secret identity summaries (operator only); accounts created by organizations are listed only with organizationManaged=true",
+    query: pageQuery.extend({ organizationManaged: z.enum(["true", "false"]).default("false").transform((value) => value === "true") }),
     response: z.object({
       items: z.array(s.user.extend({ organizationCount: z.number().int().nonnegative() })),
       nextCursor: s.id.nullable(),

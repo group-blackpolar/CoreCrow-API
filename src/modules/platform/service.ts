@@ -36,7 +36,7 @@ function organizationSummary<
 }
 
 export const platform = {
-  async users(actorId: string, query: { q?: string; limit: number; cursor?: string }) {
+  async users(actorId: string, query: { q?: string; limit: number; cursor?: string; organizationManaged: boolean }) {
     await requireOperator(actorId);
     return transaction(async (tx) => {
       const result = page(await repo.users(tx, query), query.limit);
