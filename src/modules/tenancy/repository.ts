@@ -214,7 +214,7 @@ export const tenantRepository = {
   userByEmail(tx: Transaction, email: string) {
     return tx.user.findUnique({
       where: { email },
-      select: { id: true, email: true, name: true, emailVerified: true, status: true },
+      select: { id: true, email: true, name: true, emailVerified: true, status: true, createdByOrganizationId: true },
     });
   },
   addMember(tx: Transaction, organizationId: string, userId: string, role: TenantRole) {

@@ -460,6 +460,10 @@ paths:
                       termsVersion:
                         type: string
                         nullable: true
+                      createdByOrganizationId:
+                        allOf:
+                          - $ref: "#/properties/user/properties/id"
+                        nullable: true
                       createdAt:
                         $ref: "#/properties/user/properties/termsAcceptedAt"
                     required:
@@ -19989,6 +19993,11 @@ paths:
                   termsVersion:
                     type: string
                     nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -20135,6 +20144,11 @@ paths:
                     nullable: true
                   termsVersion:
                     type: string
+                    nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   createdAt:
                     type: string
@@ -20400,6 +20414,11 @@ paths:
                   termsVersion:
                     type: string
                     nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -20534,6 +20553,11 @@ paths:
                       nullable: true
                     termsVersion:
                       type: string
+                      nullable: true
+                    createdByOrganizationId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
                       nullable: true
                     createdAt:
                       type: string
@@ -20698,6 +20722,11 @@ paths:
                   termsVersion:
                     type: string
                     nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -20857,6 +20886,11 @@ paths:
                     nullable: true
                   termsVersion:
                     type: string
+                    nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   createdAt:
                     type: string
@@ -21038,7 +21072,8 @@ paths:
                 additionalProperties: false
   /v1/platform/users:
     get:
-      summary: Search and page non-secret identity summaries (operator only)
+      summary: Search and page non-secret identity summaries (operator only); accounts
+        created by organizations are listed only with organizationManaged=true
       tags:
         - Platform administration
       parameters:
@@ -21063,6 +21098,15 @@ paths:
             maxLength: 128
           in: query
           name: cursor
+          required: false
+        - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+            default: "false"
+          in: query
+          name: organizationManaged
           required: false
       security:
         - sessionCookie: []
@@ -21111,6 +21155,11 @@ paths:
                           nullable: true
                         termsVersion:
                           type: string
+                          nullable: true
+                        createdByOrganizationId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
                           nullable: true
                         createdAt:
                           type: string
@@ -21292,6 +21341,11 @@ paths:
                   termsVersion:
                     type: string
                     nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
                   createdAt:
                     type: string
                     format: date-time
@@ -21432,6 +21486,11 @@ paths:
                     nullable: true
                   termsVersion:
                     type: string
+                    nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   createdAt:
                     type: string
@@ -21647,6 +21706,11 @@ paths:
                       termsVersion:
                         type: string
                         nullable: true
+                      createdByOrganizationId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        nullable: true
                       createdAt:
                         type: string
                         format: date-time
@@ -21797,6 +21861,11 @@ paths:
                     nullable: true
                   termsVersion:
                     type: string
+                    nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   createdAt:
                     type: string
@@ -21957,6 +22026,11 @@ paths:
                     nullable: true
                   termsVersion:
                     type: string
+                    nullable: true
+                  createdByOrganizationId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
                     nullable: true
                   createdAt:
                     type: string
@@ -22960,6 +23034,11 @@ paths:
                               nullable: true
                             termsVersion:
                               type: string
+                              nullable: true
+                            createdByOrganizationId:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
                               nullable: true
                             createdAt:
                               type: string
@@ -46211,6 +46290,10 @@ paths:
                         nullable: true
                       termsVersion:
                         type: string
+                        nullable: true
+                      createdByOrganizationId:
+                        allOf:
+                          - $ref: "#/properties/user/properties/id"
                         nullable: true
                       createdAt:
                         $ref: "#/properties/user/properties/termsAcceptedAt"
