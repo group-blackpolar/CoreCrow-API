@@ -6,6 +6,7 @@ import * as s from "../contracts/schemas.js";
 import { documentsService, ATTACHMENT_LIMITS } from "../modules/documents/service.js";
 import { documentStatuses } from "../modules/documents/status.js";
 import { principal } from "../modules/security/session.js";
+import { networkOf } from "../modules/security-access/device.js";
 import { withRequestContext } from "../shared/request-context.js";
 
 const language = z.enum(["es", "en"]).default("es");
@@ -58,7 +59,7 @@ async function binary<T>(request: FastifyRequest, work: (userId: string) => Prom
   return withRequestContext(request.id, async () => {
     const user = await principal(request);
     return work(user.id);
-  });
+  }, undefined, networkOf(request));
 }
 
 export async function documentRoutes(app: FastifyInstance) {

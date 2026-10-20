@@ -1,5 +1,5 @@
 import { tenantRepository } from "../tenancy/repository.js";
-import { effectivePermissions, type Permission } from "./policy.js";
+import { effectivePermissions, isSecurityPermission, type Permission } from "./policy.js";
 import { fail } from "../../shared/errors.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { authorizationRepository } from "./repository.js";
@@ -59,4 +59,13 @@ export async function authorize(
   if (!resolved.permissions.includes(permission))
     fail(403, "FORBIDDEN", "Permission denied");
   return resolved.member;
+}
+
+/** Handing out a security.* permission requires holding it (an ADMIN without it cannot give it to anyone, themselves included). */
+export async function assertHoldsSecurity(tx: Transaction, userId: string, organizationId: string, requested: readonly string[]) {
+  const wanted = requested.filter(isSecurityPermission);
+  if (!wanted.length) return;
+  const held = await resolvePermissions(tx, userId, organizationId);
+  if (wanted.some((permission) => !held.permissions.includes(permission as Permission)))
+    fail(403, "PRIVILEGE_ESCALATION", "You cannot hand out a permission you do not hold");
 }

@@ -210,3 +210,9 @@ export async function sendContactNotification(
     ].join("\n"),
   });
 }
+
+/** Plain-text security alert for an organization's administrators. `lines` carry no secrets (no tokens, hashes or passwords). */
+export async function sendSecurityAlertMail(to: string, subject: string, lines: string[]) {
+  if (!transport || !process.env.MAIL_FROM) throw new Error("Email delivery unavailable");
+  await transport.sendMail({ from: process.env.MAIL_FROM, to, subject, text: ["BLACK POLAR — Security & access", "", ...lines].join("\n") });
+}

@@ -5,7 +5,7 @@ import type { InvitationKind, TenantRole } from "../../lib/database.js";
 import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { authorize } from "../authorization/service.js";
+import { assertHoldsSecurity, authorize } from "../authorization/service.js";
 import { readOrganizationPolicy } from "./policy.js";
 import { applyTemplateToMembership, loadTemplate } from "../authorization/access-templates.js";
 import { canManageRole, isPermission, type Permission } from "../authorization/policy.js";
@@ -150,6 +150,7 @@ async function validateIssue(
   const permissions = [...new Set(input.permissions ?? [])];
   if (groupIds.length || permissions.length)
     await authorize(tx, actorId, organizationId, "permissions.manage");
+  await assertHoldsSecurity(tx, actorId, organizationId, permissions);
   for (const groupId of groupIds)
     if (!(await groups.group(tx, organizationId, groupId)))
       fail(404, "NOT_FOUND", "Group not found");
