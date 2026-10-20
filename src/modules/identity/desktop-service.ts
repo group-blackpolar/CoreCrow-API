@@ -1,6 +1,8 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
+import { currentNetwork } from "../../shared/request-context.js";
+import { admitSession } from "../security-access/enforcement.js";
 import { hash } from "../security/crypto.js";
 import { auditRepository } from "../audit/repository.js";
 import { desktopIdentityRepository as repo } from "./desktop-repository.js";
@@ -63,7 +65,16 @@ export const desktopIdentity = {
       repo.deleteVerification(tx, `${REQUEST_PREFIX}${hash(nonce)}`),
     );
   },
-  exchange(code: string, verifier: string) {
+  async exchange(code: string, verifier: string) {
+    const issued = await this.issue(code, verifier);
+    // Same admission as a browser sign-in (IP rules, session limit); a desktop client has no device cookie, so no device is registered.
+    const network = currentNetwork();
+    await admitSession({ id: issued.sessionId, userId: issued.user.id }, { registerDevice: false });
+    const denied = network?.outcome.denied;
+    if (denied) fail(denied.status, denied.code, denied.message);
+    return { token: issued.token, user: issued.user };
+  },
+  issue(code: string, verifier: string) {
     return transaction(async (tx) => {
       const record = await repo.verification(tx, `${CODE_PREFIX}${hash(code)}`);
       if (!record) fail(401, "INVALID_DESKTOP_CODE", "Desktop code unavailable");
@@ -96,7 +107,7 @@ export const desktopIdentity = {
         action: "identity.desktop.session.create",
         targetId: session.id,
       });
-      return { token, user };
+      return { token, user, sessionId: session.id };
     });
   },
   revoke(token: string) {

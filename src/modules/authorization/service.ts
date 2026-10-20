@@ -4,6 +4,7 @@ import { fail } from "../../shared/errors.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { authorizationRepository } from "./repository.js";
 import { currentInspection } from "../../shared/request-context.js";
+import { assertNetworkAllowed } from "../security-access/enforcement.js";
 import { inspectionPermissions } from "./inspection.js";
 
 export async function resolvePermissions(
@@ -22,6 +23,7 @@ export async function resolvePermissions(
       };
     fail(404, "NOT_FOUND", "Organization not found");
   }
+  await assertNetworkAllowed(tx, organizationId, userId);
   const [groupGrants, directGrants] = await Promise.all([
     authorizationRepository.groupGrants(tx, organizationId, member.id),
     authorizationRepository.directGrants(tx, organizationId, member.id),
