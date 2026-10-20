@@ -39,6 +39,8 @@ export const user = z.object({
   passwordChangeRequired: z.boolean(),
   termsAcceptedAt: date.nullable(),
   termsVersion: z.string().nullable(),
+  /** Organization that created this account (no real mailbox, no Personal Workspace); null for self-registered/invited accounts. */
+  createdByOrganizationId: id.nullable(),
   createdAt: date,
 });
 export const verificationEmailInput = z

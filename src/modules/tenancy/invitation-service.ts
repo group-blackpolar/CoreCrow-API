@@ -294,7 +294,7 @@ export const invitations = {
     };
   },
   accept(
-    user: { id: string; email: string; emailVerified: boolean },
+    user: { id: string; email: string; emailVerified: boolean; createdByOrganizationId?: string | null },
     credentialInput: string,
   ) {
     return transaction(async (tx) => {
@@ -309,6 +309,9 @@ export const invitations = {
         invitation.expiresAt <= new Date()
       )
         fail(404, "INVITATION_INVALID", "Invitation unavailable");
+      // An account an organization created (name@<slug>.bp, no real mailbox) belongs to that organization only.
+      if (user.createdByOrganizationId && user.createdByOrganizationId !== invitation.organizationId)
+        fail(403, "MANAGED_ACCOUNT_SINGLE_ORGANIZATION", "Accounts created by an organization cannot join another one");
       const emailed = invitation.kind === "EMAIL";
       if (emailed && normalizedEmail(user.email) !== invitation.email)
         fail(403, "INVITATION_EMAIL_MISMATCH", "The invitation belongs to another email");
@@ -453,7 +456,7 @@ export const invitations = {
         } else {
           for (let n = 2; await repo.userByEmail(tx, email); n += 1) email = addressOf(`${base}${n}`);
         }
-        const user = await identities.create(tx, { name: input.name.trim(), email, role: "USER", emailVerified: true }, passwordHash);
+        const user = await identities.create(tx, { name: input.name.trim(), email, role: "USER", emailVerified: true, createdByOrganizationId: organizationId }, passwordHash);
         const membership = await repo.addMember(tx, organizationId, user.id, input.role);
         await repo.addInvitationGrants(tx, organizationId, membership.id, groupIds, []);
         if (primary) await tx.organizationGroupMember.update({ where: { groupId_membershipId: { groupId: primary.id, membershipId: membership.id } }, data: { isPrimary: true } });
@@ -471,7 +474,7 @@ export const invitations = {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "members.manage");
       const found = await repo.userByEmail(tx, normalizedEmail(emailInput));
-      if (!found || found.status !== "ACTIVE") return { exists: false as const, user: null, alreadyMember: false };
+      if (!found || found.status !== "ACTIVE" || (found.createdByOrganizationId && found.createdByOrganizationId !== organizationId)) return { exists: false as const, user: null, alreadyMember: false };
       const membership = await repo.membership(tx, organizationId, found.id);
       return {
         exists: true as const,
@@ -500,7 +503,7 @@ export const invitations = {
           fail(404, "NOT_FOUND", "Group not found");
       if (input.primaryGroupId && !groupIds.includes(input.primaryGroupId)) fail(422, "PRIMARY_GROUP_NOT_ASSIGNED", "The primary group must be one of the account's groups");
       const target = await repo.userByEmail(tx, normalizedEmail(input.email));
-      if (!target || target.status !== "ACTIVE" || !target.emailVerified)
+      if (!target || target.status !== "ACTIVE" || !target.emailVerified || (target.createdByOrganizationId && target.createdByOrganizationId !== organizationId))
         fail(404, "USER_NOT_FOUND", "No verified account exists for this email");
       if (await repo.membership(tx, organizationId, target.id))
         fail(409, "ALREADY_MEMBER", "The user already belongs to this organization");

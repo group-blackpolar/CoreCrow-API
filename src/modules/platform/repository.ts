@@ -11,11 +11,12 @@ const userSearch = (query?: string) =>
         ],
       }
     : {};
+const managedFilter = (managed: boolean) => ({ createdByOrganizationId: managed ? { not: null } : null });
 
 export const platformRepository = {
-  users(tx: Transaction, query: { q?: string; limit: number; cursor?: string }) {
+  users(tx: Transaction, query: { q?: string; limit: number; cursor?: string; organizationManaged: boolean }) {
     return tx.user.findMany({
-      where: userSearch(query.q),
+      where: { ...userSearch(query.q), ...managedFilter(query.organizationManaged) },
       select: { ...publicUser, _count: { select: { memberships: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: query.limit + 1,

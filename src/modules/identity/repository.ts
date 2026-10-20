@@ -11,6 +11,7 @@ export const publicUser = {
   passwordChangeRequired: true,
   termsAcceptedAt: true,
   termsVersion: true,
+  createdByOrganizationId: true,
   createdAt: true,
 } as const;
 export const identities = {
@@ -35,6 +36,7 @@ export const identities = {
       role: Role;
       passwordChangeRequired?: boolean;
       emailVerified?: boolean;
+      createdByOrganizationId?: string;
     },
     password: string,
   ) {

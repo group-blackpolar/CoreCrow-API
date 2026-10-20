@@ -41,6 +41,8 @@ model User {
   passwordChangeRequired Boolean       @default(false)
   termsAcceptedAt        DateTime?
   termsVersion           String?
+  /// Set when an organization administrator created the account (login alias name@<slug>.bp, no real mailbox). Such accounts have no Personal Workspace.
+  createdByOrganizationId String?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
@@ -71,6 +73,7 @@ model User {
   securityDevices            SecurityDevice[]
 
   @@index([status, createdAt])
+  @@index([createdByOrganizationId, createdAt])
   @@map("users")
 }
 
