@@ -4,6 +4,7 @@ import { prisma } from "./database.js";
 import { sendIdentityMail } from "../modules/security/mail.js";
 import { issueEmailVerificationCode } from "../modules/identity/email-verification-service.js";
 import { auditRepository } from "../modules/audit/repository.js";
+import { admitSession } from "../modules/security-access/enforcement.js";
 import { openAPI } from "better-auth/plugins";
 export const trustedOrigins = (
   process.env.TRUSTED_ORIGINS ?? "http://localhost:3000,http://localhost:3001"
@@ -123,6 +124,8 @@ export const auth = betterAuth({
             action: "identity.session.create",
             targetId: session.id,
           });
+          // Security & access admission. ponytail: fails open on an unexpected error so a bug cannot lock everyone out; denials are explicit.
+          await admitSession(session, { registerDevice: true }).catch(() => undefined);
         },
       },
       delete: {

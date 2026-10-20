@@ -20,6 +20,20 @@ export const permissions = [
   "documents.download",
   "documents.send",
   "documents.manage",
+  // Security & access. Never part of a role's default set (see `grants`): OWNER holds them, everyone else needs an explicit grant.
+  "security.overview.view",
+  "security.devices.view",
+  "security.devices.revoke",
+  "security.sessions.view",
+  "security.sessions.revoke",
+  "security.ips.view",
+  "security.ips.manage",
+  "security.policies.view",
+  "security.policies.manage",
+  "security.alerts.view",
+  "security.alerts.manage",
+  "security.audit.view",
+  "security.notifications.manage",
 ] as const;
 export type Permission = (typeof permissions)[number];
 export const northCapabilities = [
@@ -81,7 +95,8 @@ export function isNorthCapability(value: string): value is NorthCapability {
 }
 const grants: Record<string, readonly Permission[]> = {
   OWNER: permissions,
-  ADMIN: permissions,
+  // ADMIN keeps every pre-existing permission; security.* must be granted explicitly (group or direct grant) by an OWNER.
+  ADMIN: permissions.filter((permission) => !permission.startsWith("security.")),
   BILLING_ADMIN: [
     "organization.read",
     "members.read",
@@ -111,6 +126,8 @@ const grants: Record<string, readonly Permission[]> = {
 };
 const permissionSet = new Set<string>(permissions);
 
+export const isSecurityPermission = (value: string) => value.startsWith("security.");
+
 export function isPermission(value: string): value is Permission {
   return permissionSet.has(value);
 }
@@ -123,8 +140,10 @@ export function effectivePermissions(
   const resolved = new Set<Permission>(
     role && Object.hasOwn(grants, role) ? grants[role] : [],
   );
-  for (const permission of [...groupGrants, ...directGrants])
-    if (isPermission(permission)) resolved.add(permission);
+  // security.* is per person: a group grant of it is ignored, so joining a group can never escalate.
+  for (const permission of groupGrants)
+    if (isPermission(permission) && !isSecurityPermission(permission)) resolved.add(permission);
+  for (const permission of directGrants) if (isPermission(permission)) resolved.add(permission);
   // Registry order makes resolution stable regardless of query or insertion order.
   return permissions.filter((permission) => resolved.has(permission));
 }

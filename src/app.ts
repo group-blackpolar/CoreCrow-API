@@ -7,10 +7,12 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import { networkOf, deviceCookie } from "./modules/security-access/device.js";
+import { withRequestContext } from "./shared/request-context.js";
+import { parseTrustedProxies } from "./modules/security-access/network.js";
 import swagger from "@fastify/swagger";
 import staticPlugin from "@fastify/static";
 import { fileURLToPath } from "node:url";
-import { isIP } from "node:net";
 import { auth, trustedOrigins } from "./lib/auth.js";
 import { webHeaders } from "./shared/headers.js";
 import { DomainError } from "./shared/errors.js";
@@ -71,12 +73,7 @@ export async function buildApp(
           },
     bodyLimit: 32768,
     ajv: { customOptions: { removeAdditional: false } },
-    trustProxy:
-      process.env.TRUST_PROXY === "loopback"
-        ? "loopback"
-        : process.env.TRUST_PROXY && isIP(process.env.TRUST_PROXY)
-          ? process.env.TRUST_PROXY
-          : false,
+    trustProxy: parseTrustedProxies(process.env.TRUST_PROXY),
   });
   await app.register(cookie);
   await app.register(helmet, {
@@ -352,7 +349,8 @@ export async function buildApp(
     // Derive the auth limiter address only from Fastify's configured proxy trust.
     headers.set("x-forwarded-for", request.ip);
     headers.set("x-real-ip", request.ip);
-    const response = await auth.handler(
+    const network = networkOf(request);
+    const response = await withRequestContext(request.id, () => auth.handler(
       new Request(
         new URL(
           requestPath,
@@ -366,7 +364,7 @@ export async function buildApp(
             : {}),
         },
       ),
-    );
+    ), undefined, network);
     if (
       response.ok &&
       request.method === "POST" &&
@@ -375,11 +373,15 @@ export async function buildApp(
       const email = (request.body as { email?: unknown } | undefined)?.email;
       if (typeof email === "string") await issueEmailVerificationCode(email);
     }
+    const denied = network.outcome.denied;
+    if (denied)
+      return reply.code(denied.status).send({ error: { code: denied.code, message: denied.message, requestId: request.id } });
     reply.code(response.status);
     response.headers.forEach((value, key) => {
       if (key !== "set-cookie") reply.header(key, value);
     });
     const cookies = response.headers.getSetCookie();
+    if (network.outcome.issueDeviceToken) cookies.push(deviceCookie(network.outcome.issueDeviceToken));
     if (cookies.length) reply.header("set-cookie", cookies);
     return reply.send(await response.text());
   };

@@ -1,5 +1,5 @@
-import type { Permission } from "./policy.js";
-import { authorize, resolvePermissions } from "./service.js";
+import { isSecurityPermission, type Permission } from "./policy.js";
+import { assertHoldsSecurity, authorize, resolvePermissions } from "./service.js";
 import { groupsRepository as groups } from "./groups-repository.js";
 import { tenantRepository as tenants } from "../tenancy/repository.js";
 import { auditRepository as audit } from "../audit/repository.js";
@@ -158,6 +158,7 @@ export const authorizationGroups = {
   ) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "permissions.manage");
+      if (isSecurityPermission(permission)) fail(422, "SECURITY_PERMISSION_DIRECT_ONLY", "Security permissions are granted to people, not groups");
       await requireGroup(tx, organizationId, groupId);
       const grant = await groups.grantGroup(
         tx,
@@ -220,6 +221,7 @@ export const authorizationGroups = {
   ) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "permissions.manage");
+      await assertHoldsSecurity(tx, userId, organizationId, [permission]);
       const membership = await requireMembership(tx, organizationId, targetUserId);
       const grant = await groups.grantDirect(
         tx,

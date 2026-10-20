@@ -1,9 +1,10 @@
 import { tenantRepository } from "../tenancy/repository.js";
-import { effectivePermissions, type Permission } from "./policy.js";
+import { effectivePermissions, isSecurityPermission, type Permission } from "./policy.js";
 import { fail } from "../../shared/errors.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { authorizationRepository } from "./repository.js";
 import { currentInspection } from "../../shared/request-context.js";
+import { assertNetworkAllowed } from "../security-access/enforcement.js";
 import { inspectionPermissions } from "./inspection.js";
 
 export async function resolvePermissions(
@@ -22,6 +23,7 @@ export async function resolvePermissions(
       };
     fail(404, "NOT_FOUND", "Organization not found");
   }
+  await assertNetworkAllowed(tx, organizationId, userId);
   const [groupGrants, directGrants] = await Promise.all([
     authorizationRepository.groupGrants(tx, organizationId, member.id),
     authorizationRepository.directGrants(tx, organizationId, member.id),
@@ -59,4 +61,13 @@ export async function authorize(
   if (!resolved.permissions.includes(permission))
     fail(403, "FORBIDDEN", "Permission denied");
   return resolved.member;
+}
+
+/** Handing out a security.* permission requires holding it (an ADMIN without it cannot give it to anyone, themselves included). */
+export async function assertHoldsSecurity(tx: Transaction, userId: string, organizationId: string, requested: readonly string[]) {
+  const wanted = requested.filter(isSecurityPermission);
+  if (!wanted.length) return;
+  const held = await resolvePermissions(tx, userId, organizationId);
+  if (wanted.some((permission) => !held.permissions.includes(permission as Permission)))
+    fail(403, "PRIVILEGE_ESCALATION", "You cannot hand out a permission you do not hold");
 }

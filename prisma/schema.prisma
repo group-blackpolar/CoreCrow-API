@@ -70,6 +70,7 @@ model User {
   aiRuns                     AIRun[]
   aiActions                  AIAction[]
   aiUsage                    AIUsage[]
+  securityDevices            SecurityDevice[]
 
   @@index([status, createdAt])
   @@index([createdByOrganizationId, createdAt])
@@ -98,11 +99,16 @@ model Session {
   expiresAt DateTime
   ipAddress String?
   userAgent String?
+  /// Security & access: device that signed in and the organization whose policy governs this session (null = untracked).
+  deviceId               String?
+  securityOrganizationId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([securityOrganizationId, createdAt])
+  @@index([userId, createdAt])
   @@map("sessions")
 }
 
@@ -352,6 +358,9 @@ enum NorthDatasetRevisionMode {
 
 model Organization {
   id                    String                      @id @default(cuid())
+  securityPolicy        OrganizationSecurityPolicy?
+  securityIpRules       SecurityIpRule[]
+  securityAlerts        SecurityAlert[]
   name                  String
   slug                  String                      @unique
   status                OrganizationStatus          @default(ACTIVE)
@@ -1826,4 +1835,127 @@ model NorthPipelineRun {
 
   @@index([organizationId, groupId, createdAt])
   @@index([organizationId, datasetId, createdAt])
+}
+
+enum SecurityOverflowPolicy {
+  BLOCK_NEW
+  REPLACE_OLDEST
+  REQUIRE_USER_CHOICE
+}
+
+enum SecurityIpRuleKind {
+  ALLOW
+  DENY
+}
+
+enum SecurityAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum SecurityAlertEmailStatus {
+  NONE
+  SENT
+  FAILED
+}
+
+/// Security & access policy of one organization. No row = feature off for that organization (nothing tracked or enforced).
+model OrganizationSecurityPolicy {
+  organizationId       String                 @id
+  /// Master switch for the device/session limits. Tracking happens whenever the row exists.
+  enforcement          Boolean                @default(false)
+  maxDevices           Int?
+  maxSessions          Int?
+  overflowPolicy       SecurityOverflowPolicy @default(BLOCK_NEW)
+  alertsEnabled        Boolean                @default(true)
+  alertEmailEnabled    Boolean                @default(false)
+  /// Explicit recipients; empty = the organization's owners that have a real mailbox.
+  alertEmailRecipients String[]               @default([])
+  retentionDays        Int                    @default(90)
+  retentionExemptUntil DateTime?
+  retentionExemptReason String?
+  retentionExemptBy    String?
+  updatedAt            DateTime               @updatedAt
+  updatedBy            String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_security_policies")
+}
+
+model SecurityDevice {
+  id             String    @id @default(cuid())
+  userId         String
+  /// Organization whose policy governed the device when it was registered.
+  organizationId String
+  /// SHA-256 of the opaque device cookie; the cookie value itself is never stored.
+  tokenHash      String    @unique
+  userAgent      String?
+  firstIp        String?
+  lastIp         String?
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  revokedAt      DateTime?
+  revokedBy      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, revokedAt, lastSeenAt])
+  @@index([userId, revokedAt])
+  @@map("security_devices")
+}
+
+model SecurityIpRule {
+  id             String             @id @default(cuid())
+  organizationId String
+  kind           SecurityIpRuleKind
+  /// Normalized `address/prefix` (IPv4, IPv6 or CIDR).
+  cidr           String
+  note           String?
+  createdBy      String?
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, cidr])
+  @@map("security_ip_rules")
+}
+
+model SecurityAlert {
+  id             String                   @id @default(cuid())
+  organizationId String
+  kind           String
+  severity       String
+  userId         String?
+  /// Same dedupKey within an organization collapses into one alert whose `count` grows.
+  dedupKey       String
+  count          Int                      @default(1)
+  details        Json?
+  status         SecurityAlertStatus      @default(OPEN)
+  emailStatus    SecurityAlertEmailStatus @default(NONE)
+  emailError     String?
+  firstSeenAt    DateTime                 @default(now())
+  lastSeenAt     DateTime                 @default(now())
+  handledBy      String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, dedupKey])
+  @@index([organizationId, status, lastSeenAt])
+  @@map("security_alerts")
+}
+
+/// Result of each retention sweep per organization (also audited), shown in the Security overview.
+model SecurityRetentionRun {
+  id             String   @id @default(cuid())
+  organizationId String
+  ranAt          DateTime @default(now())
+  retentionDays  Int
+  purgedAlerts   Int      @default(0)
+  purgedDevices  Int      @default(0)
+  skipped        String?
+
+  @@index([organizationId, ranAt])
+  @@map("security_retention_runs")
 }

@@ -4,6 +4,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { error } from "./schemas.js";
 import { principal } from "../modules/security/session.js";
 import { DomainError } from "../shared/errors.js";
+import { networkOf } from "../modules/security-access/device.js";
 import { withRequestContext, type Inspection } from "../shared/request-context.js";
 import { inspectionFor } from "../modules/authorization/inspection.js";
 const json = (schema: z.ZodTypeAny) =>
@@ -109,7 +110,7 @@ export function contract<
             "The response could not be completed",
           );
         return reply.code(options.status ?? 200).send(parsed.data);
-      }, inspection);
+      }, inspection, networkOf(request));
     },
   });
 }

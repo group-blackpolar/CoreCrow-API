@@ -1,3 +1,5 @@
+import { networkOf } from "../modules/security-access/device.js";
+import { withRequestContext } from "../shared/request-context.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -137,7 +139,7 @@ export async function desktopAuthRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { code, verifier } = exchangeBody.parse(request.body);
-      return desktopIdentity.exchange(code, verifier);
+      return withRequestContext(request.id, () => desktopIdentity.exchange(code, verifier), undefined, networkOf(request));
     },
   );
 

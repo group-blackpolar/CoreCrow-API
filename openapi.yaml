@@ -4930,6 +4930,2519 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/organizations/{organizationId}/security/overview:
+    get:
+      summary: Security overview of the organization (security.overview.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    type: object
+                    properties:
+                      configured:
+                        type: boolean
+                      enforcement:
+                        type: boolean
+                      maxDevices:
+                        type: integer
+                        minimum: 1
+                        maximum: 1000
+                        nullable: true
+                      maxSessions:
+                        type: integer
+                        minimum: 1
+                        maximum: 1000
+                        nullable: true
+                      overflowPolicy:
+                        type: string
+                        enum:
+                          - BLOCK_NEW
+                          - REPLACE_OLDEST
+                          - REQUIRE_USER_CHOICE
+                      alertsEnabled:
+                        type: boolean
+                      retentionDays:
+                        type: integer
+                      retentionExemption:
+                        type: object
+                        properties:
+                          until:
+                            type: string
+                            format: date-time
+                          reason:
+                            type: string
+                          by:
+                            type: string
+                            nullable: true
+                        required:
+                          - until
+                          - reason
+                          - by
+                        additionalProperties: false
+                        nullable: true
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                    required:
+                      - configured
+                      - enforcement
+                      - maxDevices
+                      - maxSessions
+                      - overflowPolicy
+                      - alertsEnabled
+                      - retentionDays
+                      - retentionExemption
+                      - updatedAt
+                    additionalProperties: false
+                  activeDevices:
+                    type: integer
+                  activeSessions:
+                    type: integer
+                  openAlerts:
+                    type: integer
+                  allowRules:
+                    type: integer
+                  denyRules:
+                    type: integer
+                  lastRetentionRun:
+                    type: object
+                    properties:
+                      ranAt:
+                        type: string
+                        format: date-time
+                      purgedAlerts:
+                        type: integer
+                      purgedDevices:
+                        type: integer
+                      skipped:
+                        type: string
+                        nullable: true
+                    required:
+                      - ranAt
+                      - purgedAlerts
+                      - purgedDevices
+                      - skipped
+                    additionalProperties: false
+                    nullable: true
+                required:
+                  - policy
+                  - activeDevices
+                  - activeSessions
+                  - openAlerts
+                  - allowRules
+                  - denyRules
+                  - lastRetentionRun
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/devices:
+    get:
+      summary: Registered devices governed by the organization (security.devices.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+            default: "false"
+          in: query
+          name: includeRevoked
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    userId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    userName:
+                      type: string
+                      nullable: true
+                    userEmail:
+                      type: string
+                    userAgent:
+                      type: string
+                      nullable: true
+                    firstIp:
+                      type: string
+                      nullable: true
+                    lastIp:
+                      type: string
+                      nullable: true
+                    firstSeenAt:
+                      type: string
+                      format: date-time
+                    lastSeenAt:
+                      type: string
+                      format: date-time
+                    revokedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    activeSessions:
+                      type: integer
+                  required:
+                    - id
+                    - userId
+                    - userName
+                    - userEmail
+                    - userAgent
+                    - firstIp
+                    - lastIp
+                    - firstSeenAt
+                    - lastSeenAt
+                    - revokedAt
+                    - activeSessions
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/devices/{deviceId}:
+    delete:
+      summary: Revoke a device and end its sessions (security.devices.revoke)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: deviceId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  sessionsEnded:
+                    type: integer
+                required:
+                  - id
+                  - sessionsEnded
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/sessions:
+    get:
+      summary: Active sessions governed by the organization (security.sessions.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    userId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    userName:
+                      type: string
+                      nullable: true
+                    userEmail:
+                      type: string
+                    ipAddress:
+                      type: string
+                      nullable: true
+                    userAgent:
+                      type: string
+                      nullable: true
+                    deviceId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                    expiresAt:
+                      type: string
+                      format: date-time
+                  required:
+                    - id
+                    - userId
+                    - userName
+                    - userEmail
+                    - ipAddress
+                    - userAgent
+                    - deviceId
+                    - createdAt
+                    - expiresAt
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/sessions/{sessionId}:
+    delete:
+      summary: End one session (security.sessions.revoke)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: sessionId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - id
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/users:
+    get:
+      summary: Members with authentication state and session/device counts
+        (security.sessions.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    userId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    name:
+                      type: string
+                      nullable: true
+                    email:
+                      type: string
+                    role:
+                      type: string
+                    status:
+                      type: string
+                    mailbox:
+                      type: string
+                      enum:
+                        - verified
+                        - unverified
+                        - organization
+                    passwordChangeRequired:
+                      type: boolean
+                    activeSessions:
+                      type: integer
+                    lastSessionAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    activeDevices:
+                      type: integer
+                  required:
+                    - userId
+                    - name
+                    - email
+                    - role
+                    - status
+                    - mailbox
+                    - passwordChangeRequired
+                    - activeSessions
+                    - lastSessionAt
+                    - activeDevices
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/users/{userId}/sessions:
+    delete:
+      summary: End every session of a member governed by the organization
+        (security.sessions.revoke)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: userId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionsEnded:
+                    type: integer
+                required:
+                  - sessionsEnded
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/ips:
+    get:
+      summary: Allowed and blocked address rules (security.ips.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    kind:
+                      type: string
+                      enum:
+                        - ALLOW
+                        - DENY
+                    cidr:
+                      type: string
+                    note:
+                      type: string
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                  required:
+                    - id
+                    - kind
+                    - cidr
+                    - note
+                    - createdAt
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    post:
+      summary: Add an IPv4, IPv6 or CIDR rule; deny wins over allow
+        (security.ips.manage)
+      tags:
+        - Security and access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - ALLOW
+                    - DENY
+                cidr:
+                  type: string
+                  minLength: 2
+                  maxLength: 64
+                note:
+                  type: string
+                  maxLength: 200
+              required:
+                - kind
+                - cidr
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  kind:
+                    type: string
+                    enum:
+                      - ALLOW
+                      - DENY
+                  cidr:
+                    type: string
+                  note:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - kind
+                  - cidr
+                  - note
+                  - createdAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/ips/{ruleId}:
+    delete:
+      summary: Remove an address rule (security.ips.manage)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: ruleId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - id
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/policy:
+    get:
+      summary: Device and session policy (security.policies.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  enforcement:
+                    type: boolean
+                  maxDevices:
+                    type: integer
+                    minimum: 1
+                    maximum: 1000
+                    nullable: true
+                  maxSessions:
+                    type: integer
+                    minimum: 1
+                    maximum: 1000
+                    nullable: true
+                  overflowPolicy:
+                    type: string
+                    enum:
+                      - BLOCK_NEW
+                      - REPLACE_OLDEST
+                      - REQUIRE_USER_CHOICE
+                  alertsEnabled:
+                    type: boolean
+                  retentionDays:
+                    type: integer
+                  retentionExemption:
+                    type: object
+                    properties:
+                      until:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      by:
+                        type: string
+                        nullable: true
+                    required:
+                      - until
+                      - reason
+                      - by
+                    additionalProperties: false
+                    nullable: true
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                required:
+                  - configured
+                  - enforcement
+                  - maxDevices
+                  - maxSessions
+                  - overflowPolicy
+                  - alertsEnabled
+                  - retentionDays
+                  - retentionExemption
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    put:
+      summary: Set the device/session policy and retention (security.policies.manage)
+      tags:
+        - Security and access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enforcement:
+                  type: boolean
+                maxDevices:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  nullable: true
+                maxSessions:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  nullable: true
+                overflowPolicy:
+                  type: string
+                  enum:
+                    - BLOCK_NEW
+                    - REPLACE_OLDEST
+                    - REQUIRE_USER_CHOICE
+                alertsEnabled:
+                  type: boolean
+                retentionDays:
+                  type: integer
+                  minimum: 7
+                  maximum: 3650
+                retentionExemption:
+                  type: object
+                  properties:
+                    until:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                      minLength: 5
+                      maxLength: 300
+                  required:
+                    - until
+                    - reason
+                  additionalProperties: false
+                  nullable: true
+              required:
+                - enforcement
+                - maxDevices
+                - maxSessions
+                - overflowPolicy
+                - alertsEnabled
+                - retentionDays
+                - retentionExemption
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured:
+                    type: boolean
+                  enforcement:
+                    type: boolean
+                  maxDevices:
+                    type: integer
+                    minimum: 1
+                    maximum: 1000
+                    nullable: true
+                  maxSessions:
+                    type: integer
+                    minimum: 1
+                    maximum: 1000
+                    nullable: true
+                  overflowPolicy:
+                    type: string
+                    enum:
+                      - BLOCK_NEW
+                      - REPLACE_OLDEST
+                      - REQUIRE_USER_CHOICE
+                  alertsEnabled:
+                    type: boolean
+                  retentionDays:
+                    type: integer
+                  retentionExemption:
+                    type: object
+                    properties:
+                      until:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      by:
+                        type: string
+                        nullable: true
+                    required:
+                      - until
+                      - reason
+                      - by
+                    additionalProperties: false
+                    nullable: true
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                required:
+                  - configured
+                  - enforcement
+                  - maxDevices
+                  - maxSessions
+                  - overflowPolicy
+                  - alertsEnabled
+                  - retentionDays
+                  - retentionExemption
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/notifications:
+    get:
+      summary: Alert e-mail settings (security.notifications.manage)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alertEmailEnabled:
+                    type: boolean
+                  alertEmailRecipients:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - alertEmailEnabled
+                  - alertEmailRecipients
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    put:
+      summary: Configure alert e-mails (security.notifications.manage)
+      tags:
+        - Security and access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                alertEmailEnabled:
+                  type: boolean
+                alertEmailRecipients:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+                    maxLength: 254
+                  maxItems: 10
+              required:
+                - alertEmailEnabled
+                - alertEmailRecipients
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alertEmailEnabled:
+                    type: boolean
+                  alertEmailRecipients:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - alertEmailEnabled
+                  - alertEmailRecipients
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/alerts:
+    get:
+      summary: Security alerts (security.alerts.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - OPEN
+              - ACKNOWLEDGED
+              - RESOLVED
+          in: query
+          name: status
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    kind:
+                      type: string
+                    severity:
+                      type: string
+                    userId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      nullable: true
+                    count:
+                      type: integer
+                    details:
+                      nullable: true
+                    status:
+                      type: string
+                      enum:
+                        - OPEN
+                        - ACKNOWLEDGED
+                        - RESOLVED
+                    emailStatus:
+                      type: string
+                      enum:
+                        - NONE
+                        - SENT
+                        - FAILED
+                    emailError:
+                      type: string
+                      nullable: true
+                    firstSeenAt:
+                      type: string
+                      format: date-time
+                    lastSeenAt:
+                      type: string
+                      format: date-time
+                  required:
+                    - id
+                    - kind
+                    - severity
+                    - userId
+                    - count
+                    - status
+                    - emailStatus
+                    - emailError
+                    - firstSeenAt
+                    - lastSeenAt
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/alerts/{alertId}:
+    patch:
+      summary: Acknowledge or resolve an alert (security.alerts.manage)
+      tags:
+        - Security and access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - OPEN
+                    - ACKNOWLEDGED
+                    - RESOLVED
+              required:
+                - status
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: alertId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  status:
+                    type: string
+                    enum:
+                      - OPEN
+                      - ACKNOWLEDGED
+                      - RESOLVED
+                required:
+                  - id
+                  - status
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/security/audit:
+    get:
+      summary: Security and authorization audit trail (security.audit.view)
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          in: query
+          name: limit
+          required: false
+        - schema:
+            type: string
+            format: date-time
+          in: query
+          name: before
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    actorId:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      nullable: true
+                    action:
+                      type: string
+                    targetType:
+                      type: string
+                      nullable: true
+                    targetId:
+                      type: string
+                      nullable: true
+                    metadata:
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                  required:
+                    - id
+                    - actorId
+                    - action
+                    - targetType
+                    - targetId
+                    - createdAt
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/me/sessions:
+    get:
+      summary: Your active sessions
+      tags:
+        - Security and access
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    ipAddress:
+                      type: string
+                      nullable: true
+                    userAgent:
+                      type: string
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                    current:
+                      type: boolean
+                  required:
+                    - id
+                    - ipAddress
+                    - userAgent
+                    - createdAt
+                    - current
+                  additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/me/sessions/{sessionId}:
+    delete:
+      summary: End one of your sessions
+      tags:
+        - Security and access
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: sessionId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                required:
+                  - id
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/dataset-groups:
     get:
       summary: List dataset groups with a summary computed only from the datasets the
@@ -26120,6 +28633,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                 required:
                   - role
                   - permissions
@@ -26271,6 +28797,19 @@ paths:
                           - documents.download
                           - documents.send
                           - documents.manage
+                          - security.overview.view
+                          - security.devices.view
+                          - security.devices.revoke
+                          - security.sessions.view
+                          - security.sessions.revoke
+                          - security.ips.view
+                          - security.ips.manage
+                          - security.policies.view
+                          - security.policies.manage
+                          - security.alerts.view
+                          - security.alerts.manage
+                          - security.audit.view
+                          - security.notifications.manage
                   required:
                     - id
                     - organizationId
@@ -26605,6 +29144,19 @@ paths:
                           - documents.download
                           - documents.send
                           - documents.manage
+                          - security.overview.view
+                          - security.devices.view
+                          - security.devices.revoke
+                          - security.sessions.view
+                          - security.sessions.revoke
+                          - security.ips.view
+                          - security.ips.manage
+                          - security.policies.view
+                          - security.policies.manage
+                          - security.alerts.view
+                          - security.alerts.manage
+                          - security.audit.view
+                          - security.notifications.manage
                     maxUses:
                       type: integer
                     useCount:
@@ -26774,6 +29326,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                   maxItems: 50
                   default: []
               additionalProperties: false
@@ -26876,6 +29441,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                   maxUses:
                     type: integer
                   useCount:
@@ -27808,6 +30386,19 @@ paths:
                     - documents.download
                     - documents.send
                     - documents.manage
+                    - security.overview.view
+                    - security.devices.view
+                    - security.devices.revoke
+                    - security.sessions.view
+                    - security.sessions.revoke
+                    - security.ips.view
+                    - security.ips.manage
+                    - security.policies.view
+                    - security.policies.manage
+                    - security.alerts.view
+                    - security.alerts.manage
+                    - security.audit.view
+                    - security.notifications.manage
               required:
                 - permission
               additionalProperties: false
@@ -27859,6 +30450,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                 required:
                   - permission
                 additionalProperties: false
@@ -27975,6 +30579,19 @@ paths:
               - documents.download
               - documents.send
               - documents.manage
+              - security.overview.view
+              - security.devices.view
+              - security.devices.revoke
+              - security.sessions.view
+              - security.sessions.revoke
+              - security.ips.view
+              - security.ips.manage
+              - security.policies.view
+              - security.policies.manage
+              - security.alerts.view
+              - security.alerts.manage
+              - security.audit.view
+              - security.notifications.manage
           in: path
           name: permission
           required: true
@@ -28133,6 +30750,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                   reason:
                     type: string
                   requestedDays:
@@ -28335,6 +30965,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                     reason:
                       type: string
                     requestedDays:
@@ -28649,6 +31292,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                   reason:
                     type: string
                   requestedDays:
@@ -28836,6 +31492,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                     expiresAt:
                       type: string
                       format: date-time
@@ -28987,6 +31656,19 @@ paths:
                           - documents.download
                           - documents.send
                           - documents.manage
+                          - security.overview.view
+                          - security.devices.view
+                          - security.devices.revoke
+                          - security.sessions.view
+                          - security.sessions.revoke
+                          - security.ips.view
+                          - security.ips.manage
+                          - security.policies.view
+                          - security.policies.manage
+                          - security.alerts.view
+                          - security.alerts.manage
+                          - security.audit.view
+                          - security.notifications.manage
                     datasetIds:
                       type: array
                       items:
@@ -29134,6 +31816,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                   maxItems: 50
                   default: []
                 datasetIds:
@@ -29215,6 +31910,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                   datasetIds:
                     type: array
                     items:
@@ -29362,6 +32070,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                   maxItems: 50
                   default: []
                 datasetIds:
@@ -29450,6 +32171,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                   datasetIds:
                     type: array
                     items:
@@ -29887,6 +32621,19 @@ paths:
                             - documents.download
                             - documents.send
                             - documents.manage
+                            - security.overview.view
+                            - security.devices.view
+                            - security.devices.revoke
+                            - security.sessions.view
+                            - security.sessions.revoke
+                            - security.ips.view
+                            - security.ips.manage
+                            - security.policies.view
+                            - security.policies.manage
+                            - security.alerts.view
+                            - security.alerts.manage
+                            - security.audit.view
+                            - security.notifications.manage
                         origins:
                           type: array
                           items:
@@ -30141,6 +32888,19 @@ paths:
                     - documents.download
                     - documents.send
                     - documents.manage
+                    - security.overview.view
+                    - security.devices.view
+                    - security.devices.revoke
+                    - security.sessions.view
+                    - security.sessions.revoke
+                    - security.ips.view
+                    - security.ips.manage
+                    - security.policies.view
+                    - security.policies.manage
+                    - security.alerts.view
+                    - security.alerts.manage
+                    - security.audit.view
+                    - security.notifications.manage
         4XX:
           description: Default Response
           content:
@@ -30246,6 +33006,19 @@ paths:
                     - documents.download
                     - documents.send
                     - documents.manage
+                    - security.overview.view
+                    - security.devices.view
+                    - security.devices.revoke
+                    - security.sessions.view
+                    - security.sessions.revoke
+                    - security.ips.view
+                    - security.ips.manage
+                    - security.policies.view
+                    - security.policies.manage
+                    - security.alerts.view
+                    - security.alerts.manage
+                    - security.audit.view
+                    - security.notifications.manage
                 days:
                   type: integer
                   minimum: 1
@@ -30301,6 +33074,19 @@ paths:
                       - documents.download
                       - documents.send
                       - documents.manage
+                      - security.overview.view
+                      - security.devices.view
+                      - security.devices.revoke
+                      - security.sessions.view
+                      - security.sessions.revoke
+                      - security.ips.view
+                      - security.ips.manage
+                      - security.policies.view
+                      - security.policies.manage
+                      - security.alerts.view
+                      - security.alerts.manage
+                      - security.audit.view
+                      - security.notifications.manage
                 required:
                   - permission
                 additionalProperties: false
@@ -30417,6 +33203,19 @@ paths:
               - documents.download
               - documents.send
               - documents.manage
+              - security.overview.view
+              - security.devices.view
+              - security.devices.revoke
+              - security.sessions.view
+              - security.sessions.revoke
+              - security.ips.view
+              - security.ips.manage
+              - security.policies.view
+              - security.policies.manage
+              - security.alerts.view
+              - security.alerts.manage
+              - security.audit.view
+              - security.notifications.manage
           in: path
           name: permission
           required: true
@@ -31326,6 +34125,19 @@ paths:
                         - documents.download
                         - documents.send
                         - documents.manage
+                        - security.overview.view
+                        - security.devices.view
+                        - security.devices.revoke
+                        - security.sessions.view
+                        - security.sessions.revoke
+                        - security.ips.view
+                        - security.ips.manage
+                        - security.policies.view
+                        - security.policies.manage
+                        - security.alerts.view
+                        - security.alerts.manage
+                        - security.audit.view
+                        - security.notifications.manage
                   maxUses:
                     type: integer
                   useCount:

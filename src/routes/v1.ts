@@ -57,10 +57,12 @@ import { northShowcase } from "../modules/north/showcase-service.js";
 import { documentRoutes } from "./documents.js";
 import { allowedBindingFilterSchema, bindingRuntimeOptions, datasetQueryFilter, datasetQuerySchema } from "../modules/north/data/query-contract.js";
 import { aiRoutes } from "./ai.js";
+import { securityAccessRoutes } from "./security-access.js";
 
 export async function v1Routes(app: FastifyInstance) {
   await app.register(documentRoutes);
   await app.register(aiRoutes);
+  await app.register(securityAccessRoutes);
   const key = z.object({
     id: s.id,
     name: s.name,
