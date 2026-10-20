@@ -789,7 +789,6 @@
                         "passwordChangeRequired",
                         "termsAcceptedAt",
                         "termsVersion",
-                        "createdByOrganizationId",
                         "createdAt"
                       ],
                       "additionalProperties": false
@@ -28572,7 +28571,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -28790,7 +28788,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -29176,7 +29173,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -29375,7 +29371,6 @@
                       "passwordChangeRequired",
                       "termsAcceptedAt",
                       "termsVersion",
-                      "createdByOrganizationId",
                       "createdAt"
                     ],
                     "additionalProperties": false
@@ -29613,7 +29608,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -29849,7 +29843,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -30241,7 +30234,6 @@
                           "passwordChangeRequired",
                           "termsAcceptedAt",
                           "termsVersion",
-                          "createdByOrganizationId",
                           "createdAt",
                           "organizationCount"
                         ],
@@ -30497,7 +30489,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -30773,7 +30764,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt",
                     "memberships"
                   ],
@@ -31010,7 +31000,6 @@
                         "passwordChangeRequired",
                         "termsAcceptedAt",
                         "termsVersion",
-                        "createdByOrganizationId",
                         "createdAt"
                       ],
                       "additionalProperties": false
@@ -31233,7 +31222,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -31470,7 +31458,6 @@
                     "passwordChangeRequired",
                     "termsAcceptedAt",
                     "termsVersion",
-                    "createdByOrganizationId",
                     "createdAt"
                   ],
                   "additionalProperties": false
@@ -32917,7 +32904,6 @@
                               "passwordChangeRequired",
                               "termsAcceptedAt",
                               "termsVersion",
-                              "createdByOrganizationId",
                               "createdAt"
                             ],
                             "additionalProperties": false
@@ -65300,7 +65286,6 @@
                         "passwordChangeRequired",
                         "termsAcceptedAt",
                         "termsVersion",
-                        "createdByOrganizationId",
                         "createdAt"
                       ],
                       "additionalProperties": false

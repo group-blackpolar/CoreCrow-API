@@ -476,7 +476,6 @@ paths:
                       - passwordChangeRequired
                       - termsAcceptedAt
                       - termsVersion
-                      - createdByOrganizationId
                       - createdAt
                     additionalProperties: false
                 required:
@@ -20012,7 +20011,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -20165,7 +20163,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -20435,7 +20432,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -20576,7 +20572,6 @@ paths:
                     - passwordChangeRequired
                     - termsAcceptedAt
                     - termsVersion
-                    - createdByOrganizationId
                     - createdAt
                   additionalProperties: false
         4XX:
@@ -20745,7 +20740,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -20911,7 +20905,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -21184,7 +21177,6 @@ paths:
                         - passwordChangeRequired
                         - termsAcceptedAt
                         - termsVersion
-                        - createdByOrganizationId
                         - createdAt
                         - organizationCount
                       additionalProperties: false
@@ -21367,7 +21359,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -21565,7 +21556,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                   - memberships
                 additionalProperties: false
@@ -21734,7 +21724,6 @@ paths:
                       - passwordChangeRequired
                       - termsAcceptedAt
                       - termsVersion
-                      - createdByOrganizationId
                       - createdAt
                     additionalProperties: false
                   delivery:
@@ -21891,7 +21880,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -22057,7 +22045,6 @@ paths:
                   - passwordChangeRequired
                   - termsAcceptedAt
                   - termsVersion
-                  - createdByOrganizationId
                   - createdAt
                 additionalProperties: false
         4XX:
@@ -23066,7 +23053,6 @@ paths:
                             - passwordChangeRequired
                             - termsAcceptedAt
                             - termsVersion
-                            - createdByOrganizationId
                             - createdAt
                           additionalProperties: false
                       required:
@@ -46321,7 +46307,6 @@ paths:
                       - passwordChangeRequired
                       - termsAcceptedAt
                       - termsVersion
-                      - createdByOrganizationId
                       - createdAt
                     additionalProperties: false
                 required:

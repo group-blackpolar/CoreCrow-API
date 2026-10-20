@@ -40,7 +40,7 @@ export const user = z.object({
   termsAcceptedAt: date.nullable(),
   termsVersion: z.string().nullable(),
   /** Organization that created this account (no real mailbox, no Personal Workspace); null for self-registered/invited accounts. */
-  createdByOrganizationId: id.nullable(),
+  createdByOrganizationId: id.nullable().optional(),
   createdAt: date,
 });
 export const verificationEmailInput = z
