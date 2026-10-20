@@ -129,6 +129,13 @@ test("Organization onboarding integration", { skip: !process.env.TEST_DATABASE_U
     assert.equal(expect(await call("GET", "/v1/me", managedCookie), 200).createdByOrganizationId, organizationId);
     assert.match(JSON.stringify(expect(await call("GET", "/v1/security/keys", managedCookie), 403)), /PERSONAL_WORKSPACE_UNAVAILABLE/);
     expect(await call("POST", "/v1/security/keys", managedCookie, { name: "Managed key", scopes: ["organizations:read"] }), 403);
+    // An organization-created account stays in its organization: no other org can add it or accept it by key.
+    const rival = await verifiedAccount("rival");
+    const rivalOrg = expect(await call("POST", "/v1/organizations", rival.cookie, { name: "Rival Org", slug: `riv${prefix}` }), 201).id as string;
+    assert.equal(expect(await call("GET", `/v1/organizations/${rivalOrg}/user-lookup?email=${encodeURIComponent(made.user.email)}`, rival.cookie), 200).exists, false);
+    expect(await call("POST", `/v1/organizations/${rivalOrg}/members`, rival.cookie, { email: made.user.email }), 404);
+    const key = expect(await call("POST", `/v1/organizations/${rivalOrg}/invitations`, rival.cookie, { kind: "CODE", role: "MEMBER" }), 201);
+    assert.match(JSON.stringify(expect(await call("POST", "/v1/invitations/accept", managedCookie, { token: key.token }), 403)), /MANAGED_ACCOUNT_SINGLE_ORGANIZATION/);
     // Real-email accounts (self-registered, or created by accepting an emailed invitation) keep it.
     assert.equal(expect(await call("GET", "/v1/me", owner.cookie), 200).createdByOrganizationId, null);
     expect(await call("GET", "/v1/security/keys", owner.cookie), 200);
