@@ -5,6 +5,7 @@ import { fail } from "../../shared/errors.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { isNorthCapability, northGlobalCapabilities, type NorthCapability } from "../authorization/policy.js";
 import { authorizeNorth, hasNorthCapability, requireGrantAuthority, type NorthTarget } from "./authorization.js";
+import { assertNetworkAllowed } from "../security-access/enforcement.js";
 import { northRepository as repo, type Localized, type MetadataInput } from "./repository.js";
 import { validateNorthSlug } from "./slug.js";
 import { cloneNorthPanelContent, northContent } from "./content-service.js";
@@ -185,6 +186,7 @@ export const northTaxonomy = {
       const membership = await repo.membership(tx, organizationId, userId);
       const inspecting = !membership && isInspecting(userId, organizationId);
       if (!membership && !inspecting) fail(404, "NOT_FOUND", "Organization not found");
+      if (membership) await assertNetworkAllowed(tx, organizationId, userId);
       await authorizeNorth(tx, userId, inspecting ? "north.category.read" : "north.category.create", {
         organizationId,
         scope: "ORGANIZATION",
@@ -416,6 +418,7 @@ export const northTaxonomy = {
       const inspecting = isInspecting(userId, organizationId);
       const membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
       if (!membership && !inspecting) fail(404, "NOT_FOUND", "Organization not found");
+      if (membership) await assertNetworkAllowed(tx, organizationId, userId);
       const categories = await repo.navigation(tx, organizationId); const result = [];
       for (const category of categories) { const subcategories = [];
         for (const subcategory of category.subcategories) { const panels = [];
@@ -438,6 +441,7 @@ export const northTaxonomy = {
       const inspecting = isInspecting(userId, organizationId);
       const membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
       if (!membership && !inspecting) fail(404, "NOT_FOUND", "Organization not found");
+      if (membership) await assertNetworkAllowed(tx, organizationId, userId);
       const categories = await tx.northCategory.findMany({
         where: { organizationId, slug: { in: slugs }, status: "ACTIVE", navigationHidden: false },
         include: { subcategories: { where: { status: "ACTIVE", navigationHidden: false }, orderBy: [{ order: "asc" }, { id: "asc" }], include: { panels: { where: { status: "PUBLISHED", navigationHidden: false }, orderBy: [{ order: "asc" }, { id: "asc" }], include: { audienceRoles: true, audienceGroups: true, audiencePermissions: true, audienceMemberships: true } } } } },

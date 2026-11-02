@@ -2,6 +2,7 @@ import type { NorthAudienceType, TenantRole } from "../../lib/database.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { isNorthCapability } from "../authorization/policy.js";
 import { hasNorthCapability } from "./authorization.js";
+import { assertNetworkAllowed } from "../security-access/enforcement.js";
 
 type AudiencePanel = {
   id: string;
@@ -24,6 +25,7 @@ export async function northPanelAudienceAllows(
     where: { organizationId_userId: { organizationId: panel.organizationId, userId } },
   });
   if (!membership) return false;
+  await assertNetworkAllowed(tx, panel.organizationId, userId);
   if (panel.audienceType === "ALL_MEMBERS") return true;
   if (panel.audienceType === "ROLES") return panel.audienceRoles.some((item) => item.role === membership.role);
   if (panel.audienceType === "SPECIFIC_USERS") return panel.audienceMemberships.some((item) => item.membershipId === membership.id);

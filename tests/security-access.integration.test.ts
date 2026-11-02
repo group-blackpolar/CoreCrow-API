@@ -194,6 +194,22 @@ test("Security and access integration", { skip: !process.env.TEST_DATABASE_URL }
     expect(await call("GET", `/v1/organizations/${orgId}/members`, real.cookie, undefined, "8.8.8.8"), 200);
   });
 
+  await t.test("ip rules are enforced on every tenant entry point, not only resolvePermissions (R-006)", async () => {
+    expect(await call("POST", `${base}/ips`, owner.cookie, { kind: "ALLOW", cidr: "127.0.0.0/8" }), 201);
+    const org = `/v1/organizations/${orgId}`;
+    const reads = [org, `${org}/members`, `${org}/permissions`, `${org}/datasets`, `${org}/dataset-groups`, `${org}/navigation`, `${org}/north/management-tree`, `${org}/north/search?query=a`, `${org}/north/permission-grants`];
+    for (const url of reads) {
+      const denied = await call("GET", url, owner.cookie, undefined, "8.8.8.8");
+      assert.equal(denied.statusCode, 403, `GET ${url} from a denied address`);
+      assert.equal(codeOf(denied), "IP_NOT_ALLOWED", `GET ${url} from a denied address`);
+      assert.notEqual(codeOf(await call("GET", url, owner.cookie, undefined, "127.0.3.3")), "IP_NOT_ALLOWED", `GET ${url} from an allowed address`);
+    }
+    const write = await call("POST", `${org}/categories`, owner.cookie, { name: { en: "Blocked" }, slug: "blocked-by-ip" }, "8.8.8.8");
+    assert.equal(codeOf(write), "IP_NOT_ALLOWED");
+    assert.equal(await prisma.northCategory.count({ where: { organizationId: orgId, slug: "blocked-by-ip" } }), 0);
+    await prisma.securityIpRule.deleteMany({ where: { organizationId: orgId } });
+  });
+
   await t.test("untrusted forwarded headers do not change the evaluated address", async () => {
     expect(await call("POST", `${base}/ips`, owner.cookie, { kind: "DENY", cidr: "9.9.9.9/32" }), 201);
     const spoof = await app.inject({ method: "GET", url: `/v1/organizations/${orgId}/members`, remoteAddress: "127.0.2.2", headers: { origin: "http://localhost:3000", cookie: owner.cookie, "x-forwarded-for": "9.9.9.9" } });
