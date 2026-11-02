@@ -87,6 +87,12 @@ export function contract<
       const inspection: Inspection | undefined = principalUser
         ? await inspectionFor(request, principalUser)
         : undefined;
+      // X-Platform-Reason: why a platform operator writes to a tenant (ADR-0002). Only used when the actor has no membership.
+      const reasonHeader = request.headers["x-platform-reason"];
+      const operator = {
+        mutating: !["GET", "HEAD", "OPTIONS"].includes(request.method),
+        ...(typeof reasonHeader === "string" && reasonHeader.trim() ? { reason: reasonHeader.trim().slice(0, 500) } : {}),
+      };
       return withRequestContext(request.id, async () => {
         const user = principalUser;
         const value = await options.run({
@@ -110,7 +116,7 @@ export function contract<
             "The response could not be completed",
           );
         return reply.code(options.status ?? 200).send(parsed.data);
-      }, inspection, networkOf(request));
+      }, inspection, networkOf(request), operator);
     },
   });
 }

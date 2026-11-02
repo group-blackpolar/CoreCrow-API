@@ -11,11 +11,13 @@ export type Network = {
   /** Filled by session admission. */
   outcome: { denied?: { status: number; code: string; message: string }; issueDeviceToken?: string };
 };
-type RequestContext = Readonly<{ requestId: string; inspection?: Inspection; network?: Network }>;
+/** ADR-0002 (option C): a platform operator writing to a tenant without membership gives a reason and is audited. */
+export type OperatorContext = Readonly<{ reason?: string; mutating: boolean }>;
+type RequestContext = Readonly<{ requestId: string; inspection?: Inspection; network?: Network; operator?: OperatorContext; operatorAudited: Set<string> }>;
 const storage = new AsyncLocalStorage<RequestContext>();
 
-export function withRequestContext<T>(requestId: string, work: () => Promise<T>, inspection?: Inspection, network?: Network) {
-  return storage.run(Object.freeze({ requestId, ...(inspection ? { inspection } : {}), ...(network ? { network } : {}) }), work);
+export function withRequestContext<T>(requestId: string, work: () => Promise<T>, inspection?: Inspection, network?: Network, operator?: OperatorContext) {
+  return storage.run(Object.freeze({ requestId, operatorAudited: new Set<string>(), ...(inspection ? { inspection } : {}), ...(network ? { network } : {}), ...(operator ? { operator } : {}) }), work);
 }
 
 export function currentRequestId() {
@@ -28,4 +30,16 @@ export function currentInspection() {
 
 export function currentNetwork() {
   return storage.getStore()?.network;
+}
+
+export function currentOperator() {
+  return storage.getStore()?.operator;
+}
+
+/** True the first time `key` is seen in this request, so an operator write is audited once per request and organization. */
+export function firstOperatorAudit(key: string) {
+  const store = storage.getStore();
+  if (!store || store.operatorAudited.has(key)) return false;
+  store.operatorAudited.add(key);
+  return true;
 }
