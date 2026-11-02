@@ -8,7 +8,7 @@ import { baseParts, generatedSheet, writeXlsx } from "./support/xlsx-fixtures.js
 
 // Needs an isolated, migrated PostgreSQL database:
 //   TEST_DATABASE_URL=postgresql://.../xxx_test pnpm exec tsx --test tests/dataset-import-scale.integration.test.ts
-// Optional: SHARK_XLSX_FIXTURE=<path to a real workbook whose first sheet has the 26 Master/House columns> uses it instead of the generated one.
+// Optional: LARGE_XLSX_FIXTURE=<path to a real workbook whose first sheet has the 26 Master/House columns> uses it instead of the generated one.
 test("streamed import of ~183k rows is atomic, idempotent and bounded in memory", { skip: !process.env.TEST_DATABASE_URL, timeout: 900_000 }, async (t) => {
   const testUrl = new URL(process.env.TEST_DATABASE_URL!);
   assert.ok(["127.0.0.1", "localhost"].includes(testUrl.hostname) && testUrl.pathname.endsWith("_test"), "Tests require a dedicated local *_test database");
@@ -19,7 +19,7 @@ test("streamed import of ~183k rows is atomic, idempotent and bounded in memory"
   const scratch = mkdtempSync(join(tmpdir(), "dataset-scale-"));
   t.after(async () => { await prisma.$disconnect(); rmSync(scratch, { recursive: true, force: true }); });
 
-  const real = process.env.SHARK_XLSX_FIXTURE && existsSync(process.env.SHARK_XLSX_FIXTURE) ? process.env.SHARK_XLSX_FIXTURE : undefined;
+  const real = process.env.LARGE_XLSX_FIXTURE && existsSync(process.env.LARGE_XLSX_FIXTURE) ? process.env.LARGE_XLSX_FIXTURE : undefined;
   const expectedRows = real ? 192_799 : 183_040;
   const file = real ?? await writeXlsx(scratch, "scale.xlsx", baseParts({ sheetXml: generatedSheet(expectedRows) }));
   const columns = real

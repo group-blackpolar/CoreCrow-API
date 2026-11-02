@@ -59,8 +59,8 @@ test("Organization policy", { skip: !process.env.TEST_DATABASE_URL }, async (t) 
 
 
   await t.test("password and address formats", () => {
-    assert.match(generatedPassword("shark"), /^SHARK-PASS-[A-Za-z0-9]{10}$/);
-    assert.notEqual(generatedPassword("shark"), generatedPassword("shark"));
+    assert.match(generatedPassword("acme"), /^ACME-PASS-[A-Za-z0-9]{10}$/);
+    assert.notEqual(generatedPassword("acme"), generatedPassword("acme"));
     assert.equal(localPartOf("Samuel Pérez"), "samuel");
     assert.equal(localPartOf("  "), "user");
   });

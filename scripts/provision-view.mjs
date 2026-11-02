@@ -4,7 +4,7 @@
 //
 //   NORTH_API_URL=https://api.blackpolar.org NORTH_ORIGIN=https://north.blackpolar.org \
 //   NORTH_SESSION_COOKIE='<cookie header of your signed-in session>' \
-//   node scripts/provision-view.mjs scripts/dashboards/shark-consignee-analytics.mjs --org shark [--publish] [--only <panel-slug>]
+//   node scripts/provision-view.mjs <definition.mjs> --org <slug> [--publish] [--only <panel-slug>]
 //
 // The session is read from the environment only (never written anywhere). Authorization is whatever that session is
 // allowed to do; nothing here bypasses it. Re-running updates the same resources (matched by slug / binding name).

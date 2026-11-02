@@ -25,4 +25,4 @@ Conditions: Windows 11 laptop, embedded PostgreSQL 16 on loopback (not the produ
 Reading: aggregations and filters stay under ~150 ms at 120k rows, the ordered table page is the slowest (~200 ms: it sorts
 the typed JSON value of every row). All are far below the 1 s target, so no index or materialized view was added: an index
 on `values -> field` would have to be created per field and the data does not justify it yet. Re-measure with the real
-Shark/Master House volume on the VPS before changing anything.
+reference-tenant/Master House volume on the VPS before changing anything.

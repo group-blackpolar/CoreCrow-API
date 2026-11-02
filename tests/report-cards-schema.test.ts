@@ -10,7 +10,7 @@ const report = (props: object) => ({ id: "r", type: "report_cards", schemaVersio
 const check = (components: unknown[]) => validateNorthPanelDocument(documentOf(components) as never, { organizationId: "o", actorId: "u", panelId: "p", validateBindingReference: async () => false });
 
 test("report_cards and the centered hero validate; unsafe cards are refused", async () => {
-  await check([report({ title: { es: "Reportes" }, items: [card()] }), { id: "h", type: "hero", schemaVersion: 1, order: 1, bindings: {}, layout, props: { title: { es: "Hola" }, centered: true, logoImage: "/brand/shark-logo.png" } }]);
+  await check([report({ title: { es: "Reportes" }, items: [card()] }), { id: "h", type: "hero", schemaVersion: 1, order: 1, bindings: {}, layout, props: { title: { es: "Hola" }, centered: true, logoImage: "/brand/logo.png" } }]);
   for (const bad of [
     { items: [] },
     { items: [card({ categorySlug: "Not A Slug" })] },

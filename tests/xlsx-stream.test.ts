@@ -213,8 +213,8 @@ test("scale: 183k rows stream with bounded memory (generated fixture)", { timeou
   assert.ok((result.maxRssKiB ?? Infinity) < 512 * 1024, "child peak RSS stays under 512 MiB");
 });
 
-const real = process.env.SHARK_XLSX_FIXTURE;
-test("real-world workbook (set SHARK_XLSX_FIXTURE to run)", { skip: !real || !existsSync(real), timeout: 600_000 }, async () => {
+const real = process.env.LARGE_XLSX_FIXTURE;
+test("real-world workbook (set LARGE_XLSX_FIXTURE to run)", { skip: !real || !existsSync(real), timeout: 600_000 }, async () => {
   const columns = Array.from({ length: 26 }, (_, i) => ({ sourceOrdinal: i, action: "CREATE" as const, fieldId: `f${i}`, canonicalType: (i === 0 ? "DATE" : [3, 8, 13, 16, 21, 25].includes(i) ? "DECIMAL" : "TEXT") as "DATE" | "DECIMAL" | "TEXT", nullable: true }));
   const analysis = await new StreamingDatasetImportAnalyzer(storageFor(real!)).analyze({ storageKey: "k", storageVersionId: "v", signal: new AbortController().signal });
   assert.equal(analysis.workbook.sheets[0]!.columnCount, 26);
