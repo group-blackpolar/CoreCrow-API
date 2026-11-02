@@ -165,7 +165,7 @@ async function executeDatasetQueryUncached(tx: Transaction, organizationId: stri
       const granularity = query.granularity ?? {};
       // Aggregates read a handful of the 26 JSON keys, but a plain GROUP BY over the table drags every full row (~1.5 kB) through
       // the sort. The referenced fields are projected ONCE into a MATERIALIZED CTE (a few short columns per row) and everything
-      // else runs on it: the same result, ~4x faster on the 193k-row SHARK dataset (measured, see docs/master-house-performance.md).
+      // else runs on it: the same result, ~4x faster on a 193k-row dataset (measured, see docs/master-house-performance.md).
       const used = [...new Set([...groups, ...query.measures.flatMap((measure) => [measure.fieldId, measure.distinctBy, ...(measure.when ?? []).map((condition) => condition.fieldId)]).filter((id): id is string => Boolean(id))])];
       const column = (id: string) => Prisma.raw(`"c${used.indexOf(id)}"`);
       const bucketed = (id: string, source: Prisma.Sql) => {
@@ -188,7 +188,7 @@ async function executeDatasetQueryUncached(tx: Transaction, organizationId: stri
       const groupExpressions = groups.map((id) => bucketed(id, column(id)));
       const groupPositions = groups.map((_, index) => Prisma.raw(String(index + 1)));
       // SUM ... distinctBy: the value belongs to the key (e.g. a Master BL's TEUs) and is repeated on its rows, but is often BLANK
-      // on some of them (SHARK: a third of the rows). So each (group, key) contributes the MAX of its rows, counted once.
+      // on some of them (measured: a third of the rows on one real dataset). So each (group, key) contributes the MAX of its rows, counted once.
       const distinctMeasures = query.measures.flatMap((measure, index) => (measure.distinctBy && measure.fieldId ? [{ index, key: measure.distinctBy, field: measure.fieldId }] : []));
       const projection: Prisma.Sql[] = used.map((id, index) => Prisma.sql`${typed(fields.get(id)!)} AS ${Prisma.raw(`"c${index}"`)}`);
       for (const { index, key } of distinctMeasures) projection.push(Prisma.sql`COALESCE(${typed(fields.get(key)!)}::text, r."id"::text) AS ${Prisma.raw(`"k${index}"`)}`);

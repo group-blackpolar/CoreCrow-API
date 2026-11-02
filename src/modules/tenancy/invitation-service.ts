@@ -26,7 +26,7 @@ function normalizedEmail(value: string) {
 
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
-/** `SHARK-PASS-8nHFG31zTL`: organization prefix + 10 random characters (~58 bits); only its hash is ever stored. */
+/** `ACME-PASS-8nHFG31zTL`: organization prefix + 10 random characters (~58 bits); only its hash is ever stored. */
 export function generatedPassword(slug: string) {
   const prefix = slug.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16) || "ORG";
   const random = Array.from({ length: 10 }, () => PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]).join("");

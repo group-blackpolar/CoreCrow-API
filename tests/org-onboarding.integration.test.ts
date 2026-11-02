@@ -62,8 +62,8 @@ test("Organization onboarding integration", { skip: !process.env.TEST_DATABASE_U
   const organizationId = expect(await call("POST", "/v1/organizations", owner.cookie, { name: "Onboarding Org", slug }), 201).id as string;
 
   await t.test("password and address formats", () => {
-    assert.match(generatedPassword("shark"), /^SHARK-PASS-[A-Za-z0-9]{10}$/);
-    assert.notEqual(generatedPassword("shark"), generatedPassword("shark"));
+    assert.match(generatedPassword("acme"), /^ACME-PASS-[A-Za-z0-9]{10}$/);
+    assert.notEqual(generatedPassword("acme"), generatedPassword("acme"));
     assert.equal(localPartOf("Samuel Pérez"), "samuel");
     assert.equal(localPartOf("  "), "user");
   });
