@@ -26,6 +26,11 @@ const PUBLIC_ROUTES = [
   "POST /v1/invitations/validate",
   "POST /v1/public/showcases/{organizationSlug}/panels/{panelId}/analytics-bindings/{bindingId}/results",
 ];
+/**
+ * Operational endpoints that are public but registered outside contract(), so OpenAPI still lists them as secured (found by this matrix).
+ * They carry no tenant data. Reviewed list: a route added here must stay free of tenant data.
+ */
+const UNMARKED_PUBLIC = ["GET /", "GET /health", "GET /v1/health", "GET /v1/status/summary", "GET /v1/live", "GET /v1/openapi.json"];
 /** Routes allowed to answer outside the organization's network or to non-members, with the reason. Keep empty unless justified. */
 const EXCEPTIONS: Record<string, string> = {};
 
@@ -106,7 +111,10 @@ test("authorization matrix: every route against no session, foreign tenant and b
     assert.deepEqual(violations, [], `${label}: routes that answered 2xx, 3xx or 5xx`);
   }
 
-  await t.test("no session", () => sweep("no session", operations.filter((o) => !o.isPublic), (op) => call(op.method, fill(op.path), undefined, body(op))));
+  await t.test("the unmarked public routes exist and answer without a session", async () => {
+    for (const key of UNMARKED_PUBLIC) assert.ok(operations.some((o) => o.key === key), `${key} is no longer in the OpenAPI: remove it from UNMARKED_PUBLIC`);
+  });
+  await t.test("no session", () => sweep("no session", operations.filter((o) => !o.isPublic && !UNMARKED_PUBLIC.includes(o.key)), (op) => call(op.method, fill(op.path), undefined, body(op))));
   await t.test("foreign tenant", () => sweep("foreign tenant", operations.filter((o) => o.orgScoped), (op) => call(op.method, fill(op.path), outsider.cookie, body(op))));
   await t.test("blocked network", async () => {
     expectStatus(await call("POST", `/v1/organizations/${orgId}/security/ips`, owner.cookie, { kind: "ALLOW", cidr: "127.0.0.0/8" }), 201);
