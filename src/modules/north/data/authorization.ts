@@ -2,6 +2,7 @@ import type { NorthCapability } from "../../authorization/policy.js";
 import { isNorthCapability, northTenantCapabilities } from "../../authorization/policy.js";
 import type { Transaction } from "../../../shared/transaction.js";
 import { fail } from "../../../shared/errors.js";
+import { assertNetworkAllowed } from "../../security-access/enforcement.js";
 import { resolveDatasetAcl } from "./acl-policy.js";
 import { northDataRepository as repo } from "./repository.js";
 
@@ -15,6 +16,7 @@ export async function requireDataMembership(tx: Transaction, userId: string, org
   const membership = await repo.membership(tx, organizationId, userId);
   if (!membership) fail(404, "NOT_FOUND", "Resource not found");
   if (membership.user.status !== "ACTIVE") fail(403, "FORBIDDEN", "Permission denied");
+  await assertNetworkAllowed(tx, organizationId, userId);
   return membership;
 }
 

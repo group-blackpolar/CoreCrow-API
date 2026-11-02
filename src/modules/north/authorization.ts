@@ -8,6 +8,7 @@ import {
 } from "../authorization/policy.js";
 import { inspectionAllowsNorth } from "../authorization/inspection.js";
 import { currentInspection } from "../../shared/request-context.js";
+import { assertNetworkAllowed } from "../security-access/enforcement.js";
 
 export type NorthTarget = {
   organizationId: string;
@@ -72,6 +73,7 @@ export async function hasNorthCapability(
     return inspection?.userId === userId && inspection.organizationId === target.organizationId
       && inspectionAllowsNorth(capability);
   }
+  await assertNetworkAllowed(tx, target.organizationId, userId);
   if (baseTenantRoles.has(membership.role) && northTenantCapabilities.includes(capability))
     return true;
   const [role, group, direct] = await Promise.all([

@@ -130,11 +130,19 @@ export async function admitSession(session: { id: string; userId: string }, opti
  * Organization-level network gate, called wherever membership is resolved. Absent network context (internal scripts) is not
  * restricted; HTTP requests always carry one. Alerting is fire-and-forget so a denied request is not delayed or rolled back.
  */
+const clearedOrganizations = new WeakMap<Network, Set<string>>();
 export async function assertNetworkAllowed(tx: Transaction, organizationId: string, userId: string) {
   const network = currentNetwork();
   if (!network) return;
+  // Once an organization passed for this request it stays passed: entry points call this repeatedly (e.g. per panel).
+  if (clearedOrganizations.get(network)?.has(organizationId)) return;
   const rules = await tx.securityIpRule.findMany({ where: { organizationId }, select: { kind: true, cidr: true } });
-  if (evaluateIp(network.ip, rules).allowed) return;
+  if (evaluateIp(network.ip, rules).allowed) {
+    const cleared = clearedOrganizations.get(network) ?? new Set<string>();
+    cleared.add(organizationId);
+    clearedOrganizations.set(network, cleared);
+    return;
+  }
   void raiseAlert({ organizationId, userId, kind: "IP_DENIED", details: { ip: network.ip } });
   fail(403, "IP_NOT_ALLOWED", "Access to this organization is not allowed from this network");
 }
