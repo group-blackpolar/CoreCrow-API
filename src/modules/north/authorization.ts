@@ -3,11 +3,13 @@ import type { Transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import {
   isNorthCapability,
+  northGlobalCapabilities,
   northTenantCapabilities,
   type NorthCapability,
 } from "../authorization/policy.js";
 import { inspectionAllowsNorth } from "../authorization/inspection.js";
-import { currentInspection } from "../../shared/request-context.js";
+import { currentInspection, currentOperator, firstOperatorAudit } from "../../shared/request-context.js";
+import { auditRepository as audit } from "../audit/repository.js";
 import { assertNetworkAllowed } from "../security-access/enforcement.js";
 
 export type NorthTarget = {
@@ -49,6 +51,38 @@ async function platformCapabilities(tx: Transaction, userId: string) {
   };
 }
 
+const readOnlyCapabilities = new Set<string>(["north.data.query", "north.panel.preview"]);
+
+/**
+ * ADR-0002 (option C). A platform operator keeps access to tenant content, but a WRITE without membership must carry a reason
+ * (X-Platform-Reason, 10+ characters; enforced when PLATFORM_OPERATOR_REASON_REQUIRED=true) and leaves a PLATFORM_OPERATOR_WRITE
+ * audit event in the tenant's own audit log. Reads, members and global permission probes are unchanged.
+ */
+async function operatorAccess(tx: Transaction, userId: string, capability: NorthCapability, target: NorthTarget) {
+  const operator = currentOperator();
+  if (!operator?.mutating) return true;
+  if (capability.endsWith(".read") || readOnlyCapabilities.has(capability)) return true;
+  if ((northGlobalCapabilities as readonly string[]).includes(capability)) return true;
+  const member = await tx.membership.findUnique({
+    where: { organizationId_userId: { organizationId: target.organizationId, userId } },
+    select: { id: true },
+  });
+  if (member) return true;
+  const reason = operator.reason;
+  if (process.env.PLATFORM_OPERATOR_REASON_REQUIRED === "true" && (!reason || reason.length < 10))
+    fail(403, "PLATFORM_REASON_REQUIRED", "A reason (X-Platform-Reason, at least 10 characters) is required for platform operator writes");
+  if (firstOperatorAudit(`${target.organizationId}:${userId}`))
+    await audit.append(tx, {
+      actorId: userId,
+      organizationId: target.organizationId,
+      action: "PLATFORM_OPERATOR_WRITE",
+      targetType: "Organization",
+      targetId: target.organizationId,
+      metadata: { capability, reason: reason ?? null },
+    });
+  return true;
+}
+
 export async function hasNorthCapability(
   tx: Transaction,
   userId: string,
@@ -57,12 +91,12 @@ export async function hasNorthCapability(
 ) {
   if (!isNorthCapability(capability)) return false;
   const platform = await platformCapabilities(tx, userId);
-  if (platform.role === "SUPERADMIN") return true;
   if (
+    platform.role === "SUPERADMIN" ||
     platform.grants.has("north.organization.manage_all") ||
     (platform.grants.has("north.content.manage_all_tenants") &&
       capability !== "north.permission.manage" && capability !== "north.permission.read")
-  ) return true;
+  ) return operatorAccess(tx, userId, capability, target);
 
   const membership = await tx.membership.findUnique({
     where: { organizationId_userId: { organizationId: target.organizationId, userId } },
