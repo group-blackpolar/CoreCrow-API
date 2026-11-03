@@ -3,7 +3,7 @@ import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { authorizeDataset } from "../north/data/authorization.js";
-import { authorizeNorth, requireGrantAuthority } from "../north/authorization.js";
+import { authorizeNorth, requireGrantAuthority } from "./north-capabilities.js";
 import { northRepository } from "../north/repository.js";
 import { canManageRole, isPermission, type Permission } from "./policy.js";
 import { authorize, resolvePermissions } from "./service.js";

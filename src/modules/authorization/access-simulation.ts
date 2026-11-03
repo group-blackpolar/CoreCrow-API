@@ -4,7 +4,7 @@ import { auditRepository as audit } from "../audit/repository.js";
 import { datasetAclAllows, hasOrganizationDataCapability } from "../north/data/authorization.js";
 import { northDataRepository } from "../north/data/repository.js";
 import { northPanelAudienceAllows } from "../north/audience.js";
-import { hasNorthCapability } from "../north/authorization.js";
+import { hasNorthCapability } from "./north-capabilities.js";
 import { authorize } from "./service.js";
 import { permissions as registeredPermissions, effectivePermissions, type Permission } from "./policy.js";
 

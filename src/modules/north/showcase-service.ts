@@ -1,7 +1,7 @@
 import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { authorizeNorth } from "./authorization.js";
+import { authorizeNorth } from "../authorization/north-capabilities.js";
 import type { NorthPanelDocument } from "./content-schema.js";
 import { allowedBindingFilterSchema, datasetQuerySchema, type DatasetQuery, type DatasetQueryFilter } from "./data/query-contract.js";
 import { executeDatasetQuery } from "./data/query-service.js";

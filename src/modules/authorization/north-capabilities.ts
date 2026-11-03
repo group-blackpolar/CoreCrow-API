@@ -6,11 +6,11 @@ import {
   northGlobalCapabilities,
   northTenantCapabilities,
   type NorthCapability,
-} from "../authorization/policy.js";
-import { inspectionAllowsNorth } from "../authorization/inspection.js";
+} from "./policy.js";
+import { inspectionAllowsNorth } from "./inspection.js";
 import { currentInspection, currentOperator, firstOperatorAudit } from "../../shared/request-context.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { tenantAccess } from "../authorization/tenant-access.js";
+import { tenantAccess } from "./tenant-access.js";
 
 export type NorthTarget = {
   organizationId: string;

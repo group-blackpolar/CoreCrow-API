@@ -13,7 +13,7 @@ import { authorizationGroups } from "../../modules/authorization/groups-service.
 import { transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../../modules/audit/repository.js";
 import { northAssets } from "../../modules/north/asset-service.js";
-import { hasNorthCapability } from "../../modules/north/authorization.js";
+import { hasNorthCapability } from "../../modules/authorization/north-capabilities.js";
 import { authorize } from "../../modules/authorization/service.js";
 
 export async function tenancyRoutes(app: FastifyInstance) {

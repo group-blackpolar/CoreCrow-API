@@ -3,7 +3,7 @@ import type { Prisma } from "../../lib/database.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { DomainError, fail } from "../../shared/errors.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { authorizeNorth, hasNorthCapability, type NorthTarget } from "./authorization.js";
+import { authorizeNorth, hasNorthCapability, type NorthTarget } from "../authorization/north-capabilities.js";
 import {
   validateNorthPanelDocument,
   type NorthAssetReferenceValidator,

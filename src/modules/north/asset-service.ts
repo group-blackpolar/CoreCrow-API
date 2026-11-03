@@ -3,7 +3,7 @@ import { DomainError, fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
 import { authorize } from "../authorization/service.js";
-import { authorizeNorth } from "./authorization.js";
+import { authorizeNorth } from "../authorization/north-capabilities.js";
 import { assertStorageAvailable } from "./storage-usage.js";
 import { assetConfiguration, type AssetConfiguration } from "../../infrastructure/asset-config.js";
 import { validateAssetDeclaration, validateInspectedAsset } from "../../infrastructure/asset-policy.js";
