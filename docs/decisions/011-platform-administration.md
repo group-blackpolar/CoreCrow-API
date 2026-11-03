@@ -30,3 +30,11 @@ sign-in and replace the temporary password before other protected operations.
 The platform routes and account status field are additive. Suspending an
 identity intentionally invalidates existing sessions. Suspended identities and
 organizations that previously had access now receive stable denial errors.
+
+## Amendment (2026-11-02, ADR-0002 option C)
+
+Platform operators writing to a tenant without membership are regulated: each
+such request leaves one `PLATFORM_OPERATOR_WRITE` audit event in the tenant's own
+log (capability and reason), and the reason is mandatory in production
+(`PLATFORM_OPERATOR_REASON_REQUIRED=true`, `X-Platform-Reason`, 10+ characters,
+otherwise 403 `PLATFORM_REASON_REQUIRED`). Inspection (read-only) is unchanged.
