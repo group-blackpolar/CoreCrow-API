@@ -10,7 +10,7 @@ import {
 import { inspectionAllowsNorth } from "../authorization/inspection.js";
 import { currentInspection, currentOperator, firstOperatorAudit } from "../../shared/request-context.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { assertNetworkAllowed } from "../security-access/enforcement.js";
+import { tenantAccess } from "../authorization/tenant-access.js";
 
 export type NorthTarget = {
   organizationId: string;
@@ -98,16 +98,13 @@ export async function hasNorthCapability(
       capability !== "north.permission.manage" && capability !== "north.permission.read")
   ) return operatorAccess(tx, userId, capability, target);
 
-  const membership = await tx.membership.findUnique({
-    where: { organizationId_userId: { organizationId: target.organizationId, userId } },
-  });
+  const membership = await tenantAccess.member(tx, target.organizationId, userId);
   if (!membership) {
     // Platform inspection (read-only) for operators without membership.
     const inspection = currentInspection();
     return inspection?.userId === userId && inspection.organizationId === target.organizationId
       && inspectionAllowsNorth(capability);
   }
-  await assertNetworkAllowed(tx, target.organizationId, userId);
   if (baseTenantRoles.has(membership.role) && northTenantCapabilities.includes(capability))
     return true;
   const [role, group, direct] = await Promise.all([

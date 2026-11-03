@@ -2,7 +2,7 @@ import type { Prisma } from "../../lib/database.js";
 import { fail } from "../../shared/errors.js";
 import { transaction } from "../../shared/transaction.js";
 import { hasNorthCapability } from "./authorization.js";
-import { assertNetworkAllowed } from "../security-access/enforcement.js";
+import { tenantAccess } from "../authorization/tenant-access.js";
 import { northPanelAudienceAllows } from "./audience.js";
 
 export type NorthSearchQuery = {
@@ -46,7 +46,7 @@ export const northSearch = {
       const membership = await tx.membership.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
       const platformAccess = await hasNorthCapability(tx, userId, "north.content.manage_all_tenants", { organizationId, scope: "ORGANIZATION" });
       if (!membership && !platformAccess) fail(404, "NOT_FOUND", "Organization not found");
-      if (membership) await assertNetworkAllowed(tx, organizationId, userId);
+      if (membership) await tenantAccess.admit(tx, organizationId, userId);
       if (query.categoryId && !(await tx.northCategory.findFirst({ where: { id: query.categoryId, organizationId } })))
         fail(404, "NOT_FOUND", "Category not found");
 

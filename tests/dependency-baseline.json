@@ -51,7 +51,6 @@
     "modules/north -> modules/audit",
     "modules/north -> modules/authorization",
     "modules/north -> modules/security",
-    "modules/north -> modules/security-access",
     "modules/platform -> modules/audit",
     "modules/platform -> modules/billing",
     "modules/platform -> modules/identity",
