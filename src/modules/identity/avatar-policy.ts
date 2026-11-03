@@ -1,6 +1,6 @@
 import { fail } from "../../shared/errors.js";
-import type { AssetConfiguration } from "../north/asset-config.js";
-import { validateAssetDeclaration } from "../north/asset-policy.js";
+import type { AssetConfiguration } from "../../infrastructure/asset-config.js";
+import { validateAssetDeclaration } from "../../infrastructure/asset-policy.js";
 
 export const AVATAR_MIMES = ["image/jpeg", "image/png", "image/webp"] as const;
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;

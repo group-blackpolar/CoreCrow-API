@@ -8,7 +8,7 @@ import {
   scanClamAvInstream,
   type ClamAvInstreamConfiguration,
 } from "../src/infrastructure/clamav.js";
-import { ClamAvMalwareScanner, UnconfiguredMalwareScanner, malwareScannerFromEnvironment } from "../src/modules/north/malware-scanner.js";
+import { ClamAvMalwareScanner, UnconfiguredMalwareScanner, malwareScannerFromEnvironment } from "../src/infrastructure/malware-scanner.js";
 import { ClamAvDatasetImportMalwareScanner, UnconfiguredDatasetImportMalwareScanner, datasetImportMalwareScannerFromEnvironment } from "../src/modules/north/data/import-malware-scanner.js";
 import { FakeObjectStorage } from "../src/infrastructure/object-storage.js";
 

@@ -5,11 +5,11 @@ import { auditRepository } from "../audit/repository.js";
 import { authorize } from "../authorization/service.js";
 import { authorizeNorth } from "./authorization.js";
 import { assertStorageAvailable } from "./storage-usage.js";
-import { assetConfiguration, type AssetConfiguration } from "./asset-config.js";
-import { validateAssetDeclaration, validateInspectedAsset } from "./asset-policy.js";
+import { assetConfiguration, type AssetConfiguration } from "../../infrastructure/asset-config.js";
+import { validateAssetDeclaration, validateInspectedAsset } from "../../infrastructure/asset-policy.js";
 import { northAssetRepository as repo } from "./asset-repository.js";
-import { malwareScannerFromEnvironment, type MalwareScanner } from "./malware-scanner.js";
-import { objectStorageFromEnvironment, type ObjectStorage } from "./object-storage.js";
+import { malwareScannerFromEnvironment, type MalwareScanner } from "../../infrastructure/malware-scanner.js";
+import { objectStorageFromEnvironment, type ObjectStorage } from "../../infrastructure/object-storage-env.js";
 
 type AssetInput = { filename: string; mime: string; size: number; checksum: string };
 type AuditAppender = typeof auditRepository.append;

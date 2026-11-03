@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { AssetConfiguration, AssetCategory } from "./asset-config.js";
-import { fail } from "../../shared/errors.js";
+import { fail } from "../shared/errors.js";
 
 type Format = { category: AssetCategory; magic: (bytes: Uint8Array) => boolean };
 const starts = (expected: number[]) => (bytes: Uint8Array) =>

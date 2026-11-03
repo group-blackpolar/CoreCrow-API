@@ -2,9 +2,9 @@ import {
   createS3ObjectStorage,
   UnavailableObjectStorage,
   type ObjectStorage,
-} from "../../infrastructure/object-storage.js";
+} from "./object-storage.js";
 
-export * from "../../infrastructure/object-storage.js";
+export * from "./object-storage.js";
 
 export function objectStorageFromEnvironment(): ObjectStorage {
   const bucket = process.env.NORTH_ASSET_S3_BUCKET;

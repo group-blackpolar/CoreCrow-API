@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { fail } from "../../shared/errors.js";
 import { transaction } from "../../shared/transaction.js";
 import { auditRepository } from "../audit/repository.js";
-import { assetConfiguration, type AssetConfiguration } from "../north/asset-config.js";
-import { validateInspectedAsset } from "../north/asset-policy.js";
-import { malwareScannerFromEnvironment, type MalwareScanner } from "../north/malware-scanner.js";
-import { objectStorageFromEnvironment, type ObjectStorage } from "../north/object-storage.js";
+import { assetConfiguration, type AssetConfiguration } from "../../infrastructure/asset-config.js";
+import { validateInspectedAsset } from "../../infrastructure/asset-policy.js";
+import { malwareScannerFromEnvironment, type MalwareScanner } from "../../infrastructure/malware-scanner.js";
+import { objectStorageFromEnvironment, type ObjectStorage } from "../../infrastructure/object-storage-env.js";
 import { AVATAR_MAX_BYTES, validateAvatarDeclaration } from "./avatar-policy.js";
 
 export type AvatarDependencies = { storage: ObjectStorage; scanner: MalwareScanner; config: AssetConfiguration };

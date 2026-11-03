@@ -47,9 +47,9 @@ test(
       await import("../src/modules/audit/repository.js");
     const { NorthAssetService, configureNorthAssetService } =
       await import("../src/modules/north/asset-service.js");
-    const { FakeObjectStorage } = await import("../src/modules/north/object-storage.js");
-    const { FakeMalwareScanner } = await import("../src/modules/north/malware-scanner.js");
-    const { assetConfiguration } = await import("../src/modules/north/asset-config.js");
+    const { FakeObjectStorage } = await import("../src/infrastructure/object-storage-env.js");
+    const { FakeMalwareScanner } = await import("../src/infrastructure/malware-scanner.js");
+    const { assetConfiguration } = await import("../src/infrastructure/asset-config.js");
     const { NorthDatasetImportService, configureNorthDatasetImportService } =
       await import("../src/modules/north/data/import-service.js");
     const { datasetImportConfiguration } = await import("../src/modules/north/data/import-config.js");
