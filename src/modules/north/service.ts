@@ -4,7 +4,7 @@ import { transaction, type Transaction } from "../../shared/transaction.js";
 import { fail } from "../../shared/errors.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { isNorthCapability, northGlobalCapabilities, type NorthCapability } from "../authorization/policy.js";
-import { authorizeNorth, hasNorthCapability, requireGrantAuthority, type NorthTarget } from "./authorization.js";
+import { authorizeNorth, hasNorthCapability, requireGrantAuthority, type NorthTarget } from "../authorization/north-capabilities.js";
 import { tenantAccess } from "../authorization/tenant-access.js";
 import { northRepository as repo, type Localized, type MetadataInput } from "./repository.js";
 import { validateNorthSlug } from "./slug.js";

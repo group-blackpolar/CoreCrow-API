@@ -2,7 +2,7 @@ import type { Prisma } from "../../../lib/database.js";
 import { fail } from "../../../shared/errors.js";
 import { transaction, type Transaction } from "../../../shared/transaction.js";
 import { auditRepository as audit } from "../../audit/repository.js";
-import { hasNorthCapability } from "../authorization.js";
+import { hasNorthCapability } from "../../authorization/north-capabilities.js";
 import { northPanelAudienceAllows } from "../audience.js";
 import type { NorthPanelDocument } from "../content-schema.js";
 import { authorizeDataset } from "./authorization.js";

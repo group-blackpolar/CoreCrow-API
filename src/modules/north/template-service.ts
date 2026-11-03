@@ -4,7 +4,7 @@ import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { isNorthCapability } from "../authorization/policy.js";
-import { authorizeNorth } from "./authorization.js";
+import { authorizeNorth } from "../authorization/north-capabilities.js";
 import { validateNorthPanelDocument } from "./content-schema.js";
 import { northContentRepository } from "./content-repository.js";
 import { northRepository as repo, type Localized } from "./repository.js";

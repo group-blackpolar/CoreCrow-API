@@ -21,7 +21,7 @@ The v1 AI contract is additive. Run creation returns `202` and a run identifier.
 
 Provider output and retained prompt context have explicit configurable ceilings. On restart, interrupted rows are returned to the queue and drained sequentially; this deliberately favors respecting concurrency limits over recovery throughput until a durable worker scheduler exists.
 
-All MVP conversations are organization-scoped and use the `north` application allowlist. AI tenant authorization resolves the active organization and authoritative membership before permissions. It never consults global roles or NORTH platform grants. This deliberately isolates AI from the existing NORTH platform bypass in `modules/north/authorization.ts`; changing those existing NORTH semantics requires a separate compatibility decision and migration.
+All MVP conversations are organization-scoped and use the `north` application allowlist. AI tenant authorization resolves the active organization and authoritative membership before permissions. It never consults global roles or NORTH platform grants. This deliberately isolates AI from the existing NORTH platform bypass in `modules/authorization/north-capabilities.ts`; changing those existing NORTH semantics requires a separate compatibility decision and migration.
 
 The initial tool registry is explicit and read-only. Tools call existing CORECROW services, validate arguments, filter exposure by application and effective tenant permission, then reauthorize at execution. Mutation and critical tools are not registered. Confirmation storage and endpoints are additive infrastructure only and cannot make an unregistered mutation executable.
 

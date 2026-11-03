@@ -1,7 +1,7 @@
 import type { NorthAudienceType, TenantRole } from "../../lib/database.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { isNorthCapability } from "../authorization/policy.js";
-import { hasNorthCapability } from "./authorization.js";
+import { hasNorthCapability } from "../authorization/north-capabilities.js";
 import { tenantAccess } from "../authorization/tenant-access.js";
 
 type AudiencePanel = {

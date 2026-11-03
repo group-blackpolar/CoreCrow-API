@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { fail } from "../../shared/errors.js";
 import { transaction } from "../../shared/transaction.js";
-import { hasNorthCapability } from "../north/authorization.js";
+import { hasNorthCapability } from "../authorization/north-capabilities.js";
 import { northTaxonomy } from "../north/service.js";
 import { northAnalyticsBindings } from "../north/data/binding-service.js";
 import type { DatasetQueryFilter } from "../north/data/query-contract.js";
