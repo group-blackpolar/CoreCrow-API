@@ -134,8 +134,7 @@ export async function authorizeNorth(
   const organization = await tx.organization.findUnique({ where: { id: target.organizationId } });
   if (!organization) fail(404, "NOT_FOUND", "Resource not found");
   const inspected = currentInspection()?.organizationId === organization.id;
-  if (!inspected && organization.status !== "ACTIVE")
-    fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
+  tenantAccess.requireActive(organization, inspected);
   if (!(await hasNorthCapability(tx, userId, capability, target)))
     fail(403, "FORBIDDEN", "Permission denied");
 }
