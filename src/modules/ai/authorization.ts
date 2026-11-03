@@ -1,5 +1,6 @@
 import type { Permission } from "../authorization/policy.js";
 import { resolvePermissions } from "../authorization/service.js";
+import { tenantAccess } from "../authorization/tenant-access.js";
 import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 
@@ -11,8 +12,7 @@ export async function resolveAITenantContextIn(
 ) {
   const organization = await tx.organization.findUnique({ where: { id: organizationId } });
   if (!organization) fail(404, "NOT_FOUND", "Organization not found");
-  if (organization.status !== "ACTIVE")
-    fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
+  tenantAccess.requireActive(organization);
   const resolved = await resolvePermissions(tx, userId, organizationId);
   return { organization, ...resolved };
 }

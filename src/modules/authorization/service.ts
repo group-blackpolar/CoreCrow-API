@@ -48,15 +48,7 @@ export async function authorize(
   const organization = await tenantRepository.organization(tx, organizationId);
   if (!organization) fail(404, "NOT_FOUND", "Organization not found");
   // Platform inspection may read suspended or archived organizations; it can never write.
-  if (!resolved.inspection && organization.status === "SUSPENDED")
-    fail(403, "ORGANIZATION_SUSPENDED", "Organization is suspended");
-  if (
-    !resolved.inspection &&
-    organization.status === "ARCHIVED" &&
-    permission !== "organization.read" &&
-    permission !== "organization.update"
-  )
-    fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
+  tenantAccess.requireOperable(organization, permission, resolved.inspection);
   if (!resolved.permissions.includes(permission))
     fail(403, "FORBIDDEN", "Permission denied");
   return resolved.member;

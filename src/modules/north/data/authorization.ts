@@ -12,7 +12,7 @@ type DatasetAclRule = Awaited<ReturnType<typeof repo.aclRules>>[number];
 export async function requireDataMembership(tx: Transaction, userId: string, organizationId: string) {
   const organization = await repo.organization(tx, organizationId);
   if (!organization) fail(404, "NOT_FOUND", "Resource not found");
-  if (organization.status !== "ACTIVE") fail(409, "ORGANIZATION_INACTIVE", "Organization is not active");
+  tenantAccess.requireActive(organization);
   const membership = await repo.membership(tx, organizationId, userId);
   if (!membership) fail(404, "NOT_FOUND", "Resource not found");
   if (membership.user.status !== "ACTIVE") fail(403, "FORBIDDEN", "Permission denied");

@@ -19,3 +19,12 @@ test("the organization network rules are reached only through tenantAccess (RM-0
     .filter((file) => /\bassertNetworkAllowed\b/.test(readFileSync(join(SRC, file), "utf8")));
   assert.deepEqual(offenders, [], "Use tenantAccess.admit / tenantAccess.member instead of calling the enforcement directly");
 });
+
+test("organization status errors are raised only by tenantAccess or the lifecycle service (RM-021)", () => {
+  const lifecycle = [...ALLOWED.slice(0, 1), "modules/tenancy/service.ts"];
+  const offenders = sourceFiles(SRC)
+    .map((file) => relative(SRC, file).split(sep).join("/"))
+    .filter((file) => !lifecycle.includes(file) && file !== "contracts/schemas.ts")
+    .filter((file) => /ORGANIZATION_(INACTIVE|SUSPENDED)/.test(readFileSync(join(SRC, file), "utf8")));
+  assert.deepEqual(offenders, [], "Use tenantAccess.requireActive / requireOperable instead of checking organization.status in a service");
+});
