@@ -39,3 +39,14 @@ their lifecycle is not changed by this decision.
 There are deliberately no custom permissions, custom roles, explicit denies,
 global-admin tenant bypass, organization hierarchy, workspace policy, billing
 workflow, or NORTH UI in this slice.
+
+## Amendment (2026-11-02, ADR-0002 option C)
+
+"Global-admin tenant bypass" stays out of scope as a membership shortcut. Platform
+operators (SUPERADMIN, `north.organization.manage_all`,
+`north.content.manage_all_tenants`) keep content access to tenants, but a write to
+an organization they are not a member of is audited as `PLATFORM_OPERATOR_WRITE`
+in that tenant's audit log, with the capability and a reason sent in
+`X-Platform-Reason` (10+ characters, required when
+`PLATFORM_OPERATOR_REASON_REQUIRED=true`). Reads, members and global
+capabilities are unchanged. NORTH asks the operator for the reason once.
