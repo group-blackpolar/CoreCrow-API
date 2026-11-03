@@ -11,7 +11,7 @@ import {
   normalizeOrganizationSlug,
 } from "./slug.js";
 import { bootstrapNorthOrganization } from "../north/service.js";
-import { assetConfiguration } from "../north/asset-config.js";
+import { assetConfiguration } from "../../infrastructure/asset-config.js";
 import { validateOrganizationIcon } from "./icon.js";
 import { assertIconAsset } from "./icon-asset.js";
 import { northAssets } from "../north/asset-service.js";

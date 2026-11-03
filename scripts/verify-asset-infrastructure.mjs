@@ -10,8 +10,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DeleteObjectCommand, ListObjectVersionsCommand, PutObjectCommand, S3Client,
 } from "@aws-sdk/client-s3";
-import { malwareScannerFromEnvironment } from "../dist/modules/north/malware-scanner.js";
-import { objectStorageFromEnvironment } from "../dist/modules/north/object-storage.js";
+import { malwareScannerFromEnvironment } from "../dist/infrastructure/malware-scanner.js";
+import { objectStorageFromEnvironment } from "../dist/infrastructure/object-storage-env.js";
 
 const bucket = process.env.NORTH_ASSET_S3_BUCKET?.trim();
 const region = process.env.NORTH_ASSET_S3_REGION?.trim();

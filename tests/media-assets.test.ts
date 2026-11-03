@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assetConfiguration } from "../src/modules/north/asset-config.js";
+import { assetConfiguration } from "../src/infrastructure/asset-config.js";
 import { AVATAR_MAX_BYTES, validateAvatarDeclaration } from "../src/modules/identity/avatar-policy.js";
 import { assertIconAsset, ICON_ASSET_MAX_BYTES } from "../src/modules/tenancy/icon-asset.js";
 

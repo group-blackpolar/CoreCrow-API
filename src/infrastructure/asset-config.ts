@@ -1,4 +1,4 @@
-import { fail } from "../../shared/errors.js";
+import { fail } from "../shared/errors.js";
 
 export type AssetCategory = "image" | "document" | "video";
 

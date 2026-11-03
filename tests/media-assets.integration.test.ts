@@ -29,8 +29,8 @@ test("Media assets: user avatars and organization icons", { skip: !process.env.T
   const { NorthAssetService, configureNorthAssetService } = await import("../src/modules/north/asset-service.js");
   const { UserAvatarService, configureUserAvatarService } = await import("../src/modules/identity/avatar-service.js");
   const { FakeObjectStorage } = await import("../src/infrastructure/object-storage.js");
-  const { FakeMalwareScanner, UnconfiguredMalwareScanner } = await import("../src/modules/north/malware-scanner.js");
-  const { assetConfiguration } = await import("../src/modules/north/asset-config.js");
+  const { FakeMalwareScanner, UnconfiguredMalwareScanner } = await import("../src/infrastructure/malware-scanner.js");
+  const { assetConfiguration } = await import("../src/infrastructure/asset-config.js");
 
   const storage = new FakeObjectStorage();
   const scanner = new FakeMalwareScanner();

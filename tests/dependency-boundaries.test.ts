@@ -9,12 +9,12 @@ import { fileURLToPath } from "node:url";
  * is compared with tests/dependency-baseline.json, the list of couplings that exist today.
  *  - A coupling that is not in the baseline fails the build: new acoplamientos need a design decision, not a silent import.
  *  - A baseline entry that no longer exists also fails: remove it, so the list can only shrink.
- * Type-only imports are ignored. Everyone may depend on `lib` and `shared` (the platform layer).
+ * Type-only imports are ignored. Everyone may depend on `lib`, `shared` and `infrastructure` (the platform layer).
  * First creation of the baseline only: DEPENDENCY_BASELINE_INIT=1 npx tsx --test tests/dependency-boundaries.test.ts
  */
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 const BASELINE = fileURLToPath(new URL("./dependency-baseline.json", import.meta.url));
-const PLATFORM = new Set(["lib", "shared"]);
+const PLATFORM = new Set(["lib", "shared", "infrastructure"]);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
