@@ -1,10 +1,10 @@
 import { tenantRepository } from "../tenancy/repository.js";
+import { tenantAccess } from "./tenant-access.js";
 import { effectivePermissions, isSecurityPermission, type Permission } from "./policy.js";
 import { fail } from "../../shared/errors.js";
 import type { Transaction } from "../../shared/transaction.js";
 import { authorizationRepository } from "./repository.js";
 import { currentInspection } from "../../shared/request-context.js";
-import { assertNetworkAllowed } from "../security-access/enforcement.js";
 import { inspectionPermissions } from "./inspection.js";
 
 export async function resolvePermissions(
@@ -12,7 +12,7 @@ export async function resolvePermissions(
   userId: string,
   organizationId: string,
 ) {
-  const member = await tenantRepository.membership(tx, organizationId, userId);
+  const member = await tenantAccess.member(tx, organizationId, userId);
   if (!member) {
     const inspection = currentInspection();
     if (inspection?.userId === userId && inspection.organizationId === organizationId)
@@ -23,7 +23,6 @@ export async function resolvePermissions(
       };
     fail(404, "NOT_FOUND", "Organization not found");
   }
-  await assertNetworkAllowed(tx, organizationId, userId);
   const [groupGrants, directGrants] = await Promise.all([
     authorizationRepository.groupGrants(tx, organizationId, member.id),
     authorizationRepository.directGrants(tx, organizationId, member.id),
