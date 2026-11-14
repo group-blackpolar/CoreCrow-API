@@ -58,6 +58,9 @@ COPY --from=build /app/scripts/verify-asset-infrastructure.mjs ./scripts/verify-
 
 COPY package.json ./
 
+# RM-008: run unprivileged; the only writable path the app needs is the temp directory.
+USER node
+
 EXPOSE 4000
 
 CMD ["node", "dist/server.js"]
