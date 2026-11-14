@@ -4,7 +4,7 @@ import { auditRepository as audit } from "../audit/repository.js";
 import { authorizeNorth } from "../authorization/north-capabilities.js";
 import type { NorthPanelDocument } from "./content-schema.js";
 import { allowedBindingFilterSchema, datasetQuerySchema, type DatasetQuery, type DatasetQueryFilter } from "./data/query-contract.js";
-import { executeDatasetQuery } from "./data/query-service.js";
+import { executeDatasetQuery, gated, readTransaction } from "./data/query-service.js";
 import { northPanelDocumentInput } from "./content-schema.js";
 
 /**
@@ -113,7 +113,8 @@ export const northShowcase = {
 
   /** Same bounded engine and allowlisted filters as the member path; no extra capability beyond publication. */
   results(slug: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[]) {
-    return transaction(async (tx) => {
+    // RM-012: same concurrency gate and read time budget as the member path, with a short queue because the caller is anonymous.
+    return gated(() => transaction(async (tx) => {
       const organization = await showcaseOrganization(tx, slug);
       const panel = await tx.northPanel.findFirst({
         where: { id: panelId, organizationId: organization.id },
@@ -146,7 +147,7 @@ export const northShowcase = {
         return { fieldId: field!.id, key: field!.key, displayName: field!.displayName, type: field!.canonicalType, operators: item.operators };
       });
       return { bindingId, filterDefinitions, ...result };
-    });
+    }, readTransaction), 8);
   },
 
   /** Publication configuration is authorized and audited like any other publish transition. */

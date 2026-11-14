@@ -250,12 +250,12 @@ export async function buildApp(
     telemetry.record(durationMs, reply.statusCode);
   });
   const health = options.health ?? healthService();
-  app.get("/", async (_, reply) =>
+  app.get("/", { schema: { security: [] } }, async (_, reply) =>
     reply
       .type("text/html")
       .send(healthPage(await health(), telemetry.summary("24h"))),
   );
-  app.get("/health", async (_, reply) =>
+  app.get("/health", { schema: { security: [] } }, async (_, reply) =>
     reply
       .type("text/html")
       .send(healthPage(await health(), telemetry.summary("24h"))),
@@ -266,6 +266,7 @@ export async function buildApp(
     {
       schema: {
         tags: ["Health"],
+        security: [],
         summary: "Dependency readiness and process uptime",
         response: { 200: healthResponse, 503: healthResponse },
       },
@@ -281,6 +282,7 @@ export async function buildApp(
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       schema: {
         tags: ["Health"],
+        security: [],
         summary:
           "Sanitized aggregate process traffic for the public status page",
         querystring: zodToJsonSchema(statusSummaryQuery, {
@@ -301,6 +303,7 @@ export async function buildApp(
     {
       schema: {
         tags: ["Health"],
+        security: [],
         summary: "Process liveness (no dependency check)",
         response: {
           200: {
@@ -316,7 +319,7 @@ export async function buildApp(
     },
     async () => ({ status: "alive", apiVersion: "v1" }),
   );
-  app.get("/v1/openapi.json", async () => app.swagger());
+  app.get("/v1/openapi.json", { schema: { security: [] } }, async () => app.swagger());
   const authHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     let requestPath = request.url;
     // Keep the Google Cloud callback already provisioned for Black Polar while

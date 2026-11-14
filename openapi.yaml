@@ -20,11 +20,13 @@ components:
 paths:
   /:
     get:
+      security: []
       responses:
         "200":
           description: Default Response
   /health:
     get:
+      security: []
       responses:
         "200":
           description: Default Response
@@ -33,6 +35,7 @@ paths:
       summary: Dependency readiness and process uptime
       tags:
         - Health
+      security: []
       responses:
         "200":
           description: Default Response
@@ -176,6 +179,7 @@ paths:
           in: query
           name: window
           required: false
+      security: []
       responses:
         "200":
           description: Default Response
@@ -288,6 +292,7 @@ paths:
       summary: Process liveness (no dependency check)
       tags:
         - Health
+      security: []
       responses:
         "200":
           description: Default Response
@@ -307,6 +312,7 @@ paths:
                       - v1
   /v1/openapi.json:
     get:
+      security: []
       responses:
         "200":
           description: Default Response
