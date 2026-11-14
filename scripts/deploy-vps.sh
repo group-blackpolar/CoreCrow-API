@@ -70,8 +70,17 @@ else
 fi
 previous="corecrow-rollback-$version"
 worker_previous="corecrow-dataset-worker-rollback-$version"
+# A redeploy of the same version finds its own earlier rollback containers: drop them so the rename below cannot collide (RM-008).
+sudo -n docker rm -f "$previous" "$worker_previous" >/dev/null 2>&1 || true
 had_previous=false
 had_worker_previous=false
+# Keep only the three newest rollback containers of each kind; older ones also carry stale environment copies (RM-008).
+prune_rollbacks() {
+  local prefix
+  for prefix in corecrow-rollback- corecrow-dataset-worker-rollback-; do
+    sudo -n docker ps -a --filter "name=^${prefix}" --format '{{.CreatedAt}}|{{.Names}}' | sort -r | tail -n +4 | cut -d'|' -f2       | xargs -r sudo -n docker rm >/dev/null 2>&1 || true
+  done
+}
 restore_previous_worker() {
   if [[ "$had_worker_previous" != true ]]; then return 0; fi
   if ! sudo -n docker container inspect "$worker_previous" >/dev/null 2>&1; then
@@ -129,11 +138,13 @@ if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --network "
           break
         fi
         if sudo -n docker rename "$worker_candidate" corecrow-dataset-worker; then
+          prune_rollbacks
           echo "CoreCrow $version and dataset worker running; previous containers and database backup retained"
           exit 0
         fi
         break
       fi
+      prune_rollbacks
       echo "CoreCrow $version running; dataset worker disabled; previous containers and database backup retained"
       exit 0
     fi

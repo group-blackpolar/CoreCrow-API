@@ -581,6 +581,23 @@
             "description": "Default Response"
           }
         }
+      },
+      "query": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "*",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
       }
     },
     "/v1/desktop-auth/google/start": {
