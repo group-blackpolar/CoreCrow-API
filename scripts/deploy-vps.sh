@@ -17,7 +17,11 @@ network="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e '
 sudo -n docker network inspect "$network" >/dev/null
 backup="/var/backups/blackpolar/corecrow-$version.dump"
 sudo -n sh -c 'umask 077; docker exec corecrow-db pg_dump -U blackpolar -d blackpolar -Fc > "$1"' sh "$backup"
-sudo -n docker run --rm --network "$network" --env-file "$runtime" "$image" node node_modules/prisma/build/index.js migrate deploy
+# RM-007: the API and worker use the DML-only role; migrations run with the owner role kept in its own file, never in their environment.
+migrate_env=/etc/blackpolar/corecrow-migrate.env
+migrate_args=(--env-file "$runtime")
+if sudo -n test -f "$migrate_env"; then migrate_args+=(--env-file "$migrate_env"); fi
+sudo -n docker run --rm --network "$network" "${migrate_args[@]}" "$image" node node_modules/prisma/build/index.js migrate deploy
 candidate="corecrow-check-$version"
 worker_candidate="corecrow-dataset-worker-check-$version"
 worker_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_DATA_IMPORT_WORKER_ENABLED === "true" ? "true" : "false")')"
