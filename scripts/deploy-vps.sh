@@ -26,7 +26,7 @@ candidate="corecrow-check-$version"
 worker_candidate="corecrow-dataset-worker-check-$version"
 worker_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_DATA_IMPORT_WORKER_ENABLED === "true" ? "true" : "false")')"
 asset_storage_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_ASSET_S3_BUCKET?.trim() ? "true" : "false")')"
-sudo -n docker run -d --name "$candidate" --network "$network" --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
+sudo -n docker run -d --name "$candidate" --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 512 --network "$network" --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
 cleanup() {
   sudo -n docker rm -f "$candidate" >/dev/null 2>&1 || true
   if [[ -n "$worker_candidate" ]]; then
@@ -55,7 +55,7 @@ if [[ "$worker_enabled" == "true" ]]; then
   # and an actual private ClamAV INSTREAM request before replacing the worker.
   sudo -n docker run --rm --network "$network" --env-file "$runtime" "$image" \
     node scripts/verify-dataset-infrastructure.mjs
-  sudo -n docker run -d --name "$worker_candidate" --network "$network" --env-file "$runtime" \
+  sudo -n docker run -d --name "$worker_candidate" --log-opt max-size=50m --log-opt max-file=3 --network "$network" --env-file "$runtime" \
     --security-opt no-new-privileges:true --pids-limit 256 --memory 2g --memory-swap 2g --cpus 1.5 \
     "$image" node dist/dataset-import-worker.js >/dev/null
   worker_ready=false
@@ -133,7 +133,7 @@ if sudo -n docker container inspect corecrow-v1 >/dev/null 2>&1; then
     exit 1
   fi
 fi
-if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --network "$network" --env-file "$runtime" -p 127.0.0.1:4100:4000 "$image" >/dev/null; then
+if sudo -n docker run -d --name corecrow-v1 --restart unless-stopped --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 512 --log-opt max-size=50m --log-opt max-file=3 --network "$network" --env-file "$runtime" -p 127.0.0.1:4100:4000 "$image" >/dev/null; then
   for attempt in {1..20}; do
     if curl --fail --silent --max-time 3 http://127.0.0.1:4100/v1/live >/dev/null; then
       if [[ "$worker_enabled" == "true" ]]; then
