@@ -91,7 +91,9 @@ export const readTransaction = { isolationLevel: "ReadCommitted" as const, timeo
 const MAX_CONCURRENT = 4;
 let running = 0;
 const waiting: Array<() => void> = [];
-export async function gated<T>(work: () => Promise<T>): Promise<T> {
+/** `maxWaiting` bounds the queue for callers that are not authenticated (RM-012): beyond it the request is refused with a stable 503 instead of piling up. */
+export async function gated<T>(work: () => Promise<T>, maxWaiting = Infinity): Promise<T> {
+  if (running >= MAX_CONCURRENT && waiting.length >= maxWaiting) fail(503, "SERVICE_BUSY", "Too many concurrent queries, retry shortly");
   if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
   running += 1;
   try { return await work(); } finally { running -= 1; waiting.shift()?.(); }

@@ -9,10 +9,17 @@ import { SMTPServer } from "smtp-server";
  *  - No session: no authenticated route may answer 2xx, 3xx or 5xx.
  *  - Foreign tenant: a user of another organization gets no 2xx/3xx/5xx on any organization route.
  *  - Blocked network: the owner, calling from outside the organization's allow rule, gets no 2xx/3xx/5xx on any organization route.
+ *  - Suspended organization: its owner gets no 2xx/3xx/5xx on any write route.
  * Dummy identifiers make id-based routes answer 404 by design; the value of the matrix is the organization-level routes
  * (lists, trees, search, navigation) that would answer 200 if a gate were missing (R-006).
  */
 const PUBLIC_ROUTES = [
+  "GET /",
+  "GET /health",
+  "GET /v1/health",
+  "GET /v1/live",
+  "GET /v1/openapi.json",
+  "GET /v1/status/summary",
   "GET /v1/commerce/products",
   "GET /v1/identity/config",
   "GET /v1/organizations/resolve/{slug}",
@@ -26,11 +33,6 @@ const PUBLIC_ROUTES = [
   "POST /v1/invitations/validate",
   "POST /v1/public/showcases/{organizationSlug}/panels/{panelId}/analytics-bindings/{bindingId}/results",
 ];
-/**
- * Operational endpoints that are public but registered outside contract(), so OpenAPI still lists them as secured (found by this matrix).
- * They carry no tenant data. Reviewed list: a route added here must stay free of tenant data.
- */
-const UNMARKED_PUBLIC = ["GET /", "GET /health", "GET /v1/health", "GET /v1/status/summary", "GET /v1/live", "GET /v1/openapi.json"];
 /** Routes allowed to answer outside the organization's network or to non-members, with the reason. Keep empty unless justified. */
 const EXCEPTIONS: Record<string, string> = {};
 
@@ -111,10 +113,7 @@ test("authorization matrix: every route against no session, foreign tenant and b
     assert.deepEqual(violations, [], `${label}: routes that answered 2xx, 3xx or 5xx`);
   }
 
-  await t.test("the unmarked public routes exist and answer without a session", async () => {
-    for (const key of UNMARKED_PUBLIC) assert.ok(operations.some((o) => o.key === key), `${key} is no longer in the OpenAPI: remove it from UNMARKED_PUBLIC`);
-  });
-  await t.test("no session", () => sweep("no session", operations.filter((o) => !o.isPublic && !UNMARKED_PUBLIC.includes(o.key)), (op) => call(op.method, fill(op.path), undefined, body(op))));
+  await t.test("no session", () => sweep("no session", operations.filter((o) => !o.isPublic), (op) => call(op.method, fill(op.path), undefined, body(op))));
   await t.test("foreign tenant", () => sweep("foreign tenant", operations.filter((o) => o.orgScoped), (op) => call(op.method, fill(op.path), outsider.cookie, body(op))));
   await t.test("blocked network", async () => {
     expectStatus(await call("POST", `/v1/organizations/${orgId}/security/ips`, owner.cookie, { kind: "ALLOW", cidr: "127.0.0.0/8" }), 201);
@@ -123,6 +122,14 @@ test("authorization matrix: every route against no session, foreign tenant and b
         (op, n) => call(op.method, fill(op.path), owner.cookie, body(op), `8.8.${Math.floor(n / 250)}.${(n % 250) + 1}`));
     } finally {
       await prisma.securityIpRule.deleteMany({ where: { organizationId: orgId } });
+    }
+  });
+  await t.test("suspended organization: its owner can write nothing (ST1-03)", async () => {
+    await prisma.organization.update({ where: { id: orgId }, data: { status: "SUSPENDED" } });
+    try {
+      await sweep("suspended organization", operations.filter((o) => o.orgScoped && o.method !== "GET"), (op) => call(op.method, fill(op.path), owner.cookie, body(op)));
+    } finally {
+      await prisma.organization.update({ where: { id: orgId }, data: { status: "ACTIVE" } });
     }
   });
 });
