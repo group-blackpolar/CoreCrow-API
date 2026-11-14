@@ -2,11 +2,11 @@ import type { TenantRole } from "../../lib/database.js";
 import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { authorizeDataset } from "../north/data/authorization.js";
-import { authorizeNorth, requireGrantAuthority } from "./north-capabilities.js";
-import { northRepository } from "../north/repository.js";
-import { canManageRole, isPermission, type Permission } from "./policy.js";
-import { authorize, resolvePermissions } from "./service.js";
+import { authorizeDataset } from "./data/authorization.js";
+import { authorizeNorth, requireGrantAuthority } from "../authorization/north-capabilities.js";
+import { northRepository } from "./repository.js";
+import { canManageRole, isPermission, type Permission } from "../authorization/policy.js";
+import { authorize, resolvePermissions } from "../authorization/service.js";
 
 export const TEMPLATE_ROLES = ["VIEWER", "MEMBER", "BILLING_ADMIN", "ADMIN"] as const;
 export type TemplateInput = { name: string; description?: string | null; role: (typeof TEMPLATE_ROLES)[number]; permissions: string[]; datasetIds: string[]; groupIds: string[] };

@@ -25,7 +25,6 @@
     "modules/ai -> modules/tenancy",
     "modules/audit -> modules/identity",
     "modules/authorization -> modules/audit",
-    "modules/authorization -> modules/north",
     "modules/authorization -> modules/security-access",
     "modules/authorization -> modules/tenancy",
     "modules/billing -> modules/audit",

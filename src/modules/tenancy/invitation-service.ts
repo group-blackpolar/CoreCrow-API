@@ -7,7 +7,7 @@ import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
 import { assertHoldsSecurity, authorize } from "../authorization/service.js";
 import { readOrganizationPolicy } from "./policy.js";
-import { applyTemplateToMembership, loadTemplate } from "../authorization/access-templates.js";
+import { applyTemplateToMembership, loadTemplate } from "../north/access-templates.js";
 import { canManageRole, isPermission, type Permission } from "../authorization/policy.js";
 import { groupsRepository as groups } from "../authorization/groups-repository.js";
 import { hash as legacyHash } from "../security/crypto.js";

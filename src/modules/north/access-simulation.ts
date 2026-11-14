@@ -1,12 +1,12 @@
 import { fail } from "../../shared/errors.js";
 import { transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
-import { datasetAclAllows, hasOrganizationDataCapability } from "../north/data/authorization.js";
-import { northDataRepository } from "../north/data/repository.js";
-import { northPanelAudienceAllows } from "../north/audience.js";
-import { hasNorthCapability } from "./north-capabilities.js";
-import { authorize } from "./service.js";
-import { permissions as registeredPermissions, effectivePermissions, type Permission } from "./policy.js";
+import { datasetAclAllows, hasOrganizationDataCapability } from "./data/authorization.js";
+import { northDataRepository } from "./data/repository.js";
+import { northPanelAudienceAllows } from "./audience.js";
+import { hasNorthCapability } from "../authorization/north-capabilities.js";
+import { authorize } from "../authorization/service.js";
+import { permissions as registeredPermissions, effectivePermissions, type Permission } from "../authorization/policy.js";
 
 export type PermissionOrigin = { type: "ROLE" | "GROUP" | "DIRECT"; id?: string; name?: string };
 export type DatasetReason = "OK" | "ARCHIVED" | "NO_QUERY_CAPABILITY" | "ACL_DENIED";
