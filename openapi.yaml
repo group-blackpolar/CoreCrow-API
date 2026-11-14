@@ -334,6 +334,7 @@ paths:
     patch: *a1
     put: *a1
     post: *a1
+    query: *a1
   /v1/desktop-auth/google/start:
     get:
       summary: Start Google authentication in the system browser for North desktop
