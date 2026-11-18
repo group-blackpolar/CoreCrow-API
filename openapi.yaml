@@ -24634,6 +24634,28 @@ paths:
                                         - sourceId
                                       additionalProperties: false
                                     default: {}
+                                  visibility:
+                                    type: object
+                                    properties:
+                                      roles:
+                                        type: array
+                                        items:
+                                          type: string
+                                          enum:
+                                            - OWNER
+                                            - ADMIN
+                                            - BILLING_ADMIN
+                                            - MEMBER
+                                            - VIEWER
+                                        maxItems: 5
+                                      groupIds:
+                                        type: array
+                                        items:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 128
+                                        maxItems: 50
+                                    additionalProperties: false
                                   layout:
                                     type: object
                                     properties:
@@ -25030,6 +25052,28 @@ paths:
                                         - sourceId
                                       additionalProperties: false
                                     default: {}
+                                  visibility:
+                                    type: object
+                                    properties:
+                                      roles:
+                                        type: array
+                                        items:
+                                          type: string
+                                          enum:
+                                            - OWNER
+                                            - ADMIN
+                                            - BILLING_ADMIN
+                                            - MEMBER
+                                            - VIEWER
+                                        maxItems: 5
+                                      groupIds:
+                                        type: array
+                                        items:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 128
+                                        maxItems: 50
+                                    additionalProperties: false
                                   layout:
                                     type: object
                                     properties:
@@ -25580,6 +25624,28 @@ paths:
                                         - sourceId
                                       additionalProperties: false
                                     default: {}
+                                  visibility:
+                                    type: object
+                                    properties:
+                                      roles:
+                                        type: array
+                                        items:
+                                          type: string
+                                          enum:
+                                            - OWNER
+                                            - ADMIN
+                                            - BILLING_ADMIN
+                                            - MEMBER
+                                            - VIEWER
+                                        maxItems: 5
+                                      groupIds:
+                                        type: array
+                                        items:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 128
+                                        maxItems: 50
+                                    additionalProperties: false
                                   layout:
                                     type: object
                                     properties:
@@ -26107,6 +26173,28 @@ paths:
                                         - sourceId
                                       additionalProperties: false
                                     default: {}
+                                  visibility:
+                                    type: object
+                                    properties:
+                                      roles:
+                                        type: array
+                                        items:
+                                          type: string
+                                          enum:
+                                            - OWNER
+                                            - ADMIN
+                                            - BILLING_ADMIN
+                                            - MEMBER
+                                            - VIEWER
+                                        maxItems: 5
+                                      groupIds:
+                                        type: array
+                                        items:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 128
+                                        maxItems: 50
+                                    additionalProperties: false
                                   layout:
                                     type: object
                                     properties:
@@ -26499,6 +26587,28 @@ paths:
                                         - sourceId
                                       additionalProperties: false
                                     default: {}
+                                  visibility:
+                                    type: object
+                                    properties:
+                                      roles:
+                                        type: array
+                                        items:
+                                          type: string
+                                          enum:
+                                            - OWNER
+                                            - ADMIN
+                                            - BILLING_ADMIN
+                                            - MEMBER
+                                            - VIEWER
+                                        maxItems: 5
+                                      groupIds:
+                                        type: array
+                                        items:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 128
+                                        maxItems: 50
+                                    additionalProperties: false
                                   layout:
                                     type: object
                                     properties:
@@ -29864,6 +29974,28 @@ paths:
                                                         - sourceId
                                                       additionalProperties: false
                                                     default: {}
+                                                  visibility:
+                                                    type: object
+                                                    properties:
+                                                      roles:
+                                                        type: array
+                                                        items:
+                                                          type: string
+                                                          enum:
+                                                            - OWNER
+                                                            - ADMIN
+                                                            - BILLING_ADMIN
+                                                            - MEMBER
+                                                            - VIEWER
+                                                        maxItems: 5
+                                                      groupIds:
+                                                        type: array
+                                                        items:
+                                                          type: string
+                                                          minLength: 1
+                                                          maxLength: 128
+                                                        maxItems: 50
+                                                    additionalProperties: false
                                                   layout:
                                                     type: object
                                                     properties:
@@ -30392,6 +30524,28 @@ paths:
                                                       - sourceId
                                                     additionalProperties: false
                                                   default: {}
+                                                visibility:
+                                                  type: object
+                                                  properties:
+                                                    roles:
+                                                      type: array
+                                                      items:
+                                                        type: string
+                                                        enum:
+                                                          - OWNER
+                                                          - ADMIN
+                                                          - BILLING_ADMIN
+                                                          - MEMBER
+                                                          - VIEWER
+                                                      maxItems: 5
+                                                    groupIds:
+                                                      type: array
+                                                      items:
+                                                        type: string
+                                                        minLength: 1
+                                                        maxLength: 128
+                                                      maxItems: 50
+                                                  additionalProperties: false
                                                 layout:
                                                   type: object
                                                   properties:
@@ -31258,6 +31412,28 @@ paths:
                                                       - sourceId
                                                     additionalProperties: false
                                                   default: {}
+                                                visibility:
+                                                  type: object
+                                                  properties:
+                                                    roles:
+                                                      type: array
+                                                      items:
+                                                        type: string
+                                                        enum:
+                                                          - OWNER
+                                                          - ADMIN
+                                                          - BILLING_ADMIN
+                                                          - MEMBER
+                                                          - VIEWER
+                                                      maxItems: 5
+                                                    groupIds:
+                                                      type: array
+                                                      items:
+                                                        type: string
+                                                        minLength: 1
+                                                        maxLength: 128
+                                                      maxItems: 50
+                                                  additionalProperties: false
                                                 layout:
                                                   type: object
                                                   properties:
@@ -31705,6 +31881,28 @@ paths:
                                                         - sourceId
                                                       additionalProperties: false
                                                     default: {}
+                                                  visibility:
+                                                    type: object
+                                                    properties:
+                                                      roles:
+                                                        type: array
+                                                        items:
+                                                          type: string
+                                                          enum:
+                                                            - OWNER
+                                                            - ADMIN
+                                                            - BILLING_ADMIN
+                                                            - MEMBER
+                                                            - VIEWER
+                                                        maxItems: 5
+                                                      groupIds:
+                                                        type: array
+                                                        items:
+                                                          type: string
+                                                          minLength: 1
+                                                          maxLength: 128
+                                                        maxItems: 50
+                                                    additionalProperties: false
                                                   layout:
                                                     type: object
                                                     properties:
@@ -32610,6 +32808,28 @@ paths:
                                             - sourceId
                                           additionalProperties: false
                                         default: {}
+                                      visibility:
+                                        type: object
+                                        properties:
+                                          roles:
+                                            type: array
+                                            items:
+                                              type: string
+                                              enum:
+                                                - OWNER
+                                                - ADMIN
+                                                - BILLING_ADMIN
+                                                - MEMBER
+                                                - VIEWER
+                                            maxItems: 5
+                                          groupIds:
+                                            type: array
+                                            items:
+                                              type: string
+                                              minLength: 1
+                                              maxLength: 128
+                                            maxItems: 50
+                                        additionalProperties: false
                                       layout:
                                         type: object
                                         properties:
@@ -33294,6 +33514,28 @@ paths:
                                             - sourceId
                                           additionalProperties: false
                                         default: {}
+                                      visibility:
+                                        type: object
+                                        properties:
+                                          roles:
+                                            type: array
+                                            items:
+                                              type: string
+                                              enum:
+                                                - OWNER
+                                                - ADMIN
+                                                - BILLING_ADMIN
+                                                - MEMBER
+                                                - VIEWER
+                                            maxItems: 5
+                                          groupIds:
+                                            type: array
+                                            items:
+                                              type: string
+                                              minLength: 1
+                                              maxLength: 128
+                                            maxItems: 50
+                                        additionalProperties: false
                                       layout:
                                         type: object
                                         properties:

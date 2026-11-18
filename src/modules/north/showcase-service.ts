@@ -1,3 +1,4 @@
+import { filterDocumentForViewer } from "./document-visibility.js";
 import { fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
 import { auditRepository as audit } from "../audit/repository.js";
@@ -103,7 +104,7 @@ export const northShowcase = {
         panel: { id: panel!.id, name: panel!.name, description: panel!.description, icon: panel!.icon, slug: panel!.slug, status: panel!.status },
         revision: {
           id: revision.id, panelId: revision.panelId, revisionNumber: revision.revisionNumber, etag: revision.etag,
-          defaultLocale: revision.defaultLocale, fallbackLocales: revision.fallbackLocales as string[], document: revision.document,
+          defaultLocale: revision.defaultLocale, fallbackLocales: revision.fallbackLocales as string[], document: filterDocumentForViewer(revision.document as unknown as { sections: never[] }, null),
           locale: { requested: slugs.locale ?? null, resolved, fallbackChain: [resolved, ...[...allowed].filter((item) => item !== resolved)] },
         },
         canonicalPath: `/showcase/${organization.slug}/${category!.slug}/${subcategory!.slug}/${panel!.slug}`,
@@ -122,7 +123,7 @@ export const northShowcase = {
       });
       if (!panel?.publishedRevision || !showcaseVisible({ organization, category: panel.subcategory.category, subcategory: panel.subcategory, panel })) notFound();
       const binding = await tx.northAnalyticsBinding.findFirst({ where: { id: bindingId, organizationId: organization.id, panelId } });
-      const document = northPanelDocumentInput.parse(panel!.publishedRevision!.document);
+      const document = filterDocumentForViewer(northPanelDocumentInput.parse(panel!.publishedRevision!.document), null);
       if (!binding || !referenced(document, binding.id, binding.datasetId)) notFound();
       const dataset = await tx.northDataset.findFirst({ where: { id: binding.datasetId, organizationId: organization.id, status: "ACTIVE" } });
       if (!dataset) notFound();
