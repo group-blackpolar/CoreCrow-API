@@ -342,6 +342,12 @@ export const northAnalyticsFacetResult = z.object({
   total: z.number().int().nonnegative().optional(),
   executedAt: date,
 }).strict();
+export const northAnalyticsExportResult = z.object({
+  format: z.enum(["csv", "xlsx"]), filename: z.string(), mime: z.string(),
+  /** Rows matching the caller's selection before the export count was applied. */
+  total: z.number().int().nonnegative(), rows: z.number().int().nonnegative(),
+  contentBase64: z.string(),
+}).strict();
 const northComparisonPeriod = z.object({ from: z.string(), to: z.string() }).strict();
 export const northAnalyticsBindingResult = northDatasetQueryResult.extend({
   bindingId: id,
