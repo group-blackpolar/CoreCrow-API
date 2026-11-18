@@ -56,6 +56,19 @@ export async function northContentRoutes(app: FastifyInstance) {
     run: ({ user, params, body }) => { const { filters, ...options } = body; return northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, filters, options); },
   });
   contract(app, {
+    method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/export", tag: "NORTH analytics",
+    summary: "Export 100 to 10 000 rows (CSV or XLSX) of a published binding for the caller's current filters; the range is validated against the real total",
+    params: panelBindingDetailParams,
+    body: z.object({
+      format: z.enum(["csv", "xlsx"]), count: z.number().int().min(100).max(10_000),
+      filters: z.array(datasetQueryFilter).max(10).default([]),
+      sort: bindingRuntimeOptions.shape.sort, search: bindingRuntimeOptions.shape.search,
+      columns: z.array(z.object({ key: z.string().min(1).max(100), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(60).optional(),
+    }).strict(),
+    response: s.northAnalyticsExportResult, rateLimit: 10,
+    run: ({ user, params, body }) => northAnalyticsBindings.export(user.id, params.organizationId, params.panelId, params.bindingId, body),
+  });
+  contract(app, {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/facets", tag: "NORTH analytics",
     summary: "List the distinct values (with counts) of one allowlisted binding filter field for a published panel; the field's own selection is excluded from the counts",
     params: panelBindingDetailParams,
@@ -213,6 +226,12 @@ export async function northContentRoutes(app: FastifyInstance) {
     summary: "Create panel metadata", params: subcategoryParams,
     body: s.northMetadataInput.extend({ resourceKind: z.literal("CONTENT").default("CONTENT"), audienceType: s.northAudienceType.default("ALL_MEMBERS") }).strict(), response: s.northPanel, status: 201,
     run: ({ user, params, body }) => northTaxonomy.createPanel(user.id, params.organizationId, params.subcategoryId, body),
+  });
+  contract(app, {
+    method: "POST", url: "/organizations/:organizationId/subcategories/:subcategoryId/page", tag: "NORTH taxonomy",
+    summary: "The page of a subcategory (its single panel); created from the subcategory's own name and slug when it has none", params: subcategoryParams,
+    response: s.northPanel, status: 200,
+    run: ({ user, params }) => northTaxonomy.subcategoryPage(user.id, params.organizationId, params.subcategoryId),
   });
   contract(app, {
     method: "GET", url: "/organizations/:organizationId/panels/:panelId", tag: "NORTH taxonomy",

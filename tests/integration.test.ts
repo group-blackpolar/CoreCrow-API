@@ -1432,7 +1432,9 @@ test(
         const analyticsCategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories`, owner.cookie, { name: { en: "Analytics" }, slug: "analytics-demo" }), 201);
         const analyticsSubcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${analyticsCategory.id}/subcategories`, owner.cookie, { name: { en: "Reports" }, slug: "analytics-reports" }), 201);
         const analyticsPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Sample Report" }, slug: "sample-report-demo" }), 201);
-        const otherPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${analyticsSubcategory.id}/panels`, owner.cookie, { name: { en: "Other" }, slug: "other-analytics" }), 201);
+        // One page per subcategory: the other panel lives in its own subcategory.
+        const otherSubcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${analyticsCategory.id}/subcategories`, owner.cookie, { name: { en: "Others" }, slug: "analytics-others" }), 201);
+        const otherPanel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${otherSubcategory.id}/panels`, owner.cookie, { name: { en: "Other" }, slug: "other-analytics" }), 201);
         const analyticsBinding = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${analyticsPanel.id}/analytics-bindings`, owner.cookie, {
           name: "Filtered record count", datasetId: dataset.id,
           query: { mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "total_records" }] },
@@ -1830,8 +1832,11 @@ test(
         expect(await call("GET", `/v1/organizations/${secondOrg}/north/management-tree`, owner.cookie), 404);
         const draftNavigation = expect(await call("GET", `/v1/organizations/${organizationId}/navigation`, owner.cookie), 200);
         assert.equal(JSON.stringify(draftNavigation).includes(monthly.id), false, "ordinary navigation never exposes draft panel metadata");
+        // One page per subcategory: a panel clone needs its own (empty) subcategory; the same one is refused.
+        assert.equal((await call("POST", `/v1/organizations/${organizationId}/north/clone`, owner.cookie, { kind: "PANEL", sourceId: monthly.id, destinationParentId: reports.id, slug: "monthly-copy" })).statusCode, 409);
+        const cloneTarget = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${finance.id}/subcategories`, owner.cookie, { name: { en: "Copies" }, slug: "reports-copies" }), 201);
         const cloned = expect(await call("POST", `/v1/organizations/${organizationId}/north/clone`, owner.cookie, {
-          kind: "PANEL", sourceId: monthly.id, destinationParentId: reports.id, slug: "monthly-copy",
+          kind: "PANEL", sourceId: monthly.id, destinationParentId: cloneTarget.id, slug: "monthly-copy",
         }), 201);
         assert.notEqual(cloned.id, monthly.id);
         assert.equal(cloned.status, "DRAFT");
@@ -1897,8 +1902,9 @@ test(
         assert.deepEqual(history.map((entry: { revisionNumber: number }) => entry.revisionNumber), [2, 1]);
         const restored = expect(await call("POST", `/v1/organizations/${organizationId}/panels/${monthly.id}/revisions/${firstDraft.id}/restore`, owner.cookie, { message: "Restore without publishing" }, { "if-match": secondDraft.etag }), 201);
         assert.equal(restored.revisionNumber, 3);
+        const deepCloneTarget = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${finance.id}/subcategories`, owner.cookie, { name: { en: "Deep copies" }, slug: "deep-copies" }), 201);
         const deepClone = expect(await call("POST", `/v1/organizations/${organizationId}/north/clone`, owner.cookie, {
-          kind: "PANEL", sourceId: monthly.id, destinationParentId: reports.id, slug: "monthly-content-copy",
+          kind: "PANEL", sourceId: monthly.id, destinationParentId: deepCloneTarget.id, slug: "monthly-content-copy",
         }), 201);
         const clonedPanel = await prisma.northPanel.findUniqueOrThrow({ where: { id: deepClone.id }, include: { draftRevision: true } });
         assert.ok(clonedPanel.draftRevision);

@@ -159,9 +159,10 @@ test("Organization onboarding integration", { skip: !process.env.TEST_DATABASE_U
     const category = expect(await call("POST", `/v1/organizations/${organizationId}/categories`, owner.cookie, { name: { es: "Borrable", en: "Deletable" }, slug: "borrable" }), 201);
     const subcategory = expect(await call("POST", `/v1/organizations/${organizationId}/categories/${category.id}/subcategories`, owner.cookie, { name: { es: "Sub", en: "Sub" }, slug: "sub" }), 201);
     const panel = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${subcategory.id}/panels`, owner.cookie, { name: { es: "Panel", en: "Panel" }, slug: "panel" }), 201);
-    const other = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${subcategory.id}/panels`, owner.cookie, { name: { es: "Otro", en: "Other" }, slug: "otro" }), 201);
     expect(await call("DELETE", `/v1/organizations/${organizationId}/panels/${panel.id}`, owner.cookie), 200);
     assert.equal(await prisma.northPanel.count({ where: { id: panel.id } }), 0);
+    // One page per subcategory: the second panel can only be created once the first is gone.
+    const other = expect(await call("POST", `/v1/organizations/${organizationId}/subcategories/${subcategory.id}/panels`, owner.cookie, { name: { es: "Otro", en: "Other" }, slug: "otro" }), 201);
     expect(await call("DELETE", `/v1/organizations/${organizationId}/subcategories/${subcategory.id}`, owner.cookie), 200);
     assert.equal(await prisma.northPanel.count({ where: { id: other.id } }), 0);
     expect(await call("DELETE", `/v1/organizations/${organizationId}/categories/${category.id}`, owner.cookie), 200);

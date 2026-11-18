@@ -176,6 +176,70 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     assert.equal((await results(grid, { filters: [] }, "")).statusCode, 401);
   });
 
+  await t.test("export: server-validated 100..10000 rows, CSV and XLSX, filtered, authorized and audited", async () => {
+    const exportOf = (body: unknown, cookie = owner.cookie, organization = org) => call("POST", `/v1/organizations/${organization}/panels/${panel.id}/analytics-bindings/${grid}/export`, cookie, body);
+    const columns = [{ key: consignee, label: "Consignee" }, { key: "n", label: "Rows" }];
+    const csv = expectStatus(await exportOf({ format: "csv", count: 100, columns }), 200);
+    assert.equal(csv.total, 1000);
+    assert.equal(csv.rows, 100);
+    assert.match(csv.filename, /\.csv$/);
+    const lines = Buffer.from(csv.contentBase64, "base64").toString("utf8").split("\r\n");
+    assert.equal(lines.length, 101, "header + 100 rows, beyond the binding's own page limit of 50");
+    assert.equal(lines[0], "\uFEFFConsignee,Rows");
+    const xlsx = expectStatus(await exportOf({ format: "xlsx", count: 1000, sort: { key: "kg", direction: "DESC" } }), 200);
+    const XLSX = await import("xlsx");
+    const sheet = XLSX.read(Buffer.from(xlsx.contentBase64, "base64"), { type: "buffer" });
+    assert.equal(XLSX.utils.sheet_to_json(sheet.Sheets[sheet.SheetNames[0]!]!).length, 1000);
+    assert.equal((await exportOf({ format: "csv", count: 99 })).statusCode, 400, "below the schema minimum");
+    assert.equal((await exportOf({ format: "csv", count: 1001 })).statusCode, 422, "above the real total");
+    const few = await exportOf({ format: "csv", count: 100, search: "consignee 99" });
+    assert.equal(few.statusCode, 422, "11 matching rows are fewer than the minimum");
+    assert.equal(few.json().code ?? few.json().error?.code, "EXPORT_TOO_FEW_ROWS");
+    assert.equal((await exportOf({ format: "csv", count: 100, columns: [{ key: weight, label: "x" }] })).statusCode, 422, "only the binding's own output columns");
+    assert.equal((await exportOf({ format: "csv", count: 100 }, outsider.cookie)).statusCode, 404);
+    assert.equal((await exportOf({ format: "csv", count: 100 }, outsider.cookie, otherOrg)).statusCode, 404);
+    assert.equal((await exportOf({ format: "csv", count: 100 }, "")).statusCode, 401);
+    assert.ok(await prisma.auditLog.findFirst({ where: { organizationId: org, action: "ANALYTICS_BINDING_EXPORTED", targetId: grid } }), "the export is audited");
+  });
+
+  await t.test("one page per subcategory: a second panel is refused and the page endpoint returns or creates it", async () => {
+    const again = await call("POST", `/v1/organizations/${org}/subcategories/${subcategory.id}/panels`, owner.cookie, { name: { en: "Second" }, slug: "second" });
+    assert.equal(again.statusCode, 409);
+    assert.match(again.body, /NORTH_SUBCATEGORY_PAGE_EXISTS/);
+    const page = expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${subcategory.id}/page`, owner.cookie), 200);
+    assert.equal(page.id, panel.id, "an existing page is returned, never duplicated");
+    const empty = expectStatus(await call("POST", `/v1/organizations/${org}/categories/${category.id}/subcategories`, owner.cookie, { name: { en: "Empty" }, slug: "empty" }), 201);
+    const created = expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/page`, owner.cookie), 200);
+    assert.equal(created.slug, "empty");
+    assert.equal(expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/page`, owner.cookie), 200).id, created.id, "idempotent");
+    assert.equal((await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/panels`, owner.cookie, { name: { en: "Extra" }, slug: "extra" })).statusCode, 409);
+    assert.equal((await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/page`, outsider.cookie)).statusCode >= 400, true, "another tenant's member cannot reach it");
+    assert.ok(await prisma.auditLog.findFirst({ where: { organizationId: org, action: "SUBCATEGORY_PAGE_CREATED", targetId: created.id } }));
+  });
+
+  await t.test("legacy cleanup: extra panels move to new subcategories, nothing is deleted, the page stays", async () => {
+    // @ts-expect-error plain .mjs script module
+    const { planSplits, applySplits } = await import("../scripts/lib/split-extra-panels-core.mjs");
+    const legacyCat = expectStatus(await call("POST", `/v1/organizations/${org}/categories`, owner.cookie, { name: { en: "Legacy" }, slug: "legacy" }), 201);
+    const formas = expectStatus(await call("POST", `/v1/organizations/${org}/categories/${legacyCat.id}/subcategories`, owner.cookie, { name: { en: "Formas" }, slug: "formas" }), 201);
+    for (const [order, slug] of ["auditoria", "formas"].entries()) await prisma.northPanel.create({ data: { organizationId: org, subcategoryId: formas.id, resourceKind: "CONTENT", name: { en: slug }, slug, order, status: "DRAFT" } as never });
+    const before = await prisma.northPanel.findMany({ where: { subcategoryId: formas.id }, select: { id: true, slug: true } });
+    const api = async (method: "GET" | "POST" | "PATCH", path: string, body?: unknown) => { const response = await call(method, `/v1${path}`, owner.cookie, body); if (response.statusCode >= 400) throw new Error(`${method} ${path}: ${response.statusCode} ${response.body}`); return { json: response.json() }; };
+    const org_ = `/organizations/${org}`;
+    const tree = (await api("GET", `${org_}/north/management-tree`)).json;
+    const plan = planSplits(tree.categories ?? tree).filter((entry: { subcategory: { id: string } }) => entry.subcategory.id === formas.id);
+    assert.equal(plan.length, 1);
+    assert.equal(plan[0].keep.slug, "formas");
+    await applySplits(api, org_, plan, () => undefined);
+    assert.equal(await prisma.northPanel.count({ where: { subcategoryId: formas.id } }), 1, "one page left in the subcategory");
+    const moved = before.find((panel) => panel.slug === "auditoria")!;
+    const now = await prisma.northPanel.findUniqueOrThrow({ where: { id: moved.id }, include: { subcategory: true } });
+    assert.equal(now.subcategory.slug, "auditoria", "same panel (same id), now the page of its own subcategory");
+    assert.equal(now.subcategory.categoryId, legacyCat.id);
+    assert.equal(expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${formas.id}/page`, owner.cookie), 200).slug, "formas");
+    assert.equal(planSplits(await (async () => { const tree = (await api("GET", `${org_}/north/management-tree`)).json; return tree.categories ?? tree; })()).filter((entry: { subcategory: { id: string } }) => entry.subcategory.id === formas.id).length, 0, "idempotent: nothing left to split");
+  });
+
   await t.test("SUM distinctBy counts a parent-level value once per key, per group, and stays tenant-bound", async () => {
     const { northDatasetQuery } = await import("../src/modules/north/data/query-service.js");
     const query = { mode: "AGGREGATE" as const, measures: [{ operation: "SUM" as const, fieldId: weight, distinctBy: consignee, alias: "once" }, { operation: "SUM" as const, fieldId: weight, alias: "plain" }, { operation: "COUNT" as const, alias: "n" }] };

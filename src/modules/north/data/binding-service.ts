@@ -10,6 +10,7 @@ import { authorizeDataset } from "./authorization.js";
 import { allowedBindingFilterSchema, datasetQuerySchema, type AllowedBindingFilter, type BindingRuntimeOptions, type DatasetQuery, type DatasetQueryFilter } from "./query-contract.js";
 import { previousPeriod, selectedPeriod, withPeriod } from "./period.js";
 import { executeDatasetQuery, gated, readTransaction } from "./query-service.js";
+import { toCsv, toXlsx, validateExportCount, type ExportColumn, type ExportValue } from "./export-format.js";
 
 type BindingInput = { name: string; datasetId: string; query: DatasetQuery; allowedFilters?: AllowedBindingFilter[] };
 
@@ -61,7 +62,26 @@ function remember(key: string, value: unknown) {
   resultCache.set(key, { at: Date.now(), value });
 }
 
+const exportsRunning = new Set<string>();
 const outputKeys = (query: DatasetQuery) => query.mode === "ROWS" ? query.fields : [...(query.groupBy ?? []), ...query.measures.map((measure) => measure.alias)];
+
+/** The binding's own query narrowed by runtime filters, sort, paging and search. A reader can only shrink the page: the binding's limit is the ceiling. */
+function effectiveQuery(query: DatasetQuery, filters: DatasetQueryFilter[], options: BindingRuntimeOptions): DatasetQuery {
+  const effective = { ...query, filters: [...(query.filters ?? []), ...filters] } as DatasetQuery;
+  if ((effective.filters?.length ?? 0) > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
+  if (options.sort) {
+    if (!outputKeys(query).includes(options.sort.key)) fail(422, "BINDING_SORT_NOT_ALLOWED", "Sorting is only available on the binding's own output columns");
+    if (effective.mode === "ROWS") effective.orderBy = [{ fieldId: options.sort.key, direction: options.sort.direction }];
+    else effective.orderBy = [{ key: options.sort.key, direction: options.sort.direction }];
+  }
+  if (options.offset !== undefined) effective.offset = options.offset;
+  if (options.limit !== undefined) effective.limit = Math.min(options.limit, query.limit ?? 100);
+  if (options.search) {
+    if (!query.searchFieldIds) fail(422, "BINDING_SEARCH_NOT_ALLOWED", "This binding does not declare searchable fields");
+    effective.search = { fieldIds: query.searchFieldIds, text: options.search };
+  }
+  return effective;
+}
 
 /** Declarations that only make sense against the dataset schema: the comparison date and the searchable text fields. */
 async function validateQueryDeclarations(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery, allowed: AllowedBindingFilter[]) {
@@ -189,23 +209,7 @@ export const northAnalyticsBindings = {
       const cacheKey = JSON.stringify([organizationId, panelId, bindingId, userId, revision, runtimeFilters, requested]);
       const hit = fresh ? undefined : cached<Awaited<ReturnType<typeof executeDatasetQuery>> & { filterDefinitions: unknown; comparison?: unknown; bindingId: string }>(cacheKey);
       if (hit) return hit;
-      const withOptions = (filters: DatasetQueryFilter[]): DatasetQuery => {
-        const effective = { ...query, filters: [...(query.filters ?? []), ...filters] } as DatasetQuery;
-        if ((effective.filters?.length ?? 0) > 10) fail(422, "BINDING_FILTER_LIMIT_EXCEEDED", "Binding filters exceed the maximum of 10");
-        if (options.sort) {
-          if (!outputKeys(query).includes(options.sort.key)) fail(422, "BINDING_SORT_NOT_ALLOWED", "Sorting is only available on the binding's own output columns");
-          if (effective.mode === "ROWS") effective.orderBy = [{ fieldId: options.sort.key, direction: options.sort.direction }];
-          else effective.orderBy = [{ key: options.sort.key, direction: options.sort.direction }];
-        }
-        if (options.offset !== undefined) effective.offset = options.offset;
-        // A reader can only shrink the page: the binding's own limit is the ceiling.
-        if (options.limit !== undefined) effective.limit = Math.min(options.limit, query.limit ?? 100);
-        if (options.search) {
-          if (!query.searchFieldIds) fail(422, "BINDING_SEARCH_NOT_ALLOWED", "This binding does not declare searchable fields");
-          effective.search = { fieldIds: query.searchFieldIds, text: options.search };
-        }
-        return effective;
-      };
+      const withOptions = (filters: DatasetQueryFilter[]): DatasetQuery => effectiveQuery(query, filters, options);
       const result = await executeDatasetQuery(tx, organizationId, binding.datasetId, withOptions(runtimeFilters));
       let comparison: { period: { from: string; to: string }; previousPeriod: { from: string; to: string }; rows: typeof result.rows } | undefined;
       if (options.compare && query.compareBy) {
@@ -232,6 +236,48 @@ export const northAnalyticsBindings = {
       remember(cacheKey, payload);
       return payload;
     }, readTransaction));
+  },
+  /**
+   * Export the rows of ONE published binding for the caller's current selection: same authorization, allowlisted filters and sort
+   * as `results`, but the count is chosen by the reader in [100, min(total, 10 000)] and the binding's own page limit does not
+   * apply. Total and range are decided here from the real count, never from the client. One export per user at a time.
+   */
+  async export(userId: string, organizationId: string, panelId: string, bindingId: string, input: { format: "csv" | "xlsx"; count: number; filters: DatasetQueryFilter[]; sort?: BindingRuntimeOptions["sort"]; search?: string; columns?: ExportColumn[] }) {
+    if (exportsRunning.has(userId)) fail(429, "EXPORT_IN_PROGRESS", "Another export is still running");
+    exportsRunning.add(userId);
+    try {
+      const out = await gated(() => transaction(async (tx) => {
+        const { binding, query } = await authorizedPublishedBinding(tx, userId, organizationId, panelId, bindingId, input.filters);
+        const outputs = outputKeys(query);
+        const columns = (input.columns?.length ? input.columns : outputs.map((key) => ({ key, label: key })));
+        if (columns.some((column) => !outputs.includes(column.key)) || new Set(columns.map((column) => column.key)).size !== columns.length)
+          fail(422, "EXPORT_COLUMN_NOT_ALLOWED", "Export columns must be distinct output columns of this binding");
+        const base = effectiveQuery(query, input.filters, { ...(input.sort ? { sort: input.sort } : {}), ...(input.search ? { search: input.search } : {}) });
+        const page = (offset: number, limit: number) => executeDatasetQuery(tx, organizationId, binding.datasetId, { ...base, offset, limit, includeTotal: true } as DatasetQuery);
+        const probe = await page(0, 1);
+        const total = probe.totalRows ?? probe.rows.length;
+        const count = validateExportCount(total, input.count);
+        const rows: Array<Record<string, ExportValue>> = [];
+        for (let offset = 0; offset < count; offset += 1_000) {
+          const chunk = await page(offset, Math.min(1_000, count - offset));
+          if (!chunk.rows.length) break;
+          rows.push(...(chunk.rows as Array<Record<string, ExportValue>>));
+        }
+        const exported = rows.slice(0, count);
+        const data = input.format === "csv" ? Buffer.from(toCsv(columns, exported), "utf8") : toXlsx(columns, exported, binding.name);
+        return { binding, total, rows: exported.length, data };
+      }, readTransaction));
+      await transaction((tx) => audit.append(tx, { actorId: userId, organizationId, action: "ANALYTICS_BINDING_EXPORTED", targetType: "NorthAnalyticsBinding", targetId: bindingId, metadata: { panelId, datasetId: out.binding.datasetId, format: input.format, rows: out.rows, total: out.total, filters: input.filters.length, searched: Boolean(input.search) } }));
+      const stamp = new Date().toISOString().slice(0, 10);
+      const name = out.binding.name.replace(/[^\w.-]+/g, "_").slice(0, 60) || "export";
+      return {
+        format: input.format, filename: `${name}-${stamp}.${input.format}`, total: out.total, rows: out.rows,
+        mime: input.format === "csv" ? "text/csv;charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        contentBase64: out.data.toString("base64"),
+      };
+    } finally {
+      exportsRunning.delete(userId);
+    }
   },
   /**
    * What a READER may do with a published panel: its components and, for every binding the published document references and
