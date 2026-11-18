@@ -217,6 +217,29 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     assert.ok(await prisma.auditLog.findFirst({ where: { organizationId: org, action: "SUBCATEGORY_PAGE_CREATED", targetId: created.id } }));
   });
 
+  await t.test("legacy cleanup: extra panels move to new subcategories, nothing is deleted, the page stays", async () => {
+    // @ts-expect-error plain .mjs script module
+    const { planSplits, applySplits } = await import("../scripts/lib/split-extra-panels-core.mjs");
+    const legacyCat = expectStatus(await call("POST", `/v1/organizations/${org}/categories`, owner.cookie, { name: { en: "Legacy" }, slug: "legacy" }), 201);
+    const formas = expectStatus(await call("POST", `/v1/organizations/${org}/categories/${legacyCat.id}/subcategories`, owner.cookie, { name: { en: "Formas" }, slug: "formas" }), 201);
+    for (const [order, slug] of ["auditoria", "formas"].entries()) await prisma.northPanel.create({ data: { organizationId: org, subcategoryId: formas.id, resourceKind: "CONTENT", name: { en: slug }, slug, order, status: "DRAFT" } as never });
+    const before = await prisma.northPanel.findMany({ where: { subcategoryId: formas.id }, select: { id: true, slug: true } });
+    const api = async (method: "GET" | "POST" | "PATCH", path: string, body?: unknown) => { const response = await call(method, `/v1${path}`, owner.cookie, body); if (response.statusCode >= 400) throw new Error(`${method} ${path}: ${response.statusCode} ${response.body}`); return { json: response.json() }; };
+    const org_ = `/organizations/${org}`;
+    const tree = (await api("GET", `${org_}/north/management-tree`)).json;
+    const plan = planSplits(tree.categories ?? tree).filter((entry: { subcategory: { id: string } }) => entry.subcategory.id === formas.id);
+    assert.equal(plan.length, 1);
+    assert.equal(plan[0].keep.slug, "formas");
+    await applySplits(api, org_, plan, () => undefined);
+    assert.equal(await prisma.northPanel.count({ where: { subcategoryId: formas.id } }), 1, "one page left in the subcategory");
+    const moved = before.find((panel) => panel.slug === "auditoria")!;
+    const now = await prisma.northPanel.findUniqueOrThrow({ where: { id: moved.id }, include: { subcategory: true } });
+    assert.equal(now.subcategory.slug, "auditoria", "same panel (same id), now the page of its own subcategory");
+    assert.equal(now.subcategory.categoryId, legacyCat.id);
+    assert.equal(expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${formas.id}/page`, owner.cookie), 200).slug, "formas");
+    assert.equal(planSplits(await (async () => { const tree = (await api("GET", `${org_}/north/management-tree`)).json; return tree.categories ?? tree; })()).filter((entry: { subcategory: { id: string } }) => entry.subcategory.id === formas.id).length, 0, "idempotent: nothing left to split");
+  });
+
   await t.test("SUM distinctBy counts a parent-level value once per key, per group, and stays tenant-bound", async () => {
     const { northDatasetQuery } = await import("../src/modules/north/data/query-service.js");
     const query = { mode: "AGGREGATE" as const, measures: [{ operation: "SUM" as const, fieldId: weight, distinctBy: consignee, alias: "once" }, { operation: "SUM" as const, fieldId: weight, alias: "plain" }, { operation: "COUNT" as const, alias: "n" }] };
