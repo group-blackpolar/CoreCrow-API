@@ -20,6 +20,15 @@ export const permissions = [
   "documents.download",
   "documents.send",
   "documents.manage",
+  // Evaluations (ADR 029): authoring, publication, assignment, taking, results.
+  "evaluations.read",
+  "evaluations.create",
+  "evaluations.update",
+  "evaluations.delete",
+  "evaluations.publish",
+  "evaluations.manage",
+  "evaluations.take",
+  "evaluations.results.read",
   // Security & access. Never part of a role's default set (see `grants`): OWNER holds them, everyone else needs an explicit grant.
   "security.overview.view",
   "security.devices.view",
@@ -114,6 +123,7 @@ const grants: Record<string, readonly Permission[]> = {
     "documents.create",
     "documents.update",
     "documents.download",
+    "evaluations.take",
   ],
   VIEWER: [
     "organization.read",
@@ -122,6 +132,7 @@ const grants: Record<string, readonly Permission[]> = {
     "commerce.read",
     "documents.read",
     "documents.download",
+    "evaluations.take",
   ],
 };
 const permissionSet = new Set<string>(permissions);

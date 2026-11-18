@@ -86,7 +86,13 @@
     "SecurityDevice": "security-access",
     "SecurityIpRule": "security-access",
     "SecurityAlert": "security-access",
-    "SecurityRetentionRun": "security-access"
+    "SecurityRetentionRun": "security-access",
+    "Evaluation": "evaluations",
+    "EvaluationVersion": "evaluations",
+    "EvaluationAssignment": "evaluations",
+    "EvaluationAttempt": "evaluations",
+    "EvaluationAnswer": "evaluations",
+    "EvaluationResult": "evaluations"
   },
   "exceptions": [
     "ai:NorthCategory",

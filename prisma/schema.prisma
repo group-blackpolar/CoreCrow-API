@@ -1992,3 +1992,125 @@ model OrganizationLandingRule {
   @@unique([organizationId, order])
   @@index([organizationId])
 }
+
+enum EvaluationKind {
+  EXAM
+  FORM
+}
+
+enum EvaluationStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EvaluationAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+}
+
+/// ADR 029. The draft is one validated JSON document (sections, passages, questions, options, correct option, settings) edited
+/// with optimistic concurrency (`draftRevision`). All foreign keys, including the tenant-matching composite ones, are hand-written in
+/// migration 20261117180000 (not Prisma relations), like Organization.homePanelId.
+model Evaluation {
+  id             String           @id @default(cuid())
+  organizationId String
+  kind           EvaluationKind   @default(EXAM)
+  title          String
+  description    String?
+  status         EvaluationStatus @default(DRAFT)
+  draft          Json
+  draftRevision  Int              @default(1)
+  /// The version new attempts use; null until the first publication.
+  currentVersionId String?
+  /// draftRevision captured by the last publication: draftRevision > publishedRevision means unpublished changes.
+  publishedRevision Int?
+  createdBy      String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status, updatedAt])
+}
+
+/// Immutable (database trigger): the snapshot holds the content AND its answer key as published.
+model EvaluationVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  evaluationId   String
+  version        Int
+  snapshot       Json
+  questionCount  Int
+  /// Sum of question points in hundredths (integer arithmetic everywhere).
+  maxScoreCenti  Int
+  publishedBy    String
+  publishedAt    DateTime @default(now())
+
+  @@unique([evaluationId, version])
+  @@unique([id, evaluationId, organizationId])
+}
+
+/// Who may take it: exactly one of role / groupId / userId per row (CHECK), within an optional window.
+model EvaluationAssignment {
+  id             String    @id @default(cuid())
+  organizationId String
+  evaluationId   String
+  role           TenantRole?
+  groupId        String?
+  membershipId   String?
+  opensAt        DateTime?
+  closesAt       DateTime?
+
+  @@index([organizationId, evaluationId])
+}
+
+model EvaluationAttempt {
+  id             String                  @id @default(cuid())
+  organizationId String
+  evaluationId   String
+  versionId      String
+  userId         String
+  attemptNumber  Int
+  status         EvaluationAttemptStatus @default(IN_PROGRESS)
+  startedAt      DateTime                @default(now())
+  /// startedAt + duration at the moment of the start; null = untimed.
+  deadlineAt     DateTime?
+  submittedAt    DateTime?
+  updatedAt      DateTime                @updatedAt
+
+  @@unique([evaluationId, userId, attemptNumber])
+  @@unique([id, organizationId])
+  @@index([organizationId, evaluationId, status])
+  @@index([userId, organizationId])
+}
+
+/// One row per answered question; `seq` is the client's monotonic counter, so an older write never overwrites a newer one.
+model EvaluationAnswer {
+  attemptId  String
+  questionId String
+  optionId   String?
+  seq        Int
+  savedAt    DateTime @default(now())
+
+  @@id([attemptId, questionId])
+}
+
+/// Computed on the server from the immutable version; one per attempt (unique) so a repeated submit cannot grade twice.
+model EvaluationResult {
+  attemptId      String   @id
+  organizationId String
+  evaluationId   String
+  versionId      String
+  userId         String
+  correct        Int
+  incorrect      Int
+  unanswered     Int
+  scoreCenti     Int
+  maxScoreCenti  Int
+  timeUsedSeconds Int
+  breakdown      Json
+  gradedAt       DateTime @default(now())
+
+  @@index([organizationId, evaluationId])
+}

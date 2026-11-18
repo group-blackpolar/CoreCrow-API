@@ -11,6 +11,10 @@ export const tenantRepository = {
       where: { organizationId_userId: { organizationId, userId } },
     });
   },
+  /** Membership ids -> person ids, for consumers that store a membership reference (e.g. evaluation assignments). */
+  membershipUsers(tx: Transaction, organizationId: string, ids: string[]) {
+    return tx.membership.findMany({ where: { organizationId, id: { in: ids } }, select: { id: true, userId: true } });
+  },
   organization(tx: Transaction, id: string) {
     return tx.organization.findUnique({ where: { id } });
   },
