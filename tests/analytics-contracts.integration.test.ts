@@ -176,6 +176,32 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     assert.equal((await results(grid, { filters: [] }, "")).statusCode, 401);
   });
 
+  await t.test("export: server-validated 100..10000 rows, CSV and XLSX, filtered, authorized and audited", async () => {
+    const exportOf = (body: unknown, cookie = owner.cookie, organization = org) => call("POST", `/v1/organizations/${organization}/panels/${panel.id}/analytics-bindings/${grid}/export`, cookie, body);
+    const columns = [{ key: consignee, label: "Consignee" }, { key: "n", label: "Rows" }];
+    const csv = expectStatus(await exportOf({ format: "csv", count: 100, columns }), 200);
+    assert.equal(csv.total, 1000);
+    assert.equal(csv.rows, 100);
+    assert.match(csv.filename, /\.csv$/);
+    const lines = Buffer.from(csv.contentBase64, "base64").toString("utf8").split("\r\n");
+    assert.equal(lines.length, 101, "header + 100 rows, beyond the binding's own page limit of 50");
+    assert.equal(lines[0], "\uFEFFConsignee,Rows");
+    const xlsx = expectStatus(await exportOf({ format: "xlsx", count: 1000, sort: { key: "kg", direction: "DESC" } }), 200);
+    const XLSX = await import("xlsx");
+    const sheet = XLSX.read(Buffer.from(xlsx.contentBase64, "base64"), { type: "buffer" });
+    assert.equal(XLSX.utils.sheet_to_json(sheet.Sheets[sheet.SheetNames[0]!]!).length, 1000);
+    assert.equal((await exportOf({ format: "csv", count: 99 })).statusCode, 400, "below the schema minimum");
+    assert.equal((await exportOf({ format: "csv", count: 1001 })).statusCode, 422, "above the real total");
+    const few = await exportOf({ format: "csv", count: 100, search: "consignee 99" });
+    assert.equal(few.statusCode, 422, "11 matching rows are fewer than the minimum");
+    assert.equal(few.json().code ?? few.json().error?.code, "EXPORT_TOO_FEW_ROWS");
+    assert.equal((await exportOf({ format: "csv", count: 100, columns: [{ key: weight, label: "x" }] })).statusCode, 422, "only the binding's own output columns");
+    assert.equal((await exportOf({ format: "csv", count: 100 }, outsider.cookie)).statusCode, 404);
+    assert.equal((await exportOf({ format: "csv", count: 100 }, outsider.cookie, otherOrg)).statusCode, 404);
+    assert.equal((await exportOf({ format: "csv", count: 100 }, "")).statusCode, 401);
+    assert.ok(await prisma.auditLog.findFirst({ where: { organizationId: org, action: "ANALYTICS_BINDING_EXPORTED", targetId: grid } }), "the export is audited");
+  });
+
   await t.test("SUM distinctBy counts a parent-level value once per key, per group, and stays tenant-bound", async () => {
     const { northDatasetQuery } = await import("../src/modules/north/data/query-service.js");
     const query = { mode: "AGGREGATE" as const, measures: [{ operation: "SUM" as const, fieldId: weight, distinctBy: consignee, alias: "once" }, { operation: "SUM" as const, fieldId: weight, alias: "plain" }, { operation: "COUNT" as const, alias: "n" }] };
