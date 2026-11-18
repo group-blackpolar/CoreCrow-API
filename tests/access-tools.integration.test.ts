@@ -164,7 +164,6 @@ test("binding delete, member removal with datasets, access simulation", { skip: 
     assert.equal(real.statusCode, 200);
     // published views: visible by audience, with the reason when not
     const category = expectStatus(await call("POST", `${base}/categories`, owner.cookie, { name: { en: "V" }, slug: "view-cat" }), 201);
-    const subcategory = expectStatus(await call("POST", `${base}/categories/${category.id}/subcategories`, owner.cookie, { name: { en: "V" }, slug: "view-sub" }), 201);
     const publish = async (slug: string, roles: string[]) => {
       // One page per subcategory: each published view gets its own subcategory.
       const own = expectStatus(await call("POST", `${base}/categories/${category.id}/subcategories`, owner.cookie, { name: { en: slug }, slug: `${slug}-sub` }), 201);
