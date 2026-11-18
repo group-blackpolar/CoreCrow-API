@@ -202,6 +202,21 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     assert.ok(await prisma.auditLog.findFirst({ where: { organizationId: org, action: "ANALYTICS_BINDING_EXPORTED", targetId: grid } }), "the export is audited");
   });
 
+  await t.test("one page per subcategory: a second panel is refused and the page endpoint returns or creates it", async () => {
+    const again = await call("POST", `/v1/organizations/${org}/subcategories/${subcategory.id}/panels`, owner.cookie, { name: { en: "Second" }, slug: "second" });
+    assert.equal(again.statusCode, 409);
+    assert.match(again.body, /NORTH_SUBCATEGORY_PAGE_EXISTS/);
+    const page = expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${subcategory.id}/page`, owner.cookie), 200);
+    assert.equal(page.id, panel.id, "an existing page is returned, never duplicated");
+    const empty = expectStatus(await call("POST", `/v1/organizations/${org}/categories/${category.id}/subcategories`, owner.cookie, { name: { en: "Empty" }, slug: "empty" }), 201);
+    const created = expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/page`, owner.cookie), 200);
+    assert.equal(created.slug, "empty");
+    assert.equal(expectStatus(await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/page`, owner.cookie), 200).id, created.id, "idempotent");
+    assert.equal((await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/panels`, owner.cookie, { name: { en: "Extra" }, slug: "extra" })).statusCode, 409);
+    assert.equal((await call("POST", `/v1/organizations/${org}/subcategories/${empty.id}/page`, outsider.cookie)).statusCode >= 400, true, "another tenant's member cannot reach it");
+    assert.ok(await prisma.auditLog.findFirst({ where: { organizationId: org, action: "SUBCATEGORY_PAGE_CREATED", targetId: created.id } }));
+  });
+
   await t.test("SUM distinctBy counts a parent-level value once per key, per group, and stays tenant-bound", async () => {
     const { northDatasetQuery } = await import("../src/modules/north/data/query-service.js");
     const query = { mode: "AGGREGATE" as const, measures: [{ operation: "SUM" as const, fieldId: weight, distinctBy: consignee, alias: "once" }, { operation: "SUM" as const, fieldId: weight, alias: "plain" }, { operation: "COUNT" as const, alias: "n" }] };

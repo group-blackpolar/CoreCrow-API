@@ -228,6 +228,12 @@ export async function northContentRoutes(app: FastifyInstance) {
     run: ({ user, params, body }) => northTaxonomy.createPanel(user.id, params.organizationId, params.subcategoryId, body),
   });
   contract(app, {
+    method: "POST", url: "/organizations/:organizationId/subcategories/:subcategoryId/page", tag: "NORTH taxonomy",
+    summary: "The page of a subcategory (its single panel); created from the subcategory's own name and slug when it has none", params: subcategoryParams,
+    response: s.northPanel, status: 200,
+    run: ({ user, params }) => northTaxonomy.subcategoryPage(user.id, params.organizationId, params.subcategoryId),
+  });
+  contract(app, {
     method: "GET", url: "/organizations/:organizationId/panels/:panelId", tag: "NORTH taxonomy",
     summary: "Read authorized panel metadata", params: panelParams, response: s.northPanel,
     run: ({ user, params }) => northTaxonomy.readPanel(user.id, params.organizationId, params.panelId),

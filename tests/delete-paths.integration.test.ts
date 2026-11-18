@@ -156,7 +156,9 @@ test("DELETE paths regression", { skip: !process.env.TEST_DATABASE_URL }, async 
       assert.equal(await prisma.northPanelRevision.count({ where: { panelId: panel.id } }), 0);
     }
     // Append-only still holds outside an explicit erase: a stray delete or update is rejected by the database.
-    const keep = expect(await call("POST", `${org}/subcategories/${(await prisma.northSubcategory.findFirstOrThrow({ where: { organizationId } })).id}/panels`, owner.cookie, { name: { en: "K", es: "K" }, slug: "keep" }), 201);
+    const keepCat = expect(await call("POST", `${org}/categories`, owner.cookie, { name: { en: "Keep", es: "Keep" }, slug: "keep-cat" }), 201);
+    const keepSub = expect(await call("POST", `${org}/categories/${keepCat.id}/subcategories`, owner.cookie, { name: { en: "Keep", es: "Keep" }, slug: "keep-sub" }), 201);
+    const keep = expect(await call("POST", `${org}/subcategories/${keepSub.id}/panels`, owner.cookie, { name: { en: "K", es: "K" }, slug: "keep" }), 201);
     assert.equal((await call("PATCH", `${org}/panels/${keep.id}/draft`, owner.cookie, { document: doc })).statusCode, 200);
     await assert.rejects(prisma.northPanelRevision.deleteMany({ where: { panelId: keep.id } }), /append-only/);
     await assert.rejects(prisma.northPanelRevision.updateMany({ where: { panelId: keep.id }, data: { message: "x" } }), /append-only/);

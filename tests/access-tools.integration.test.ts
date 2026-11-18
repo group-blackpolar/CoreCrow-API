@@ -166,7 +166,9 @@ test("binding delete, member removal with datasets, access simulation", { skip: 
     const category = expectStatus(await call("POST", `${base}/categories`, owner.cookie, { name: { en: "V" }, slug: "view-cat" }), 201);
     const subcategory = expectStatus(await call("POST", `${base}/categories/${category.id}/subcategories`, owner.cookie, { name: { en: "V" }, slug: "view-sub" }), 201);
     const publish = async (slug: string, roles: string[]) => {
-      const panel = expectStatus(await call("POST", `${base}/subcategories/${subcategory.id}/panels`, owner.cookie, { name: { en: slug }, slug }), 201);
+      // One page per subcategory: each published view gets its own subcategory.
+      const own = expectStatus(await call("POST", `${base}/categories/${category.id}/subcategories`, owner.cookie, { name: { en: slug }, slug: `${slug}-sub` }), 201);
+      const panel = expectStatus(await call("POST", `${base}/subcategories/${own.id}/panels`, owner.cookie, { name: { en: slug }, slug }), 201);
       const binding = expectStatus(await call("POST", `${base}/panels/${panel.id}/analytics-bindings`, owner.cookie, { name: "n", datasetId: dataset.id, query: { mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "n" }] }, allowedFilters: [{ fieldId: day, operators: ["GTE"] }] }), 201).id as string;
       const cell = { x: 0, y: 0, w: 4, h: 3 };
       const kpi = { id: "k", type: "kpi_card", schemaVersion: 1, props: { label: { en: "Rows" }, valueKey: "n", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, bindings: { data: { sourceType: "dataset", sourceId: binding, datasetId: dataset.id } }, order: 0, layout: { desktop: cell, tablet: cell, mobile: { ...cell, w: 12 } } };

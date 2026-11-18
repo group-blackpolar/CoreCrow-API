@@ -166,6 +166,13 @@ async function assertPanelCapacity(tx: Transaction, subcategoryId: string, incom
     fail(409, "NORTH_PANEL_LIMIT_EXCEEDED", "Subcategory panel limit reached");
 }
 
+/** One page per subcategory (ADR 031): a subcategory holds at most ONE non-archived panel, which is its page. Existing data with
+ *  more is not touched here (the migration splits it explicitly); only NEW panels are refused. */
+async function assertSubcategoryHasNoPage(tx: Transaction, subcategoryId: string) {
+  const count = await tx.northPanel.count({ where: { subcategoryId, status: { not: "ARCHIVED" } } });
+  if (count >= 1) fail(409, "NORTH_SUBCATEGORY_PAGE_EXISTS", "This subcategory already has its page; edit it instead of adding another");
+}
+
 async function audienceAllows(tx: Transaction, userId: string, panel: Awaited<ReturnType<typeof repo.panelBySlug>>) {
   if (!panel) return false;
   const subcategory = await repo.subcategory(tx, panel.organizationId, panel.subcategoryId);
@@ -310,10 +317,34 @@ export const northTaxonomy = {
     return transaction(async (tx) => { const target = await subcategoryTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.subcategory.archive", target); const current = await repo.subcategory(tx, organizationId, id); if (current!.resourceKind === "SYSTEM") fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be archived"); const result = await repo.updateSubcategory(tx, id, { status: "ARCHIVED" }); await audit.append(tx, { actorId: userId, organizationId, action: "SUBCATEGORY_ARCHIVED", targetType: "NorthSubcategory", targetId: id }); return result; });
   },
   createPanel(userId: string, organizationId: string, subcategoryId: string, input: CreateMetadata & { audienceType?: NorthAudienceType }) {
-    return transaction(async (tx) => { const target = await subcategoryTarget(tx, organizationId, subcategoryId); await authorizeNorth(tx, userId, "north.panel.create", target); await activeSubcategory(tx, organizationId, subcategoryId); await assertPanelCapacity(tx, subcategoryId); try { const slug = slugOf(input.slug ?? Object.values(input.name)[0] ?? "", input.resourceKind === "SYSTEM"); await ensurePanelSlug(tx, subcategoryId, slug); const result = await repo.createPanel(tx, organizationId, subcategoryId, { ...input, resourceKind: input.resourceKind ?? "CONTENT", slug }); await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_CREATED", targetType: "NorthPanel", targetId: result.id }); return result; } catch (error) { conflict(error); } });
+    return transaction(async (tx) => { const target = await subcategoryTarget(tx, organizationId, subcategoryId); await authorizeNorth(tx, userId, "north.panel.create", target); await activeSubcategory(tx, organizationId, subcategoryId); await assertSubcategoryHasNoPage(tx, subcategoryId); await assertPanelCapacity(tx, subcategoryId); try { const slug = slugOf(input.slug ?? Object.values(input.name)[0] ?? "", input.resourceKind === "SYSTEM"); await ensurePanelSlug(tx, subcategoryId, slug); const result = await repo.createPanel(tx, organizationId, subcategoryId, { ...input, resourceKind: input.resourceKind ?? "CONTENT", slug }); await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_CREATED", targetType: "NorthPanel", targetId: result.id }); return result; } catch (error) { conflict(error); } });
+  },
+  /**
+   * The page of a subcategory (its single panel). Returns it when it exists; otherwise creates it from the subcategory's own
+   * name and slug, so every subcategory is directly editable. Creating needs the same permission as creating a panel.
+   */
+  subcategoryPage(userId: string, organizationId: string, subcategoryId: string) {
+    return transaction(async (tx) => {
+      const target = await subcategoryTarget(tx, organizationId, subcategoryId);
+      const subcategory = (await repo.subcategory(tx, organizationId, subcategoryId))!;
+      const panels = await tx.northPanel.findMany({ where: { organizationId, subcategoryId, status: { not: "ARCHIVED" } }, orderBy: [{ order: "asc" }, { id: "asc" }] });
+      // With several (legacy) panels the page is the one that shares the subcategory's slug, else the first by order.
+      const existing = panels.find((panel) => panel.slug === subcategory.slug) ?? panels[0];
+      if (existing) {
+        await authorizeNorth(tx, userId, "north.panel.read", { ...target, scope: "PANEL", panelId: existing.id });
+        return existing;
+      }
+      await authorizeNorth(tx, userId, "north.panel.create", target);
+      await activeSubcategory(tx, organizationId, subcategoryId);
+      try {
+        const created = await repo.createPanel(tx, organizationId, subcategoryId, { resourceKind: "CONTENT", name: subcategory.name as Localized, description: (subcategory.description as Localized | null) ?? undefined, icon: subcategory.icon, color: subcategory.color, slug: subcategory.slug, order: 0, navigationHidden: false, audienceType: "ALL_MEMBERS" } as never);
+        await audit.append(tx, { actorId: userId, organizationId, action: "SUBCATEGORY_PAGE_CREATED", targetType: "NorthPanel", targetId: created.id, metadata: { subcategoryId } });
+        return created;
+      } catch (error) { conflict(error); }
+    });
   },
   updatePanel(userId: string, organizationId: string, id: string, input: MetadataInput & { subcategoryId?: string }) {
-    return transaction(async (tx) => { const target = await panelTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.panel.update", target); const current = await repo.panel(tx, organizationId, id); if (current!.resourceKind === "SYSTEM" && (input.slug || input.subcategoryId)) fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be moved or renamed"); if (input.subcategoryId) { await authorizeNorth(tx, userId, "north.panel.create", await subcategoryTarget(tx, organizationId, input.subcategoryId)); await activeSubcategory(tx, organizationId, input.subcategoryId); if (input.subcategoryId !== current!.subcategoryId) await assertPanelCapacity(tx, input.subcategoryId); } try { const destinationId = input.subcategoryId ?? current!.subcategoryId; const slug = input.slug ? slugOf(input.slug) : undefined; await ensurePanelSlug(tx, destinationId, slug ?? current!.slug, id); if (slug && slug !== current!.slug) await repo.aliasPanel(tx, current!.subcategoryId, id, current!.slug); const result = await repo.updatePanel(tx, id, { ...input, subcategoryId: destinationId, ...(slug ? { slug } : {}) }); await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_UPDATED", targetType: "NorthPanel", targetId: id }); return result; } catch (error) { conflict(error); } });
+    return transaction(async (tx) => { const target = await panelTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.panel.update", target); const current = await repo.panel(tx, organizationId, id); if (current!.resourceKind === "SYSTEM" && (input.slug || input.subcategoryId)) fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be moved or renamed"); if (input.subcategoryId) { await authorizeNorth(tx, userId, "north.panel.create", await subcategoryTarget(tx, organizationId, input.subcategoryId)); await activeSubcategory(tx, organizationId, input.subcategoryId); if (input.subcategoryId !== current!.subcategoryId) { await assertSubcategoryHasNoPage(tx, input.subcategoryId); await assertPanelCapacity(tx, input.subcategoryId); } } try { const destinationId = input.subcategoryId ?? current!.subcategoryId; const slug = input.slug ? slugOf(input.slug) : undefined; await ensurePanelSlug(tx, destinationId, slug ?? current!.slug, id); if (slug && slug !== current!.slug) await repo.aliasPanel(tx, current!.subcategoryId, id, current!.slug); const result = await repo.updatePanel(tx, id, { ...input, subcategoryId: destinationId, ...(slug ? { slug } : {}) }); await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_UPDATED", targetType: "NorthPanel", targetId: id }); return result; } catch (error) { conflict(error); } });
   },
   archivePanel(userId: string, organizationId: string, id: string) {
     return transaction(async (tx) => { const target = await panelTarget(tx, organizationId, id); await authorizeNorth(tx, userId, "north.panel.archive", target); const current = await repo.panel(tx, organizationId, id); if (current!.resourceKind === "SYSTEM") fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be archived"); const result = await repo.updatePanel(tx, id, { status: "ARCHIVED" }); await audit.append(tx, { actorId: userId, organizationId, action: "PANEL_ARCHIVED", targetType: "NorthPanel", targetId: id }); return result; });
@@ -363,7 +394,7 @@ export const northTaxonomy = {
         if (!input.destinationParentId) fail(422, "CLONE_DESTINATION_REQUIRED", "Destination subcategory is required");
         const sourceTarget = await panelTarget(tx, organizationId, input.sourceId); await authorizeNorth(tx, userId, "north.panel.read", sourceTarget);
         const destination = await subcategoryTarget(tx, organizationId, input.destinationParentId); await authorizeNorth(tx, userId, "north.panel.create", destination);
-        await activeSubcategory(tx, organizationId, input.destinationParentId); await assertPanelCapacity(tx, input.destinationParentId);
+        await activeSubcategory(tx, organizationId, input.destinationParentId); await assertSubcategoryHasNoPage(tx, input.destinationParentId); await assertPanelCapacity(tx, input.destinationParentId);
         const source = await tx.northPanel.findFirst({ where: { id: input.sourceId, organizationId }, include: { audienceRoles: true, audienceGroups: true, audiencePermissions: true, audienceMemberships: true } });
         if (!source || source.resourceKind !== "CONTENT") fail(403, "SYSTEM_RESOURCE_PROTECTED", "Only content resources can be cloned");
         await ensurePanelSlug(tx, input.destinationParentId, slug);
