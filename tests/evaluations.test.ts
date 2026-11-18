@@ -103,3 +103,13 @@ test("review policy: never, after submit, after a date; only for closed attempts
   assert.equal(reviewAvailable(later, true, new Date("2026-07-02T00:00:00Z")), true);
   assert.equal(reviewContent(content, new Map())[0]!.correctOptionId, content.questions[0]!.correctOptionId);
 });
+
+test("the evaluation_workspace panel component is a strict, validated schema", async () => {
+  const { northComponentRegistry } = await import("../src/modules/north/content-schema.js");
+  const validate = northComponentRegistry["evaluation_workspace@1"]!.validate;
+  assert.ok(validate({ views: ["builder", "player", "results"], kind: "EXAM" }).success);
+  assert.ok(validate({ views: ["results"] }).success);
+  assert.ok(!validate({ views: [] }).success);
+  assert.ok(!validate({ views: ["builder"], organizationId: "x" }).success, "no organization or data in the document");
+  assert.ok(!validate({ views: ["admin"] }).success);
+});

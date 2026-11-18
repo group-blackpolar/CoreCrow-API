@@ -114,6 +114,9 @@ const catalog = {
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
   document_workspace: z.object({ typeKey: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/), title: localized.optional() }).strict(),
+  // Evaluations workspace (ADR 029): builder, player and results for the organization's evaluations. Renders for authenticated members;
+  // all data and permissions come from the /evaluations contracts, never from this document. `kind` narrows the list to exams or forms.
+  evaluation_workspace: z.object({ views: z.array(z.enum(["builder", "player", "results"])).min(1).max(3), kind: z.enum(["EXAM", "FORM"]).optional(), title: localized.optional() }).strict(),
   // Information-page blocks (static copy; the numbers on such a page come from bound kpi_card components, never from here).
   // Hero: eyebrow, title, body, a few chips, an optional side note and the organization logo.
   hero: z.object({

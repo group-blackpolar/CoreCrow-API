@@ -2,6 +2,8 @@
 // This file is configuration only: provisioning is scripts/provision-organization.mjs, the same for any organization.
 // Categories are ordinary, administrable navigation (rename, reorder or delete them in Administration afterwards).
 const entry = (slug, es, en, icon) => ({ slug, name: { es, en }, ...(icon ? { icon } : {}) });
+// An entry whose starter page hosts the evaluations workspace (builder / player / results, each shown only to members allowed to use it).
+const workspace = (slug, es, en, props) => ({ ...entry(slug, es, en), component: { id: "evaluations", type: "evaluation_workspace", props } });
 
 export default {
   organization: { slug: "stress-test", name: "Stress Test", description: "Pruebas de Estrés" },
@@ -12,8 +14,9 @@ export default {
   panelPerSubcategory: { slug: "overview", note: { es: "Espacio de pruebas. Aquí se conectarán los módulos de esta área.", en: "Test space. This area's modules will be connected here." } },
   categories: [
     { ...entry("evaluations", "Evaluaciones", "Evaluations", "checklist"), subcategories: [
-      entry("exams", "Exámenes", "Exams"), entry("forms", "Formularios", "Forms"), entry("question-bank", "Banco de preguntas", "Question bank"),
-      entry("attempts-results", "Intentos y resultados", "Attempts and results"), entry("analytics", "Analíticas", "Analytics"),
+      workspace("exams", "Exámenes", "Exams", { views: ["builder", "player", "results"], kind: "EXAM" }), workspace("forms", "Formularios", "Forms", { views: ["builder", "player", "results"], kind: "FORM" }),
+      entry("question-bank", "Banco de preguntas", "Question bank"),
+      workspace("attempts-results", "Intentos y resultados", "Attempts and results", { views: ["results"] }), entry("analytics", "Analíticas", "Analytics"),
     ] },
     { ...entry("ui-lab", "Laboratorio de UI", "UI Lab", "palette"), subcategories: [
       entry("components", "Componentes visuales", "Visual components"), entry("layouts", "Layouts", "Layouts"), entry("responsiveness", "Responsividad", "Responsiveness"),

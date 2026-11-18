@@ -6,6 +6,7 @@
 // definition = {
 //   organization: { slug, name, description? },
 //   hideSystemHome?: boolean,                       // the empty system Home is not shown in the navigation
+//   subcategories may carry `component: { type, props }` to host a registered component in their starter panel
 //   panelPerSubcategory?: { slug, note?: {es,en} }, // seed one published starter panel per subcategory (navigation lists only subcategories with a panel)
 //   landing: { mode: "STANDARD" | "PANEL" | "NONE" }, // PANEL needs `panelSlug: [category, subcategory, panel]`
 //   categories: [{ slug, name: {es,en}, icon?, color?, subcategories?: [{ slug, name: {es,en}, icon? }] }],
@@ -15,6 +16,12 @@
 
 const cell = { desktop: { x: 0, y: 0, w: 12, h: 2 }, tablet: { x: 0, y: 0, w: 12, h: 2 }, mobile: { x: 0, y: 0, w: 12, h: 2 } };
 /** Starter content of a panel: the subcategory title and an optional note. Seeded once; later edits belong to administrators. */
+const componentDocument = (component) => ({
+  schemaVersion: 1, defaultLocale: "es", fallbackLocales: ["en"],
+  sections: [{ id: "main", order: 0, layout: { variant: "grid", gap: "md" }, components: [
+    { id: component.id ?? "main-component", type: component.type, schemaVersion: 1, props: component.props ?? {}, bindings: {}, layout: { desktop: { x: 0, y: 0, w: 12, h: 12 }, tablet: { x: 0, y: 0, w: 12, h: 12 }, mobile: { x: 0, y: 0, w: 12, h: 12 } }, order: 0 },
+  ] }],
+});
 const starterDocument = (title, note) => ({
   schemaVersion: 1, defaultLocale: "es", fallbackLocales: ["en"],
   sections: [{ id: "main", order: 0, layout: { variant: "grid", gap: "md" }, components: [
@@ -88,7 +95,8 @@ export async function reconcileOrganization(call, definition, log = () => {}) {
         let panel = (subcategory.panels ?? []).find((item) => item.slug === slug);
         if (!panel) panel = (await call("POST", `${base}/subcategories/${subcategory.id}/panels`, { name: wantedSub.name, slug, order: 0 })).json;
         if (panel.status === "PUBLISHED") continue; // already seeded (or taken over by an administrator)
-        const document = starterDocument(wantedSub.name, note && { body: note });
+        // A subcategory may host a registered component instead of the plain starter page (e.g. an evaluations workspace).
+        const document = wantedSub.component ? componentDocument(wantedSub.component) : starterDocument(wantedSub.name, note && { body: note });
         let ifMatch;
         try { ifMatch = (await call("GET", `${base}/panels/${panel.id}/draft`)).etag; } catch (error) { if (error.status !== 404) throw error; }
         await call("PATCH", `${base}/panels/${panel.id}/draft`, { document, message: "Provisioned from definition" }, ifMatch ? { "if-match": ifMatch } : {});

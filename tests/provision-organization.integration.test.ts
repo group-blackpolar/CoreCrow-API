@@ -70,6 +70,10 @@ test("provision-organization: Stress Test is created once, idempotently, restric
     assert.deepEqual(navigation.map((c) => c.slug), [...definition.categories.map((c: { slug: string }) => c.slug), "admin"], "declared order, then the organization Administration; the system Home is hidden");
     assert.deepEqual(navigation[0]!.name, { es: "Evaluaciones", en: "Evaluations" });
     assert.equal(navigation[0]!.subcategories.length, 5);
+    // A subcategory can host a registered component: the exams entry opens the evaluations workspace, configured by data.
+    const exams = status(await call("GET", `/v1/content/resolve?organizationSlug=${slug}&categorySlug=evaluations&subcategorySlug=exams&panelSlug=overview`, owner.cookie), 200);
+    const hosted = exams.revision.document.sections[0].components[0];
+    assert.deepEqual([hosted.type, hosted.props.kind, hosted.props.views], ["evaluation_workspace", "EXAM", ["builder", "player", "results"]]);
     const landing = status(await call("GET", `/v1/organizations/${organizationId}/landing`, owner.cookie), 200);
     assert.equal(landing.mode, "NONE");
     assert.equal(status(await call("GET", `/v1/organizations/${organizationId}/landing/resolve`, owner.cookie), 200).target, null);
