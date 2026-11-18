@@ -109,3 +109,9 @@ Approved D1–D5 as proposed. Implemented and tested (CoreCrow `tests/landing.in
 - NORTH: `CatalogSync` resolves the landing from the API (falls back to the first category on NONE or on error); `LandingEditor` in Organization settings > Preferences. Not yet exercised in a browser.
 
 Not done yet (still Phase 2): D3 per-block visibility in `content/resolve` + document `schemaVersion` bump, and the `quick_links` / `navigation_cards` blocks. Migration not applied to production.
+
+### Update — D3 and blocks (2026-11-17)
+- D3 implemented without a `schemaVersion` bump: `visibility` is an optional component field (additive; old documents stay valid). `filterDocumentForViewer` runs on member `content/resolve`, on the member binding-results path and on the public showcase (anonymous never receives a restricted block). The rules are stripped from what is delivered; `panel_group` members that were filtered are removed. Tests: `tests/document-visibility.test.ts` (4) and `tests/component-visibility.integration.test.ts` (3).
+- Limit (by design): visibility is a presentation control. Dataset access stays governed by dataset ACLs; a bound block hidden from a viewer is also refused on the member results path, but the same dataset can still be reached through another panel the viewer is allowed to read.
+- Blocks: no new component types. `quick_links` already exists as `link_cards` (now addable in the Studio with an editor) and navigation-driven cards already exist as `report_cards` (category slug + `report-access` state) plus the built-in generic Home. Creating a third type would duplicate them.
+- NORTH: Studio inspector "Visibility" group (roles + groups) and `LinkCardsFields`. Not exercised in a browser.
