@@ -99,3 +99,13 @@ Manual (not yet done): switch modes in a real browser with two roles.
 ## 6. Out of scope for Phase 2
 
 Stress Test provisioning (Phase 3, will use this API through normal provisioning); any org-specific component or `organization === ...` branch.
+
+## 7. Implementation status (2026-11-17)
+
+Approved D1–D5 as proposed. Implemented and tested (CoreCrow `tests/landing.integration.test.ts`, 9 checks; authorization matrix and table-ownership still green):
+- tables, migration `20261117120000_organization_landing`, `GET/PUT /organizations/:id/landing`, `GET .../landing/resolve`, audit `NORTH_LANDING_UPDATED`, panel-in-use guard (`LANDING_PANEL_IN_USE`), `homePanelId` mirror (D5).
+- Change to §4: no backfill script. Organizations without a row are *derived* at read time (`homePanelId` set → PANEL, else STANDARD), which is identical to today's behaviour and cannot drift. A row is created on the first save.
+- Reads of the policy need `north.category.update` (403 for others, like the rest of the NORTH taxonomy routes); `resolve` needs membership only.
+- NORTH: `CatalogSync` resolves the landing from the API (falls back to the first category on NONE or on error); `LandingEditor` in Organization settings > Preferences. Not yet exercised in a browser.
+
+Not done yet (still Phase 2): D3 per-block visibility in `content/resolve` + document `schemaVersion` bump, and the `quick_links` / `navigation_cards` blocks. Migration not applied to production.
