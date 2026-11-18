@@ -10,6 +10,8 @@ export type QuestionInput = {
   sectionId: string; passageId?: string | null; category?: string | null; prompt?: Block[]; explanation?: Block[]; points?: number;
   options?: Array<{ id?: string; text: string }>; correctOptionId?: string | null;
   topic?: string | null; skills?: string[]; difficulty?: Question["difficulty"]; reference?: string | null;
+  /** true: written by the assistant (needs review); false: a person reviewed it. */
+  aiDraft?: boolean;
 };
 
 function withOptionIds(options: Array<{ id?: string; text: string }>) {
@@ -67,6 +69,7 @@ export const draftOps = {
       id: newId(), sectionId: input.sectionId, passageId: input.passageId ?? null, category: input.category ?? null,
       prompt: input.prompt ?? [], options, correctOptionId: input.correctOptionId ?? null, explanation: input.explanation ?? [], points: input.points ?? 1,
       topic: input.topic ?? null, skills: input.skills ?? [], difficulty: input.difficulty ?? null, reference: input.reference ?? null,
+      ...(input.aiDraft ? { aiDraft: true } : {}),
     };
     checkRefs(content, question);
     return { content: { ...content, questions: [...content.questions, question] }, id: question.id };
@@ -92,6 +95,8 @@ export const draftOps = {
       correctOptionId: correct && options.some((option) => option.id === correct) ? correct : null,
     };
     if (patch.correctOptionId && next.correctOptionId !== patch.correctOptionId) fail(422, "EVALUATION_CORRECT_OPTION_INVALID", "The correct option must be one of the options");
+    // Marking a question reviewed (aiDraft: false) removes the flag; only a person can do it through the API.
+    if (patch.aiDraft === false) delete next.aiDraft;
     checkRefs(content, next);
     return { ...content, questions: content.questions.map((question) => (question.id === id ? next : question)) };
   },

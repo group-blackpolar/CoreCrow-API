@@ -12,6 +12,8 @@ import type { AIProvider } from "./provider.interface.js";
 import type { AIProviderMessage, AIProviderResponse, AIUsage } from "./provider.types.js";
 import { aiTools, type AIToolRegistry } from "./tool-registry.js";
 import { systemInstructions } from "./system-instructions.js";
+import { evaluations } from "../evaluations/service.js";
+import { describeRunContext, type RunContext } from "./run-context.js";
 
 const terminal = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
 type AILogger = {
@@ -218,13 +220,15 @@ export class AIService {
   }
 
   async createRun(userId: string, input: {
-    organizationId: string; conversationId: string; application: "north"; message: string;
+    organizationId: string; conversationId: string; application: "north"; message: string; context?: RunContext;
   }) {
     const configuration = this.enabled();
     if (input.message.length > configuration.messageMaxCharacters)
       fail(400, "AI_MESSAGE_TOO_LONG", "AI message exceeds the configured limit");
     await authorizeAI(userId, input.organizationId, ["organization.read"]);
     const run = await transaction(async (tx) => {
+      // An evaluation in progress that does not allow AI blocks the assistant for this person (decided here, not by the interface).
+      if (await evaluations.aiBlockedByAttempt(tx, userId, input.organizationId)) fail(403, "AI_BLOCKED_DURING_EVALUATION", "The assistant is not available while you take this evaluation");
       const conversation = await repo.conversationIn(tx, userId, input.organizationId, input.conversationId);
       if (!conversation || conversation.application !== application(input.application))
         fail(404, "NOT_FOUND", "Conversation not found");
@@ -237,7 +241,7 @@ export class AIService {
       const created = await repo.createRun(tx, {
         conversationId: input.conversationId, organizationId: input.organizationId,
         userId, application: application(input.application), provider: this.provider().name,
-        model: configuration.model, prompt: input.message,
+        model: configuration.model, prompt: input.message, ...(input.context ? { context: input.context as Prisma.InputJsonValue } : {}),
       });
       await audit.append(tx, {
         actorId: userId, organizationId: input.organizationId, action: "ai.run.created",
@@ -345,6 +349,8 @@ export class AIService {
       await repo.addEvent(runId, "run.started", { runId });
       await auditEvent({ actorId: run.userId, organizationId: run.organizationId, action: "ai.run.started", targetType: "AIRun", targetId: runId, metadata: { provider: run.provider, model: run.model } });
       const available = await this.registry.available(context);
+      // The page context is advisory text built from what THIS user may read now; an unauthorized resource silently contributes nothing.
+      const pageContext = await describeRunContext(context, run.context as RunContext | null);
       const history: AIProviderMessage[] = providerHistory(await repo.history(
         run.conversationId,
         this.configuration.contextMaxMessages,
@@ -359,7 +365,7 @@ export class AIService {
         for await (const event of this.provider().stream({
           model: run.model, maxOutputTokens: this.configuration.maxOutputTokens, thinkingLevel: this.configuration.thinkingLevel,
           messages, tools: this.registry.providerTools(available),
-          systemInstruction: systemInstructions(context.application, available.map((tool) => tool.name)),
+          systemInstruction: systemInstructions(context.application, available.map((tool) => tool.name), pageContext),
         }, controller.signal)) {
           if (event.type === "text.delta")
             await repo.addEvent(runId, "message.delta", { text: event.text });

@@ -31,6 +31,7 @@ export function validateForPublish(content: Content): Issue[] {
     if (question.options.length < 2) add("EVALUATION_OPTIONS_MIN", path, "At least two options are required");
     if (new Set(question.options.map((option) => option.id)).size !== question.options.length) add("EVALUATION_DUPLICATE_ID", `${path}.options`, "Option identifiers must be unique");
     question.options.forEach((option, optionIndex) => { if (!option.text.trim()) add("EVALUATION_OPTION_EMPTY", `${path}.options[${optionIndex}]`, "Option text is empty"); });
+    if (question.aiDraft) add("EVALUATION_AI_REVIEW_PENDING", path, "A question written by the assistant must be reviewed by a person before publishing");
     if (question.correctOptionId === null) add("EVALUATION_CORRECT_OPTION_MISSING", path, "Mark exactly one correct option");
     else if (!question.options.some((option) => option.id === question.correctOptionId)) add("EVALUATION_CORRECT_OPTION_INVALID", path, "The correct option is not one of the options");
   });
