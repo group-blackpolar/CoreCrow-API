@@ -388,6 +388,8 @@ model Organization {
   entitlements          Entitlement[]
   billingProfile        OrganizationBillingProfile?
   homePanelId           String?
+  landing               OrganizationLanding?
+  landingRules          OrganizationLandingRule[]
   storageLimitBytes     BigInt                      @default(5368709120)
   storageUsedBytes      BigInt                      @default(0)
   storageReservedBytes  BigInt                      @default(0)
@@ -1958,4 +1960,35 @@ model SecurityRetentionRun {
 
   @@index([organizationId, ranAt])
   @@map("security_retention_runs")
+}
+
+enum OrganizationLandingMode {
+  STANDARD
+  PANEL
+  NONE
+}
+
+/// ADR 027. One optional row per organization (no row = legacy: homePanelId decides). The composite FKs to NorthPanel and
+/// OrganizationGroup are hand-written in migration 20261117120000 (tenant match enforced by the database), not Prisma relations.
+model OrganizationLanding {
+  organizationId String                  @id
+  mode           OrganizationLandingMode @default(STANDARD)
+  defaultPanelId String?
+  updatedBy      String?
+  updatedAt      DateTime                @updatedAt
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+/// Ordered landing rules; first match (role or group, exactly one) wins.
+model OrganizationLandingRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  order          Int
+  role           TenantRole?
+  groupId        String?
+  panelId        String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, order])
+  @@index([organizationId])
 }

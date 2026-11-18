@@ -269,6 +269,8 @@ export const northTaxonomy = {
       const current = await repo.panel(tx, organizationId, id);
       const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { homePanelId: true } });
       if (current!.resourceKind === "SYSTEM" || organization?.homePanelId === id) fail(403, "SYSTEM_RESOURCE_PROTECTED", "System resources cannot be deleted");
+      const landingUse = (await tx.organizationLanding.count({ where: { organizationId, defaultPanelId: id } })) + (await tx.organizationLandingRule.count({ where: { organizationId, panelId: id } }));
+      if (landingUse) fail(409, "LANDING_PANEL_IN_USE", "Panel is used by the organization landing; change the landing first");
       await tx.northPanel.update({ where: { id }, data: { publishedRevisionId: null, draftRevisionId: null } });
       await tx.northAnalyticsBinding.deleteMany({ where: { organizationId, panelId: id } });
       await allowRevisionErase(tx);
@@ -478,7 +480,7 @@ export const northTaxonomy = {
     });
   },
   setHome(userId: string, organizationId: string, panelId: string | null) {
-    return transaction(async (tx) => { await authorizeNorth(tx, userId, "north.category.update", { organizationId, scope: "ORGANIZATION" }); if (panelId) { const panel = await repo.panel(tx, organizationId, panelId); if (!panel || panel.status !== "PUBLISHED") fail(422, "HOME_PANEL_INVALID", "Home panel must be published in this organization"); if (!(await audienceAllows(tx, userId, await repo.panelBySlug(tx, panel.subcategoryId, panel.slug)))) fail(422, "HOME_PANEL_INVALID", "Home panel is not authorized for the actor"); } await tx.organization.update({ where: { id: organizationId }, data: { homePanelId: panelId } }); await audit.append(tx, { actorId: userId, organizationId, action: "NORTH_HOME_PANEL_UPDATED", targetType: "Organization", targetId: organizationId, metadata: { panelId } }); return { homePanelId: panelId }; });
+    return transaction(async (tx) => { await authorizeNorth(tx, userId, "north.category.update", { organizationId, scope: "ORGANIZATION" }); if (panelId) { const panel = await repo.panel(tx, organizationId, panelId); if (!panel || panel.status !== "PUBLISHED") fail(422, "HOME_PANEL_INVALID", "Home panel must be published in this organization"); if (!(await audienceAllows(tx, userId, await repo.panelBySlug(tx, panel.subcategoryId, panel.slug)))) fail(422, "HOME_PANEL_INVALID", "Home panel is not authorized for the actor"); } await tx.organization.update({ where: { id: organizationId }, data: { homePanelId: panelId } }); await tx.organizationLanding.updateMany({ where: { organizationId }, data: { mode: panelId ? "PANEL" : "STANDARD", defaultPanelId: panelId } }); await audit.append(tx, { actorId: userId, organizationId, action: "NORTH_HOME_PANEL_UPDATED", targetType: "Organization", targetId: organizationId, metadata: { panelId } }); return { homePanelId: panelId }; });
   },
 };
 

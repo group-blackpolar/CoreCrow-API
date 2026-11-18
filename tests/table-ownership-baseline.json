@@ -20,6 +20,8 @@
     "NorthCategory": "north",
     "NorthSubcategory": "north",
     "NorthPanel": "north",
+    "OrganizationLanding": "north",
+    "OrganizationLandingRule": "north",
     "NorthDataset": "north",
     "NorthDatasetGroup": "north",
     "NorthAnalyticsBinding": "north",

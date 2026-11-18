@@ -6,6 +6,7 @@ import { storageSummary } from "../../modules/north/storage-usage.js";
 import { northCapabilities } from "../../modules/authorization/policy.js";
 import { northPermissions, northTaxonomy } from "../../modules/north/service.js";
 import { northContent } from "../../modules/north/content-service.js";
+import { northLanding } from "../../modules/north/landing-service.js";
 import { northPanelDocumentInput } from "../../modules/north/content-schema.js";
 import { northAssets } from "../../modules/north/asset-service.js";
 import { northTemplates } from "../../modules/north/template-service.js";
@@ -335,6 +336,36 @@ export async function northContentRoutes(app: FastifyInstance) {
     summary: "Select a published authorized organization home panel or system fallback", params: s.orgParams,
     body: z.object({ panelId: s.id.nullable() }).strict(), response: z.object({ homePanelId: s.id.nullable() }),
     run: ({ user, params, body }) => northTaxonomy.setHome(user.id, params.organizationId, body.panelId),
+  });
+  const landingRule = z.object({ role: s.role.optional(), groupId: s.id.optional(), panelId: s.id }).strict();
+  const landingView = z.object({
+    mode: z.enum(["STANDARD", "PANEL", "NONE"]), defaultPanelId: s.id.nullable(), updatedAt: s.date.nullable(),
+    rules: z.array(landingRule.extend({ order: z.number().int().min(0) })),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/landing", tag: "NORTH taxonomy",
+    summary: "Read the landing policy (mode, default panel, ordered role/group rules); needs north.category.update", params: s.orgParams,
+    response: landingView,
+    run: ({ user, params }) => northLanding.read(user.id, params.organizationId),
+  });
+  contract(app, {
+    method: "PUT", url: "/organizations/:organizationId/landing", tag: "NORTH taxonomy",
+    summary: "Replace the landing policy atomically; expectedUpdatedAt (null = never configured) guards concurrent edits", params: s.orgParams,
+    body: z.object({
+      mode: z.enum(["STANDARD", "PANEL", "NONE"]), defaultPanelId: s.id.nullable().optional(),
+      rules: z.array(landingRule).max(50).default([]), expectedUpdatedAt: z.coerce.date().nullable().optional(),
+    }).strict(),
+    response: landingView,
+    run: ({ user, params, body }) => northLanding.update(user.id, params.organizationId, body),
+  });
+  contract(app, {
+    method: "GET", url: "/organizations/:organizationId/landing/resolve", tag: "NORTH taxonomy",
+    summary: "Resolve where this member lands: first authorized rule, else the default; target null means no landing page", params: s.orgParams,
+    response: z.object({
+      mode: z.enum(["STANDARD", "PANEL", "NONE"]), source: z.enum(["rule", "default", "none"]),
+      target: z.object({ categorySlug: z.string(), subcategorySlug: z.string(), panelSlug: z.string() }).nullable(),
+    }),
+    run: ({ user, params }) => northLanding.resolve(user.id, params.organizationId),
   });
   const northGrant = z.object({
     id: s.id, organizationId: s.id, capability: z.enum(northCapabilities), scope: s.northPermissionScope,

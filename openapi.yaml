@@ -27783,6 +27783,468 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/organizations/{organizationId}/landing:
+    get:
+      summary: Read the landing policy (mode, default panel, ordered role/group
+        rules); needs north.category.update
+      tags:
+        - NORTH taxonomy
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - STANDARD
+                      - PANEL
+                      - NONE
+                  defaultPanelId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        role:
+                          type: string
+                          enum:
+                            - OWNER
+                            - ADMIN
+                            - BILLING_ADMIN
+                            - MEMBER
+                            - VIEWER
+                        groupId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        panelId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        order:
+                          type: integer
+                          minimum: 0
+                      required:
+                        - panelId
+                        - order
+                      additionalProperties: false
+                required:
+                  - mode
+                  - defaultPanelId
+                  - updatedAt
+                  - rules
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    put:
+      summary: Replace the landing policy atomically; expectedUpdatedAt (null = never
+        configured) guards concurrent edits
+      tags:
+        - NORTH taxonomy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum:
+                    - STANDARD
+                    - PANEL
+                    - NONE
+                defaultPanelId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  nullable: true
+                rules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                          - OWNER
+                          - ADMIN
+                          - BILLING_ADMIN
+                          - MEMBER
+                          - VIEWER
+                      groupId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      panelId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                    required:
+                      - panelId
+                    additionalProperties: false
+                  maxItems: 50
+                  default: []
+                expectedUpdatedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+              required:
+                - mode
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - STANDARD
+                      - PANEL
+                      - NONE
+                  defaultPanelId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    nullable: true
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        role:
+                          type: string
+                          enum:
+                            - OWNER
+                            - ADMIN
+                            - BILLING_ADMIN
+                            - MEMBER
+                            - VIEWER
+                        groupId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        panelId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        order:
+                          type: integer
+                          minimum: 0
+                      required:
+                        - panelId
+                        - order
+                      additionalProperties: false
+                required:
+                  - mode
+                  - defaultPanelId
+                  - updatedAt
+                  - rules
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/landing/resolve:
+    get:
+      summary: "Resolve where this member lands: first authorized rule, else the
+        default; target null means no landing page"
+      tags:
+        - NORTH taxonomy
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - STANDARD
+                      - PANEL
+                      - NONE
+                  source:
+                    type: string
+                    enum:
+                      - rule
+                      - default
+                      - none
+                  target:
+                    type: object
+                    properties:
+                      categorySlug:
+                        type: string
+                      subcategorySlug:
+                        type: string
+                      panelSlug:
+                        type: string
+                    required:
+                      - categorySlug
+                      - subcategorySlug
+                      - panelSlug
+                    additionalProperties: false
+                    nullable: true
+                required:
+                  - mode
+                  - source
+                  - target
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/north/permission-grants:
     get:
       summary: List scoped role, group, and direct NORTH grants
