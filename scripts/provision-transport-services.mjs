@@ -17,9 +17,9 @@ const asHttpError = (error) => {
 
 export async function servicesTransport({ dist, actorEmail }) {
   const load = (path) => import(pathToFileURL(resolve(dist, path)).href);
-  const [{ prisma }, { tenants }, { northTaxonomy }, { northData }, { northAnalyticsBindings }, content, { northAssets }] = await Promise.all([
+  const [{ prisma }, { tenants }, { northTaxonomy }, { northData }, { northAnalyticsBindings }, content, { northAssets }, { northLanding }] = await Promise.all([
     load("lib/database.js"), load("modules/tenancy/service.js"), load("modules/north/service.js"), load("modules/north/data/service.js"),
-    load("modules/north/data/binding-service.js"), load("modules/north/content-service.js"), load("modules/north/asset-service.js"),
+    load("modules/north/data/binding-service.js"), load("modules/north/content-service.js"), load("modules/north/asset-service.js"), load("modules/north/landing-service.js"),
   ]);
   const { northContent } = content;
   // The same reference resolvers buildApp() installs, so a draft's asset/binding references are validated exactly as over HTTP.
@@ -36,6 +36,13 @@ export async function servicesTransport({ dist, actorEmail }) {
     try {
       let match;
       if (method === "GET" && path === "/organizations") return ok(await tenants.list(user));
+      // Organization lifecycle and landing (scripts/provision-organization.mjs): the same service calls the routes make.
+      if (method === "POST" && path === "/organizations") return ok(await tenants.create(user, body));
+      if (method === "PATCH" && (match = /^\/organizations\/([^/]+)$/.exec(path))) return ok(await tenants.update(user, match[1], body));
+      if ((match = /^\/organizations\/([^/]+)\/landing$/.exec(path))) {
+        if (method === "GET") return ok(await northLanding.read(user, match[1]));
+        if (method === "PUT") return ok(await northLanding.update(user, match[1], { ...body, expectedUpdatedAt: body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt) : body.expectedUpdatedAt }));
+      }
       if ((match = /^\/organizations\/([^/]+)\/datasets$/.exec(path)) && method === "GET") return ok(await northData.list(user, match[1]));
       if ((match = /^\/organizations\/([^/]+)\/datasets\/([^/]+)\/fields$/.exec(path)) && method === "GET") return ok(await northData.fields(user, match[1], match[2]));
       // Taxonomy creation (a definition may bring its own category, subcategories and panels): the same service calls the routes make.
