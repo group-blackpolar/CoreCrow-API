@@ -1683,6 +1683,8 @@ model AIRun {
   cancellationRequestedAt DateTime?
   startedAt               DateTime?
   completedAt             DateTime?
+  /// Optional page context the user chose to share ({ module, label?, resource? }); re-authorized when the run executes.
+  context                 Json?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   conversation            AIConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)

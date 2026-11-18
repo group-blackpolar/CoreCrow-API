@@ -69,6 +69,8 @@ export async function aiRoutes(app: FastifyInstance) {
     body: z.object({
       organizationId: s.id, conversationId: s.id, application,
       message: z.string().trim().min(1).max(8_000),
+      /** Optional, user-chosen description of the page the question is about. Only identifiers and a short label; CoreCrow re-authorizes the resource. */
+      context: z.object({ module: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/), label: z.string().trim().min(1).max(120).optional(), resource: z.object({ type: z.literal("evaluation"), id: s.id }).strict().optional() }).strict().optional(),
     }).strict(),
     response: z.object({ runId: s.id }), status: 202, rateLimit: 10,
     run: ({ user, body }) => ai.createRun(user.id, body),

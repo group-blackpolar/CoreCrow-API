@@ -7,6 +7,7 @@ import { identities } from "../identity/repository.js";
 import { fail } from "../../shared/errors.js";
 import type { AIProviderTool } from "./provider.types.js";
 import { northAITools } from "./north-tools.js";
+import { evaluationAITools } from "./evaluation-tools.js";
 
 export type AIToolContext = {
   userId: string;
@@ -115,7 +116,7 @@ const tools: RegisteredAITool[] = [
 
 export class AIToolRegistry {
   constructor(
-    private readonly registered: RegisteredAITool[] = [...tools, ...northAITools],
+    private readonly registered: RegisteredAITool[] = [...tools, ...northAITools, ...evaluationAITools],
     private readonly authorizer: typeof authorizeAI = authorizeAI,
   ) {}
 

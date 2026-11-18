@@ -26,7 +26,8 @@ const questionFields = {
   correctOptionId: itemId.nullable().optional(),
 };
 const createQuestion = z.object({ ...questionFields, expectedRevision }).strict();
-const updateQuestion = z.object({ ...questionFields, sectionId: itemId.optional(), expectedRevision }).strict();
+/** `aiDraft: false` = a person reviewed what the assistant wrote. The flag can be cleared here, never set. */
+const updateQuestion = z.object({ ...questionFields, sectionId: itemId.optional(), aiDraft: z.literal(false).optional(), expectedRevision }).strict();
 const order = z.object({ ids: z.array(itemId).max(500), expectedRevision }).strict();
 const draftResult = z.object({ draftRevision: z.number().int(), id: z.string().optional() });
 

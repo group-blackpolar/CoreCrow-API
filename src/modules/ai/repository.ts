@@ -40,11 +40,12 @@ export const aiRepository = {
   },
   async createRun(tx: Transaction, data: {
     conversationId: string; organizationId: string; userId: string; application: AIApplication;
-    provider: string; model: string; prompt: string;
+    provider: string; model: string; prompt: string; context?: Prisma.InputJsonValue;
   }) {
     const run = await tx.aIRun.create({ data: {
       conversationId: data.conversationId, organizationId: data.organizationId,
       userId: data.userId, application: data.application, provider: data.provider, model: data.model,
+      ...(data.context ? { context: data.context } : {}),
     } });
     await tx.aIMessage.create({ data: {
       conversationId: data.conversationId, runId: run.id, role: "USER", content: data.prompt,
