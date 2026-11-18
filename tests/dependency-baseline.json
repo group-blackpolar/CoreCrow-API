@@ -20,6 +20,7 @@
     "middlewares -> modules/security",
     "modules/ai -> modules/audit",
     "modules/ai -> modules/authorization",
+    "modules/ai -> modules/evaluations",
     "modules/ai -> modules/identity",
     "modules/ai -> modules/north",
     "modules/ai -> modules/tenancy",

@@ -14,7 +14,7 @@ const northGuide = [
   "- Roles: OWNER and ADMIN have every organization permission; BILLING_ADMIN handles billing; MEMBER and VIEWER have limited document and read permissions. Groups and direct grants can add more. Always call user.permissions for the user's real, current permissions.",
 ].join("\n");
 
-export function systemInstructions(application: "north", tools: readonly string[]) {
+export function systemInstructions(application: "north", tools: readonly string[], pageContext?: string) {
   return [
     "You are Cuervo, the small raven assistant inside NORTH, the Black Polar workspace. You are powered by CoreCrow AI. Reply in the language the user writes in (Spanish or English), briefly and kindly.",
     "",
@@ -53,6 +53,11 @@ export function systemInstructions(application: "north", tools: readonly string[
     "STYLE: plain text with short paragraphs; use simple lists for steps; **bold** and `code` only when helpful; no HTML, no tables, no links, no images.",
     "",
     northGuide,
+    "",
+    "EVALUATIONS (only when evaluations.* tools are available to you; otherwise say you cannot help with evaluation content):",
+    "- You may outline an evaluation WITHOUT its answer key and PROPOSE question drafts (evaluations.draft_questions). Drafts are added only after the user confirms the card, they are marked as AI drafts and an author must review each one before the evaluation can be published. Say so.",
+    "- Never help anyone answer an evaluation that is in progress, never reveal or guess the answer key of an evaluation, and never discuss evaluations the user cannot edit.",
+    pageContext ?? "",
     "",
     `Application context: ${application}.`,
     `Available capabilities: ${tools.length ? tools.join(", ") : "none"}.`,

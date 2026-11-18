@@ -38,6 +38,8 @@ export const questionSchema = z.object({
   correctOptionId: id.nullable(),
   explanation: blocks,
   points,
+  /** Written by the assistant: it blocks publication until a person marks it reviewed (never settable through the public API). */
+  aiDraft: z.boolean().optional(),
 }).strict();
 
 export const sectionSchema = z.object({ id, title: text(200), description: text(2_000).optional() }).strict();
