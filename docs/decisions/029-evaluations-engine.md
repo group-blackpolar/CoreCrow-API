@@ -91,3 +91,12 @@ is placed in a published panel, exactly like `document_workspace`. Which panel h
 
 Limits of this phase: images and tables in questions are supported by the API and rendered by the player, but the Builder edits text only (existing image/table blocks are preserved, not creatable);
 no statistics view (Phase 6); no AI drafting (Phase 7).
+
+## Phase 6 addendum — statistics and history
+- `GET /organizations/:org/evaluations/:id/stats[?versionId=]` (needs `evaluations.results.read`): for one version (default: the latest with attempts) — attempts started / in progress / submitted / timed out, completion and time-out rate,
+  mean / median / min / max percent, a 10-bucket distribution, average time, **difficulty per question** (correct / wrong / omitted, correct rate, hardest first) with **distractor counts** per option, per-category percent, and a **per-version comparison**
+  (attempts, graded, mean). Versions are never mixed: questions and keys differ between them. Pure maths in `stats.ts`; SQL only aggregates answers (tenant-bound in the query).
+- `GET /organizations/:org/evaluation-results/mine`: the caller's closed attempts across evaluations (their history). Nobody reads another person's history there; authors use `…/attempts` and `…/result`.
+- NORTH: Results > Statistics (cards, histogram, expandable hardest questions with distractor bars, categories, version table) and "My results" under Take. Verified in a browser with 8 synthetic students and two versions (1280 px and 375 px, no horizontal overflow).
+- Persistence ("advanced"): already server-authoritative since Phase 4 (seq-guarded autosave, any device, reload). Not added: a browser-side backup (the brief forbids relying on localStorage) or per-question time tracking.
+- Limits: statistics are computed on demand from up to 50 000 results per evaluation (no materialized table); "completion" counts submitted or timed-out attempts over started ones; question text in the table is the first paragraph, truncated.
