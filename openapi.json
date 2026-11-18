@@ -7227,6 +7227,30 @@
                         "type": "number",
                         "nullable": true
                       },
+                      "pacing": {
+                        "type": "object",
+                        "properties": {
+                          "navigation": {
+                            "type": "string",
+                            "enum": [
+                              "FREE",
+                              "FORWARD_ONLY"
+                            ]
+                          },
+                          "questionSeconds": {
+                            "type": "integer",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "navigation",
+                          "questionSeconds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "sectionCount": {
+                        "type": "integer"
+                      },
                       "attemptsUsed": {
                         "type": "integer"
                       },
@@ -7256,6 +7280,8 @@
                       "durationMinutes",
                       "questionCount",
                       "maxAttempts",
+                      "pacing",
+                      "sectionCount",
                       "attemptsUsed",
                       "openAttemptId",
                       "opensAt",
@@ -7453,6 +7479,29 @@
                       "type": "number",
                       "nullable": true
                     },
+                    "pacing": {
+                      "type": "object",
+                      "properties": {
+                        "navigation": {
+                          "type": "string",
+                          "enum": [
+                            "FREE",
+                            "FORWARD_ONLY"
+                          ]
+                        },
+                        "questionSeconds": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "navigation",
+                        "questionSeconds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "progress": {},
+                    "current": {},
                     "content": {},
                     "answers": {
                       "type": "array",
@@ -7489,6 +7538,7 @@
                     "deadlineAt",
                     "serverTime",
                     "remainingSeconds",
+                    "pacing",
                     "answers"
                   ],
                   "additionalProperties": false
@@ -8090,6 +8140,29 @@
                       "type": "number",
                       "nullable": true
                     },
+                    "pacing": {
+                      "type": "object",
+                      "properties": {
+                        "navigation": {
+                          "type": "string",
+                          "enum": [
+                            "FREE",
+                            "FORWARD_ONLY"
+                          ]
+                        },
+                        "questionSeconds": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "navigation",
+                        "questionSeconds"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "progress": {},
+                    "current": {},
                     "content": {},
                     "answers": {
                       "type": "array",
@@ -8126,6 +8199,7 @@
                     "deadlineAt",
                     "serverTime",
                     "remainingSeconds",
+                    "pacing",
                     "answers"
                   ],
                   "additionalProperties": false
@@ -8329,7 +8403,8 @@
                       "type": "string",
                       "enum": [
                         "IN_PROGRESS",
-                        "EXPIRED"
+                        "EXPIRED",
+                        "SUBMITTED"
                       ]
                     },
                     "applied": {
@@ -8374,6 +8449,308 @@
                     "applied",
                     "ignored",
                     "answers"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "currentETag": {
+                          "type": "string"
+                        },
+                        "bindings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "panels": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "requestId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/evaluation-attempts/{attemptId}/confirm": {
+      "post": {
+        "summary": "Paced attempts: confirm the answer of the open question (optionId null = close it without answering). Accepted only if the SERVER clock says the question is still open; the response says whether it was accepted and carries the state the server decided",
+        "tags": [
+          "Evaluations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "questionId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                  },
+                  "optionId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "questionId",
+                  "optionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "attemptId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "TIMEOUT",
+                        "ALREADY_CLOSED",
+                        "NOT_CURRENT",
+                        "ATTEMPT_CLOSED"
+                      ],
+                      "nullable": true
+                    },
+                    "attempt": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "evaluationId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "IN_PROGRESS",
+                            "SUBMITTED",
+                            "EXPIRED"
+                          ]
+                        },
+                        "attemptNumber": {
+                          "type": "integer"
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "deadlineAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "serverTime": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "evaluation": {},
+                        "remainingSeconds": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "pacing": {
+                          "type": "object",
+                          "properties": {
+                            "navigation": {
+                              "type": "string",
+                              "enum": [
+                                "FREE",
+                                "FORWARD_ONLY"
+                              ]
+                            },
+                            "questionSeconds": {
+                              "type": "integer",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "navigation",
+                            "questionSeconds"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "progress": {},
+                        "current": {},
+                        "content": {},
+                        "answers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "questionId": {
+                                "type": "string"
+                              },
+                              "optionId": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "seq": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "questionId",
+                              "optionId",
+                              "seq"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "result": {}
+                      },
+                      "required": [
+                        "id",
+                        "evaluationId",
+                        "status",
+                        "attemptNumber",
+                        "startedAt",
+                        "deadlineAt",
+                        "serverTime",
+                        "remainingSeconds",
+                        "pacing",
+                        "answers"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "accepted",
+                    "reason",
+                    "attempt"
                   ],
                   "additionalProperties": false
                 }
@@ -8558,6 +8935,9 @@
                     "unanswered": {
                       "type": "integer"
                     },
+                    "timedOut": {
+                      "type": "integer"
+                    },
                     "scorePoints": {
                       "type": "number"
                     },
@@ -8595,6 +8975,9 @@
                               "unanswered": {
                                 "type": "integer"
                               },
+                              "timedOut": {
+                                "type": "integer"
+                              },
                               "scorePoints": {
                                 "type": "number"
                               },
@@ -8611,6 +8994,7 @@
                               "correct",
                               "incorrect",
                               "unanswered",
+                              "timedOut",
                               "scorePoints",
                               "maxPoints",
                               "percent"
@@ -8640,6 +9024,9 @@
                               "unanswered": {
                                 "type": "integer"
                               },
+                              "timedOut": {
+                                "type": "integer"
+                              },
                               "scorePoints": {
                                 "type": "number"
                               },
@@ -8656,6 +9043,7 @@
                               "correct",
                               "incorrect",
                               "unanswered",
+                              "timedOut",
                               "scorePoints",
                               "maxPoints",
                               "percent"
@@ -8706,6 +9094,7 @@
                     "correct",
                     "incorrect",
                     "unanswered",
+                    "timedOut",
                     "scorePoints",
                     "maxPoints",
                     "percent",
@@ -8896,6 +9285,9 @@
                     "unanswered": {
                       "type": "integer"
                     },
+                    "timedOut": {
+                      "type": "integer"
+                    },
                     "scorePoints": {
                       "type": "number"
                     },
@@ -8933,6 +9325,9 @@
                               "unanswered": {
                                 "type": "integer"
                               },
+                              "timedOut": {
+                                "type": "integer"
+                              },
                               "scorePoints": {
                                 "type": "number"
                               },
@@ -8949,6 +9344,7 @@
                               "correct",
                               "incorrect",
                               "unanswered",
+                              "timedOut",
                               "scorePoints",
                               "maxPoints",
                               "percent"
@@ -8978,6 +9374,9 @@
                               "unanswered": {
                                 "type": "integer"
                               },
+                              "timedOut": {
+                                "type": "integer"
+                              },
                               "scorePoints": {
                                 "type": "number"
                               },
@@ -8994,6 +9393,7 @@
                               "correct",
                               "incorrect",
                               "unanswered",
+                              "timedOut",
                               "scorePoints",
                               "maxPoints",
                               "percent"
@@ -9044,6 +9444,7 @@
                     "correct",
                     "incorrect",
                     "unanswered",
+                    "timedOut",
                     "scorePoints",
                     "maxPoints",
                     "percent",
@@ -9212,6 +9613,10 @@
                         "minLength": 1,
                         "maxLength": 128
                       },
+                      "key": {
+                        "type": "string",
+                        "nullable": true
+                      },
                       "kind": {
                         "type": "string",
                         "enum": [
@@ -9254,6 +9659,7 @@
                     },
                     "required": [
                       "id",
+                      "key",
                       "kind",
                       "title",
                       "description",
@@ -9386,6 +9792,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,78}$"
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
@@ -9442,6 +9852,10 @@
                       "minLength": 1,
                       "maxLength": 128
                     },
+                    "key": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -9490,6 +9904,7 @@
                   },
                   "required": [
                     "id",
+                    "key",
                     "kind",
                     "title",
                     "description",
@@ -9657,6 +10072,10 @@
                       "minLength": 1,
                       "maxLength": 128
                     },
+                    "key": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -9705,6 +10124,7 @@
                   },
                   "required": [
                     "id",
+                    "key",
                     "kind",
                     "title",
                     "description",
@@ -9920,6 +10340,33 @@
                           "allowedDuringAttempt"
                         ],
                         "additionalProperties": false
+                      },
+                      "pacing": {
+                        "type": "object",
+                        "properties": {
+                          "navigation": {
+                            "type": "string",
+                            "enum": [
+                              "FREE",
+                              "FORWARD_ONLY"
+                            ]
+                          },
+                          "questionSeconds": {
+                            "type": "integer",
+                            "minimum": 5,
+                            "maximum": 3600,
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "navigation",
+                          "questionSeconds"
+                        ],
+                        "additionalProperties": false,
+                        "default": {
+                          "navigation": "FREE",
+                          "questionSeconds": null
+                        }
                       }
                     },
                     "required": [
@@ -9981,6 +10428,10 @@
                       "minLength": 1,
                       "maxLength": 128
                     },
+                    "key": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -10029,6 +10480,7 @@
                   },
                   "required": [
                     "id",
+                    "key",
                     "kind",
                     "title",
                     "description",
@@ -10346,6 +10798,10 @@
                       "minLength": 1,
                       "maxLength": 128
                     },
+                    "key": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -10394,6 +10850,7 @@
                   },
                   "required": [
                     "id",
+                    "key",
                     "kind",
                     "title",
                     "description",
@@ -10561,6 +11018,10 @@
                       "minLength": 1,
                       "maxLength": 128
                     },
+                    "key": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -10609,6 +11070,7 @@
                   },
                   "required": [
                     "id",
+                    "key",
                     "kind",
                     "title",
                     "description",
@@ -10776,6 +11238,10 @@
                       "minLength": 1,
                       "maxLength": 128
                     },
+                    "key": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -10824,6 +11290,7 @@
                   },
                   "required": [
                     "id",
+                    "key",
                     "kind",
                     "title",
                     "description",

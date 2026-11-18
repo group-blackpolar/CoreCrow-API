@@ -145,3 +145,32 @@ test("statistics: distribution, median, completion, difficulty per question with
   const none = buildStats(content, [], [], { inProgress: 0, submitted: 0, expired: 0 });
   assert.deepEqual([none.attempts.completionRate, none.score.meanPercent, none.averageTimeSeconds, none.hardest], [null, null, null, []]);
 });
+
+test("paced attempts: server timestamps decide; the exact limit is valid, one millisecond later is not; no time is recovered or carried over", async () => {
+  const { planPaced } = await import("../src/modules/evaluations/paced.js");
+  const at = (ms: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, 0) + ms);
+  const ids = ["q1", "q2", "q3"];
+  const base = { questionIds: ids, startedAt: at(0), questionMs: 120_000, globalDeadline: at(360_000) };
+  // Nothing closed yet: q1 is open until its limit.
+  const fresh = planPaced({ ...base, rows: [], now: at(119_999) });
+  assert.deepEqual([fresh.current?.questionId, fresh.timeouts.length, fresh.current?.expiresAt?.getTime()], ["q1", 0, at(120_000).getTime()]);
+  // Exactly at the limit q1 is still open (a confirmation arriving now is on time); 1 ms later it has timed out and q2 opened AT q1's deadline.
+  assert.equal(planPaced({ ...base, rows: [], now: at(120_000) }).current?.questionId, "q1");
+  const late = planPaced({ ...base, rows: [], now: at(120_001) });
+  assert.deepEqual([late.timeouts.map((t) => t.questionId), late.timeouts[0]!.closedAt.getTime(), late.current?.questionId, late.current?.openedAt.getTime()], [["q1"], at(120_000).getTime(), "q2", at(120_000).getTime()]);
+  // Asking much later does not help: every question whose window passed is closed at ITS deadline, in order.
+  const reload = planPaced({ ...base, rows: [], now: at(250_000) });
+  assert.deepEqual([reload.timeouts.map((t) => t.questionId), reload.current?.questionId, reload.current?.openedAt.getTime()], [["q1", "q2"], "q3", at(240_000).getTime()]);
+  // A fast answer does not give the next question extra time: q2 opens when q1 was confirmed and has its own full window.
+  const confirmed = planPaced({ ...base, rows: [{ questionId: "q1", openedAt: at(0), closedAt: at(10_000), closure: "CONFIRMED" }], now: at(130_000) });
+  assert.deepEqual([confirmed.current?.questionId, confirmed.current?.openedAt.getTime(), confirmed.current?.expiresAt?.getTime()], ["q2", at(10_000).getTime(), at(130_000).getTime()]);
+  // Global deadline: everything left is closed and the attempt ends; unreached questions are reported.
+  const tight = planPaced({ ...base, globalDeadline: at(150_000), rows: [], now: at(150_001) });
+  assert.deepEqual([tight.finished, tight.timeouts.map((t) => t.questionId), tight.unreached, tight.current], ["GLOBAL_DEADLINE", ["q1", "q2"], ["q3"], null]);
+  assert.equal(tight.timeouts[1]!.closedAt.getTime(), at(150_000).getTime(), "bounded by the global deadline, not by the question window");
+  // All closed.
+  const done = planPaced({ ...base, rows: ids.map((id, i) => ({ questionId: id, openedAt: at(i * 1000), closedAt: at(i * 1000 + 500), closure: "CONFIRMED" as const })), now: at(1_000_000) });
+  assert.deepEqual([done.finished, done.current], ["ALL_CLOSED", null]);
+  // No per-question limit: only the global deadline applies.
+  assert.equal(planPaced({ ...base, questionMs: null, rows: [], now: at(300_000) }).current?.questionId, "q1");
+});

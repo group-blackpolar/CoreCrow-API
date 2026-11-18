@@ -2016,6 +2016,8 @@ enum EvaluationAttemptStatus {
 model Evaluation {
   id             String           @id @default(cuid())
   organizationId String
+  /// Optional stable identifier per organization, so importers and integrations can be idempotent (unique when set).
+  key            String?
   kind           EvaluationKind   @default(EXAM)
   title          String
   description    String?
@@ -2092,6 +2094,11 @@ model EvaluationAnswer {
   optionId   String?
   seq        Int
   savedAt    DateTime @default(now())
+  /// Paced (forward-only) attempts: when the server opened the question, when it was closed and why. A confirmed answer has
+  /// closure CONFIRMED (or OMITTED with no option); TIMEOUT closes it at its deadline. Null in free-navigation attempts.
+  openedAt   DateTime?
+  closedAt   DateTime?
+  closure    String?
 
   @@id([attemptId, questionId])
 }
@@ -2106,6 +2113,8 @@ model EvaluationResult {
   correct        Int
   incorrect      Int
   unanswered     Int
+  /// Questions not confirmed before their deadline (paced attempts): status invalid_timeout, 0 points.
+  timedOut       Int      @default(0)
   scoreCenti     Int
   maxScoreCenti  Int
   timeUsedSeconds Int

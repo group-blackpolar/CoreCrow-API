@@ -5,8 +5,8 @@ import { percentOf } from "./grading.js";
  * Pure statistics over graded attempts of ONE version (questions and keys differ between versions, so they are never mixed).
  * Inputs are what the database aggregates: results, per-option answer counts and attempt counts by status.
  */
-export type ResultRow = { scoreCenti: number; maxScoreCenti: number; timeUsedSeconds: number; breakdown: { byCategory: Array<{ key: string | null; correct: number; incorrect: number; unanswered: number; scoreCenti: number; maxScoreCenti: number }> } };
-export type AnswerCount = { questionId: string; optionId: string | null; count: number };
+export type ResultRow = { scoreCenti: number; maxScoreCenti: number; timeUsedSeconds: number; breakdown: { byCategory: Array<{ key: string | null; correct: number; incorrect: number; unanswered: number; timedOut?: number; scoreCenti: number; maxScoreCenti: number }> } };
+export type AnswerCount = { questionId: string; optionId: string | null; closure?: string | null; count: number };
 export type StatusCounts = { inProgress: number; submitted: number; expired: number };
 
 export const BUCKETS = 10;
@@ -31,32 +31,40 @@ export function buildStats(content: Content, results: readonly ResultRow[], answ
   const started = status.inProgress + status.submitted + status.expired;
   const mean = graded ? round(percents.reduce((sum, value) => sum + value, 0) / graded) : null;
 
-  const byQuestion = new Map<string, Map<string | null, number>>();
+  // Rows per question: confirmed/free choices count as picks; TIMEOUT rows are invalid_timeout whatever was selected; in a paced evaluation a
+  // question with no row was never reached (also a timeout), in a free one it was simply not answered (omitted).
+  const paced = content.settings.pacing.navigation === "FORWARD_ONLY";
+  const byQuestion = new Map<string, { picks: Map<string | null, number>; timedOut: number; omitted: number; rows: number }>();
   for (const answer of answers) {
-    const options = byQuestion.get(answer.questionId) ?? new Map<string | null, number>();
-    options.set(answer.optionId, (options.get(answer.optionId) ?? 0) + answer.count);
-    byQuestion.set(answer.questionId, options);
+    const entry = byQuestion.get(answer.questionId) ?? { picks: new Map<string | null, number>(), timedOut: 0, omitted: 0, rows: 0 };
+    entry.rows += answer.count;
+    if (answer.closure === "TIMEOUT") entry.timedOut += answer.count;
+    else if (answer.optionId) entry.picks.set(answer.optionId, (entry.picks.get(answer.optionId) ?? 0) + answer.count);
+    else entry.omitted += answer.count;
+    byQuestion.set(answer.questionId, entry);
   }
   const questions = content.questions.map((question, index) => {
-    const counts = byQuestion.get(question.id) ?? new Map<string | null, number>();
-    const answered = [...counts.entries()].reduce((sum, [option, count]) => sum + (option ? count : 0), 0);
-    const correct = counts.get(question.correctOptionId) ?? 0;
-    const omitted = Math.max(0, graded - answered);
+    const entry = byQuestion.get(question.id) ?? { picks: new Map<string | null, number>(), timedOut: 0, omitted: 0, rows: 0 };
+    const answered = [...entry.picks.values()].reduce((sum, count) => sum + count, 0);
+    const correct = entry.picks.get(question.correctOptionId) ?? 0;
+    const missing = Math.max(0, graded - entry.rows);
+    const omitted = entry.omitted + (paced ? 0 : missing);
+    const timedOut = entry.timedOut + (paced ? missing : 0);
     return {
       questionId: question.id, number: index + 1, category: question.category, prompt: question.prompt.find((block) => block.type === "paragraph")?.text.slice(0, 140) ?? "",
-      attempts: graded, correct, incorrect: answered - correct, omitted,
+      attempts: graded, correct, incorrect: answered - correct, omitted, timedOut,
       correctRate: graded ? round((correct * 100) / graded) : null,
       // Distractor analysis: how often each option was picked, and whether it is the key.
-      options: question.options.map((option, position) => ({ id: option.id, label: optionLabel(position), picked: counts.get(option.id) ?? 0, isCorrect: option.id === question.correctOptionId })),
+      options: question.options.map((option, position) => ({ id: option.id, label: optionLabel(position), picked: entry.picks.get(option.id) ?? 0, isCorrect: option.id === question.correctOptionId })),
     };
   });
   // Hardest first (lowest correct rate); unanswered-by-all questions without data sort last.
   const hardest = [...questions].filter((q) => q.correctRate !== null).sort((a, b) => a.correctRate! - b.correctRate! || a.number - b.number).slice(0, 10).map((q) => q.questionId);
 
-  const categories = new Map<string | null, { correct: number; incorrect: number; unanswered: number; score: number; max: number }>();
+  const categories = new Map<string | null, { correct: number; incorrect: number; unanswered: number; timedOut: number; score: number; max: number }>();
   for (const row of results) for (const group of row.breakdown.byCategory) {
-    const total = categories.get(group.key) ?? { correct: 0, incorrect: 0, unanswered: 0, score: 0, max: 0 };
-    total.correct += group.correct; total.incorrect += group.incorrect; total.unanswered += group.unanswered; total.score += group.scoreCenti; total.max += group.maxScoreCenti;
+    const total = categories.get(group.key) ?? { correct: 0, incorrect: 0, unanswered: 0, timedOut: 0, score: 0, max: 0 };
+    total.correct += group.correct; total.incorrect += group.incorrect; total.unanswered += group.unanswered; total.timedOut += group.timedOut ?? 0; total.score += group.scoreCenti; total.max += group.maxScoreCenti;
     categories.set(group.key, total);
   }
 
@@ -65,6 +73,6 @@ export function buildStats(content: Content, results: readonly ResultRow[], answ
     score: { meanPercent: mean, medianPercent: median(percents) === null ? null : round(median(percents)!), minPercent: graded ? Math.min(...percents) : null, maxPercent: graded ? Math.max(...percents) : null, distribution: distribution(percents) },
     averageTimeSeconds: graded ? Math.round(results.reduce((sum, row) => sum + row.timeUsedSeconds, 0) / graded) : null,
     questions, hardest,
-    categories: [...categories.entries()].map(([key, total]) => ({ category: key, correct: total.correct, incorrect: total.incorrect, unanswered: total.unanswered, meanPercent: percentOf(total.score, total.max) })).sort((a, b) => a.meanPercent - b.meanPercent),
+    categories: [...categories.entries()].map(([key, total]) => ({ category: key, correct: total.correct, incorrect: total.incorrect, unanswered: total.unanswered, timedOut: total.timedOut, meanPercent: percentOf(total.score, total.max) })).sort((a, b) => a.meanPercent - b.meanPercent),
   };
 }

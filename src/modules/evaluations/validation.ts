@@ -34,6 +34,14 @@ export function validateForPublish(content: Content): Issue[] {
     if (question.correctOptionId === null) add("EVALUATION_CORRECT_OPTION_MISSING", path, "Mark exactly one correct option");
     else if (!question.options.some((option) => option.id === question.correctOptionId)) add("EVALUATION_CORRECT_OPTION_INVALID", path, "The correct option is not one of the options");
   });
+  // Forward-only attempts run session after session: every section's questions must be contiguous, in the order they are asked.
+  if (content.settings.pacing.navigation === "FORWARD_ONLY") {
+    const seen = new Set<string>();
+    let previous: string | null = null;
+    content.questions.forEach((question, index) => {
+      if (question.sectionId !== previous) { if (seen.has(question.sectionId)) add("EVALUATION_SECTION_ORDER", `questions[${index}]`, "Questions of a section must be consecutive in a forward-only evaluation"); seen.add(question.sectionId); previous = question.sectionId; }
+    });
+  }
   if (content.settings.review.mode === "AFTER_DATE" && !content.settings.review.revealAfter) add("EVALUATION_REVIEW_DATE_REQUIRED", "settings.review", "A reveal date is required");
   return issues;
 }

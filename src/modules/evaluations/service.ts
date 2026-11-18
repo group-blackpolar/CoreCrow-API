@@ -10,6 +10,7 @@ import { tenantRepository } from "../tenancy/repository.js";
 import { contentSchema, emptyContent, toCenti, type Block, type Content } from "./content.js";
 import { draftOps, type QuestionInput } from "./draft-ops.js";
 import { grade, percentOf, playerContent, reviewAvailable, reviewContent } from "./grading.js";
+import { planPaced, type Closure, type PacedPlan } from "./paced.js";
 import { buildStats, type AnswerCount } from "./stats.js";
 import { validateForPublish } from "./validation.js";
 
@@ -31,7 +32,7 @@ function imageAssetIds(content: Content) {
 }
 
 const authorView = (ev: Awaited<ReturnType<typeof load>>) => ({
-  id: ev.id, kind: ev.kind, title: ev.title, description: ev.description, status: ev.status,
+  id: ev.id, key: ev.key, kind: ev.kind, title: ev.title, description: ev.description, status: ev.status,
   draftRevision: ev.draftRevision, publishedRevision: ev.publishedRevision, currentVersionId: ev.currentVersionId,
   hasUnpublishedChanges: ev.publishedRevision === null || ev.draftRevision > ev.publishedRevision,
   content: parse(ev.draft), createdAt: ev.createdAt, updatedAt: ev.updatedAt,
@@ -72,17 +73,56 @@ async function eligibility(tx: Transaction, organizationId: string, evaluationId
 }
 
 // ----------------------------------------------------------------------------------------------------------------- attempts
-async function finalize(tx: Transaction, attempt: { id: string; organizationId: string; evaluationId: string; versionId: string; userId: string; startedAt: Date; deadlineAt: Date | null }, content: Content, status: "SUBMITTED" | "EXPIRED", at: Date) {
-  const saved = await tx.evaluationAnswer.findMany({ where: { attemptId: attempt.id } });
-  const result = grade(content, new Map(saved.map((answer) => [answer.questionId, answer.optionId])));
+type AttemptRow = { id: string; organizationId: string; evaluationId: string; versionId: string; userId: string; startedAt: Date; deadlineAt: Date | null; status?: string };
+const isPaced = (content: Content) => content.settings.pacing.navigation === "FORWARD_ONLY";
+
+/** What grading needs: the confirmed answers, and (paced) every question that was not confirmed or omitted in time = invalid_timeout. */
+async function gradingInput(tx: Transaction, attemptId: string, content: Content) {
+  const rows = await tx.evaluationAnswer.findMany({ where: { attemptId } });
+  if (!isPaced(content)) return { answers: new Map<string, string | null>(rows.map((row) => [row.questionId, row.optionId])), timedOut: new Set<string>() };
+  const answers = new Map<string, string | null>();
+  const settled = new Set<string>();
+  for (const row of rows) if (row.closure === "CONFIRMED" || row.closure === "OMITTED") { answers.set(row.questionId, row.closure === "CONFIRMED" ? row.optionId : null); settled.add(row.questionId); }
+  return { answers, timedOut: new Set(content.questions.map((question) => question.id).filter((id) => !settled.has(id))) };
+}
+
+async function finalize(tx: Transaction, attempt: AttemptRow, content: Content, status: "SUBMITTED" | "EXPIRED", at: Date) {
+  const { answers, timedOut } = await gradingInput(tx, attempt.id, content);
+  const result = grade(content, answers, timedOut);
   const end = attempt.deadlineAt && at > attempt.deadlineAt ? attempt.deadlineAt : at;
   await tx.evaluationAttempt.update({ where: { id: attempt.id }, data: { status, submittedAt: end } });
   return tx.evaluationResult.create({
     data: {
       attemptId: attempt.id, organizationId: attempt.organizationId, evaluationId: attempt.evaluationId, versionId: attempt.versionId, userId: attempt.userId,
-      correct: result.correct, incorrect: result.incorrect, unanswered: result.unanswered, scoreCenti: result.scoreCenti, maxScoreCenti: result.maxScoreCenti,
+      correct: result.correct, incorrect: result.incorrect, unanswered: result.unanswered, timedOut: result.timedOut, scoreCenti: result.scoreCenti, maxScoreCenti: result.maxScoreCenti,
       timeUsedSeconds: Math.max(0, Math.round((end.getTime() - attempt.startedAt.getTime()) / 1000)), breakdown: json(result.breakdown),
     },
+  });
+}
+
+/** Persists what the server's clock already decided for a paced attempt (timeouts, the next question opening, the end) and returns the plan. */
+async function advancePaced(tx: Transaction, attempt: AttemptRow, content: Content, now: Date): Promise<PacedPlan> {
+  const rows = await tx.evaluationAnswer.findMany({ where: { attemptId: attempt.id } });
+  const plan = pacedPlan(attempt, content, rows, now);
+  for (const timeout of plan.timeouts)
+    await tx.evaluationAnswer.upsert({
+      where: { attemptId_questionId: { attemptId: attempt.id, questionId: timeout.questionId } },
+      create: { attemptId: attempt.id, questionId: timeout.questionId, optionId: null, seq: 0, openedAt: timeout.openedAt, closedAt: timeout.closedAt, closure: "TIMEOUT" },
+      update: { openedAt: timeout.openedAt, closedAt: timeout.closedAt, closure: "TIMEOUT" },
+    });
+  if (plan.current) await tx.evaluationAnswer.upsert({ where: { attemptId_questionId: { attemptId: attempt.id, questionId: plan.current.questionId } }, create: { attemptId: attempt.id, questionId: plan.current.questionId, optionId: null, seq: 0, openedAt: plan.current.openedAt }, update: {} });
+  if (plan.finished !== "NONE") {
+    const lastClosed = Math.max(attempt.startedAt.getTime(), ...rows.map((row) => row.closedAt?.getTime() ?? 0), ...plan.timeouts.map((t) => t.closedAt.getTime()));
+    await finalize(tx, attempt, content, plan.finished === "GLOBAL_DEADLINE" ? "EXPIRED" : "SUBMITTED", plan.finished === "GLOBAL_DEADLINE" ? attempt.deadlineAt! : new Date(lastClosed));
+  }
+  return plan;
+}
+function pacedPlan(attempt: AttemptRow, content: Content, rows: Array<{ questionId: string; openedAt: Date | null; closedAt: Date | null; closure: string | null }>, now: Date) {
+  const seconds = content.settings.pacing.questionSeconds;
+  return planPaced({
+    questionIds: content.questions.map((question) => question.id),
+    rows: rows.map((row) => ({ questionId: row.questionId, openedAt: row.openedAt ?? attempt.startedAt, closedAt: row.closedAt, closure: row.closure as Closure | null })),
+    startedAt: attempt.startedAt, questionMs: seconds === null ? null : seconds * 1000, globalDeadline: attempt.deadlineAt, now,
   });
 }
 
@@ -93,35 +133,67 @@ async function versionContent(tx: Transaction, versionId: string) {
   return { version, snapshot: version.snapshot as unknown as Snapshot };
 }
 
+/**
+ * Lazy closing of an open attempt at `now`: a free one is closed (expired) once its deadline + network allowance passed; a paced one has every
+ * server-decided timeout applied. Returns the up-to-date attempt row. Every entry point calls it first, so a reload or a late request recovers nothing.
+ */
+async function settle<T extends AttemptRow & { status: string }>(tx: Transaction, attempt: T, now: Date): Promise<T> {
+  if (attempt.status !== "IN_PROGRESS") return attempt;
+  const { snapshot } = await versionContent(tx, attempt.versionId);
+  if (isPaced(snapshot.content)) await advancePaced(tx, attempt, snapshot.content, now);
+  else if (expired(attempt as { status: string; deadlineAt: Date | null }, now)) await finalize(tx, attempt, snapshot.content, "EXPIRED", now);
+  else return attempt;
+  return (await tx.evaluationAttempt.findUniqueOrThrow({ where: { id: attempt.id } })) as unknown as T;
+}
+
 async function resultView(tx: Transaction, attempt: { id: string; organizationId: string; evaluationId: string; versionId: string; status: string; submittedAt: Date | null }, snapshot: Snapshot, now: Date, includeReview: boolean) {
   const row = await tx.evaluationResult.findUniqueOrThrow({ where: { attemptId: attempt.id } });
   const breakdown = row.breakdown as unknown as ReturnType<typeof grade>["breakdown"];
   const points = (centi: number) => centi / 100;
-  const group = (tally: (typeof breakdown.byCategory)[number]) => ({ key: tally.key, title: tally.title ?? null, correct: tally.correct, incorrect: tally.incorrect, unanswered: tally.unanswered, scorePoints: points(tally.scoreCenti), maxPoints: points(tally.maxScoreCenti), percent: percentOf(tally.scoreCenti, tally.maxScoreCenti) });
+  const group = (tally: (typeof breakdown.byCategory)[number]) => ({ key: tally.key, title: tally.title ?? null, correct: tally.correct, incorrect: tally.incorrect, unanswered: tally.unanswered, timedOut: tally.timedOut ?? 0, scorePoints: points(tally.scoreCenti), maxPoints: points(tally.maxScoreCenti), percent: percentOf(tally.scoreCenti, tally.maxScoreCenti) });
   const available = reviewAvailable(snapshot.content, true, now);
-  const answers = available || includeReview ? new Map((await tx.evaluationAnswer.findMany({ where: { attemptId: attempt.id } })).map((a) => [a.questionId, a.optionId])) : null;
+  const graded = available || includeReview ? await gradingInput(tx, attempt.id, snapshot.content) : null;
   const { mode, revealAfter } = snapshot.content.settings.review;
   return {
     attemptId: attempt.id, evaluationId: attempt.evaluationId, status: attempt.status, submittedAt: attempt.submittedAt,
-    correct: row.correct, incorrect: row.incorrect, unanswered: row.unanswered,
+    correct: row.correct, incorrect: row.incorrect, unanswered: row.unanswered, timedOut: row.timedOut,
     scorePoints: points(row.scoreCenti), maxPoints: points(row.maxScoreCenti), percent: percentOf(row.scoreCenti, row.maxScoreCenti), timeUsedSeconds: row.timeUsedSeconds,
     breakdown: { byCategory: breakdown.byCategory.map(group), bySection: breakdown.bySection.map(group) },
     // The correct answers and explanations leave the server only when the version's review policy allows it (or for result readers).
-    review: { available: available || includeReview, policy: mode, availableAt: mode === "AFTER_DATE" ? revealAfter : null, items: answers ? reviewContent(snapshot.content, answers) : null },
+    review: { available: available || includeReview, policy: mode, availableAt: mode === "AFTER_DATE" ? revealAfter : null, items: graded ? reviewContent(snapshot.content, graded.answers, graded.timedOut) : null },
   };
 }
 
 async function attemptView(tx: Transaction, attempt: NonNullable<Awaited<ReturnType<typeof tx.evaluationAttempt.findFirst>>>, now: Date) {
   const { snapshot } = await versionContent(tx, attempt.versionId);
+  const content = snapshot.content;
   const base = {
     id: attempt.id, evaluationId: attempt.evaluationId, status: attempt.status, attemptNumber: attempt.attemptNumber,
-    startedAt: attempt.startedAt, deadlineAt: attempt.deadlineAt, serverTime: now, evaluation: snapshot.evaluation,
+    startedAt: attempt.startedAt, deadlineAt: attempt.deadlineAt, serverTime: now, evaluation: snapshot.evaluation, pacing: content.settings.pacing,
   };
-  if (attempt.status !== "IN_PROGRESS") return { ...base, remainingSeconds: 0, content: null, answers: [], result: await resultView(tx, attempt, snapshot, now, false) };
-  const answers = await tx.evaluationAnswer.findMany({ where: { attemptId: attempt.id }, select: { questionId: true, optionId: true, seq: true } });
+  if (attempt.status !== "IN_PROGRESS") return { ...base, remainingSeconds: 0, content: null, answers: [], progress: null, current: null, result: await resultView(tx, attempt, snapshot, now, false) };
+  const rows = await tx.evaluationAnswer.findMany({ where: { attemptId: attempt.id } });
+  const remaining = attempt.deadlineAt ? Math.max(0, Math.round((attempt.deadlineAt.getTime() - now.getTime()) / 1000)) : null;
+  if (!isPaced(content)) return { ...base, remainingSeconds: remaining, content: playerContent(content), answers: rows.map(({ questionId, optionId, seq }) => ({ questionId, optionId, seq })), progress: null, current: null, result: null };
+
+  // Paced: only the open question (and its text) is delivered; the rest is revealed one question at a time, when the server opens it.
+  const plan = pacedPlan(attempt, content, rows, now);
+  const full = playerContent(content);
+  const index = plan.current ? content.questions.findIndex((question) => question.id === plan.current!.questionId) : -1;
+  const question = index >= 0 ? full.questions[index]! : null;
+  const closed = new Set(rows.filter((row) => row.closure !== null).map((row) => row.questionId));
+  const sections = content.sections.map((section) => {
+    const ids = content.questions.filter((q) => q.sectionId === section.id).map((q) => q.id);
+    return { id: section.id, title: section.title, description: section.description ?? null, total: ids.length, closed: ids.filter((id) => closed.has(id)).length };
+  });
+  const draft = question ? rows.find((row) => row.questionId === question.id) : undefined;
   return {
-    ...base, remainingSeconds: attempt.deadlineAt ? Math.max(0, Math.round((attempt.deadlineAt.getTime() - now.getTime()) / 1000)) : null,
-    content: playerContent(snapshot.content), answers, result: null,
+    ...base, remainingSeconds: remaining,
+    content: { ...full, questions: question ? [question] : [], passages: question?.passageId ? full.passages.filter((passage) => passage.id === question.passageId) : [] },
+    answers: draft && question ? [{ questionId: question.id, optionId: draft.optionId, seq: draft.seq }] : [],
+    progress: { total: content.questions.length, closed: closed.size, index, sections },
+    current: plan.current ? { questionId: plan.current.questionId, openedAt: plan.current.openedAt, expiresAt: plan.current.expiresAt, remainingSeconds: plan.current.expiresAt ? Math.max(0, Math.ceil((plan.current.expiresAt.getTime() - now.getTime()) / 1000)) : null } : null,
+    result: null,
   };
 }
 
@@ -133,10 +205,11 @@ export type AssignmentInput = { role?: TenantRole; groupId?: string; userId?: st
 
 export const evaluations = {
   // ------------------------------------------------------------------------------------------------------------ authoring
-  create(userId: string, organizationId: string, input: { kind?: EvaluationKind; title: string; description?: string | null }) {
+  create(userId: string, organizationId: string, input: { key?: string; kind?: EvaluationKind; title: string; description?: string | null }) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.create");
-      const ev = await tx.evaluation.create({ data: { organizationId, kind: input.kind ?? "EXAM", title: input.title, description: input.description ?? null, draft: json(emptyContent()), createdBy: userId } });
+      if (input.key && (await tx.evaluation.count({ where: { organizationId, key: input.key } }))) fail(409, "EVALUATION_KEY_TAKEN", "An evaluation with this key already exists");
+      const ev = await tx.evaluation.create({ data: { organizationId, key: input.key ?? null, kind: input.kind ?? "EXAM", title: input.title, description: input.description ?? null, draft: json(emptyContent()), createdBy: userId } });
       await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_CREATED", targetType: "Evaluation", targetId: ev.id, metadata: { kind: ev.kind } });
       return authorView(ev);
     });
@@ -148,7 +221,7 @@ export const evaluations = {
       const versions = await tx.evaluationVersion.findMany({ where: { organizationId, id: { in: rows.flatMap((row) => (row.currentVersionId ? [row.currentVersionId] : [])) } }, select: { id: true, version: true } });
       const number = new Map(versions.map((version) => [version.id, version.version]));
       return rows.map((ev) => ({
-        id: ev.id, kind: ev.kind, title: ev.title, description: ev.description, status: ev.status, draftRevision: ev.draftRevision,
+        id: ev.id, key: ev.key, kind: ev.kind, title: ev.title, description: ev.description, status: ev.status, draftRevision: ev.draftRevision,
         questionCount: parse(ev.draft).questions.length, currentVersion: ev.currentVersionId ? number.get(ev.currentVersionId) ?? null : null,
         hasUnpublishedChanges: ev.publishedRevision === null || ev.draftRevision > ev.publishedRevision, updatedAt: ev.updatedAt,
       }));
@@ -312,7 +385,7 @@ export const evaluations = {
         const max = snapshot.content.settings.maxAttempts;
         out.push({
           id: ev.id, kind: ev.kind, title: ev.title, description: ev.description, durationMinutes: snapshot.content.settings.durationMinutes, questionCount: snapshot.content.questions.length,
-          maxAttempts: max, attemptsUsed: used, openAttemptId: open?.id ?? null, opensAt: window.opensAt, closesAt: window.closesAt,
+          maxAttempts: max, pacing: snapshot.content.settings.pacing, sectionCount: snapshot.content.sections.length, attemptsUsed: used, openAttemptId: open?.id ?? null, opensAt: window.opensAt, closesAt: window.closesAt,
           canStart: window.open && (open !== undefined || max === null || used < max),
         });
       }
@@ -320,20 +393,16 @@ export const evaluations = {
     });
   },
   /** Starts an attempt, or returns the one in progress (a double click or a second tab never opens two). */
-  startAttempt(userId: string, organizationId: string, evaluationId: string) {
+  startAttempt(userId: string, organizationId: string, evaluationId: string, now: Date = new Date()) {
     return transaction(async (tx) => {
       const member = await authorize(tx, userId, organizationId, "evaluations.take");
-      const now = new Date();
       const ev = await tx.evaluation.findFirst({ where: { id: evaluationId, organizationId, status: "PUBLISHED", currentVersionId: { not: null } } });
       const window = ev ? await eligibility(tx, organizationId, evaluationId, member, now) : null;
       // Not published or not assigned looks the same: nothing about unassigned evaluations is revealed.
       if (!ev || !window?.assigned) return notFound();
-      const existing = await tx.evaluationAttempt.findFirst({ where: { organizationId, evaluationId, userId, status: "IN_PROGRESS" } });
-      if (existing && !expired(existing, now)) return attemptView(tx, existing, now);
-      if (existing) {
-        const { snapshot } = await versionContent(tx, existing.versionId);
-        await finalize(tx, existing, snapshot.content, "EXPIRED", now);
-      }
+      const open = await tx.evaluationAttempt.findFirst({ where: { organizationId, evaluationId, userId, status: "IN_PROGRESS" } });
+      const existing = open ? await settle(tx, open, now) : null;
+      if (existing && existing.status === "IN_PROGRESS") return attemptView(tx, existing, now);
       if (!window!.open) fail(409, "EVALUATION_WINDOW_CLOSED", "This evaluation is not open for you right now");
       const { version, snapshot } = await versionContent(tx, ev!.currentVersionId!);
       const previous = await tx.evaluationAttempt.aggregate({ where: { evaluationId, userId }, _max: { attemptNumber: true }, _count: true });
@@ -341,37 +410,33 @@ export const evaluations = {
       if (max !== null && previous._count >= max) fail(409, "EVALUATION_ATTEMPTS_EXHAUSTED", "No attempts left");
       const minutes = snapshot.content.settings.durationMinutes;
       const attempt = await tx.evaluationAttempt.create({
-        data: { organizationId, evaluationId, versionId: version.id, userId, attemptNumber: (previous._max.attemptNumber ?? 0) + 1, deadlineAt: minutes ? new Date(now.getTime() + minutes * 60_000) : null },
+        data: { organizationId, evaluationId, versionId: version.id, userId, attemptNumber: (previous._max.attemptNumber ?? 0) + 1, startedAt: now, deadlineAt: minutes ? new Date(now.getTime() + minutes * 60_000) : null },
       });
-      await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_ATTEMPT_STARTED", targetType: "EvaluationAttempt", targetId: attempt.id, metadata: { evaluationId, version: version.version } });
+      // A paced attempt opens its first question at the moment it starts (server clock).
+      if (isPaced(snapshot.content)) await advancePaced(tx, attempt, snapshot.content, now);
+      await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_ATTEMPT_STARTED", targetType: "EvaluationAttempt", targetId: attempt.id, metadata: { evaluationId, version: version.version, paced: isPaced(snapshot.content) } });
       return attemptView(tx, attempt, now);
     });
   },
-  getAttempt(userId: string, organizationId: string, attemptId: string) {
+  getAttempt(userId: string, organizationId: string, attemptId: string, now: Date = new Date()) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
-      const now = new Date();
-      let attempt = await ownAttempt(tx, organizationId, attemptId, userId);
-      if (expired(attempt, now)) {
-        const { snapshot } = await versionContent(tx, attempt.versionId);
-        await finalize(tx, attempt, snapshot.content, "EXPIRED", now);
-        attempt = await ownAttempt(tx, organizationId, attemptId, userId);
-      }
+      const attempt = await settle(tx, await ownAttempt(tx, organizationId, attemptId, userId), now);
       return attemptView(tx, attempt, now);
     });
   },
-  /** Autosave. A write whose `seq` is not newer than the stored one is ignored, so a late retry never overwrites a later answer. */
-  saveAnswers(userId: string, organizationId: string, attemptId: string, answers: Array<{ questionId: string; optionId: string | null; seq: number }>) {
+  /** Autosave of the selection. A write whose `seq` is not newer than the stored one is ignored, so a late retry never overwrites a later answer.
+   *  In a paced attempt only the open question accepts a (draft) selection; it is NOT an answer until it is confirmed. */
+  saveAnswers(userId: string, organizationId: string, attemptId: string, answers: Array<{ questionId: string; optionId: string | null; seq: number }>, now: Date = new Date()) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
-      const now = new Date();
-      const attempt = await ownAttempt(tx, organizationId, attemptId, userId);
-      if (attempt.status !== "IN_PROGRESS") fail(409, "ATTEMPT_CLOSED", "The attempt is closed");
+      const before = await ownAttempt(tx, organizationId, attemptId, userId);
+      if (before.status !== "IN_PROGRESS") fail(409, "ATTEMPT_CLOSED", "The attempt is closed");
+      const attempt = await settle(tx, before, now);
+      if (attempt.status !== "IN_PROGRESS") return { status: attempt.status === "SUBMITTED" ? ("SUBMITTED" as const) : ("EXPIRED" as const), applied: [] as string[], ignored: answers.map((a) => a.questionId), answers: [] as Array<{ questionId: string; optionId: string | null; seq: number }> };
       const { snapshot } = await versionContent(tx, attempt.versionId);
-      if (expired(attempt, now)) {
-        await finalize(tx, attempt, snapshot.content, "EXPIRED", now);
-        return { status: "EXPIRED" as const, applied: [] as string[], ignored: answers.map((a) => a.questionId), answers: [] as Array<{ questionId: string; optionId: string | null; seq: number }> };
-      }
+      const paced = isPaced(snapshot.content);
+      const currentId = paced ? pacedPlan(attempt, snapshot.content, await tx.evaluationAnswer.findMany({ where: { attemptId } }), now).current?.questionId : undefined;
       const questions = new Map(snapshot.content.questions.map((question) => [question.id, question]));
       const latest = new Map<string, (typeof answers)[number]>();
       for (const answer of [...answers].sort((a, b) => a.seq - b.seq)) latest.set(answer.questionId, answer);
@@ -385,6 +450,7 @@ export const evaluations = {
       const ignored: string[] = [];
       for (const answer of latest.values()) {
         const current = stored.get(answer.questionId);
+        if (paced && answer.questionId !== currentId) { ignored.push(answer.questionId); continue; } // closed or not yet open: it can no longer (or not yet) change
         if (current && current.seq >= answer.seq) { ignored.push(answer.questionId); continue; }
         await tx.evaluationAnswer.upsert({
           where: { attemptId_questionId: { attemptId, questionId: answer.questionId } },
@@ -398,15 +464,53 @@ export const evaluations = {
       return { status: "IN_PROGRESS" as const, applied, ignored, answers: current };
     });
   },
-  /** Grades on the server from the immutable version. Repeating the request returns the same result. */
-  submit(userId: string, organizationId: string, attemptId: string) {
+  /**
+   * Paced attempts: CONFIRM the answer of the open question (or close it with no answer when optionId is null). The server accepts it only if its own
+   * clock says the question is still open (a request exactly at the limit is on time, one millisecond later is not). A repeated confirmation of an
+   * already closed question is idempotent when it carries the same choice. Domain refusals are returned (HTTP 200, `accepted: false`) so the state the
+   * server just decided (a timeout) is persisted rather than rolled back.
+   */
+  confirmAnswer(userId: string, organizationId: string, attemptId: string, input: { questionId: string; optionId: string | null }, now: Date = new Date()) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
-      const now = new Date();
-      let attempt = await ownAttempt(tx, organizationId, attemptId, userId);
+      const before = await ownAttempt(tx, organizationId, attemptId, userId);
+      const { snapshot } = await versionContent(tx, before.versionId);
+      const content = snapshot.content;
+      if (!isPaced(content)) fail(409, "EVALUATION_NOT_PACED", "This evaluation does not use confirmed answers");
+      const question = content.questions.find((item) => item.id === input.questionId) ?? fail(422, "ATTEMPT_QUESTION_UNKNOWN", "Question does not belong to this attempt");
+      if (input.optionId !== null && !question.options.some((option) => option.id === input.optionId)) fail(422, "ATTEMPT_OPTION_UNKNOWN", "Option does not belong to the question");
+      const refuse = async (reason: "TIMEOUT" | "ALREADY_CLOSED" | "NOT_CURRENT" | "ATTEMPT_CLOSED") => ({ accepted: false as const, reason, attempt: await attemptView(tx, await tx.evaluationAttempt.findUniqueOrThrow({ where: { id: attemptId } }), now) });
+      const attempt = await settle(tx, before, now);
+      const row = await tx.evaluationAnswer.findUnique({ where: { attemptId_questionId: { attemptId, questionId: input.questionId } } });
+      if (row?.closure === "CONFIRMED" || row?.closure === "OMITTED") {
+        // A duplicate request (double click, retry after a lost response) carrying the same choice is a success, not an error.
+        const same = row.closure === "OMITTED" ? input.optionId === null : row.optionId === input.optionId;
+        return same ? { accepted: true as const, reason: null, attempt: await attemptView(tx, attempt, now) } : refuse("ALREADY_CLOSED");
+      }
+      if (row?.closure === "TIMEOUT") return refuse("TIMEOUT");
+      if (attempt.status !== "IN_PROGRESS") return refuse(row ? "TIMEOUT" : "ATTEMPT_CLOSED");
+      const plan = pacedPlan(attempt, content, await tx.evaluationAnswer.findMany({ where: { attemptId } }), now);
+      if (plan.current?.questionId !== input.questionId) return refuse("NOT_CURRENT");
+      await tx.evaluationAnswer.upsert({
+        where: { attemptId_questionId: { attemptId, questionId: input.questionId } },
+        create: { attemptId, questionId: input.questionId, optionId: input.optionId, seq: 1, openedAt: plan.current.openedAt, closedAt: now, closure: input.optionId === null ? "OMITTED" : "CONFIRMED" },
+        update: { optionId: input.optionId, seq: { increment: 1 }, savedAt: now, closedAt: now, closure: input.optionId === null ? "OMITTED" : "CONFIRMED" },
+      });
+      // The next question opens now; if that was the last one the attempt is graded and closed in this same transaction.
+      const after = await advancePaced(tx, attempt, content, now);
+      if (after.finished !== "NONE") await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_ATTEMPT_SUBMITTED", targetType: "EvaluationAttempt", targetId: attemptId, metadata: { status: after.finished === "ALL_CLOSED" ? "SUBMITTED" : "EXPIRED", paced: true } });
+      return { accepted: true as const, reason: null, attempt: await attemptView(tx, await tx.evaluationAttempt.findUniqueOrThrow({ where: { id: attemptId } }), now) };
+    });
+  },
+  /** Grades on the server from the immutable version. Repeating the request returns the same result. A paced attempt ends by itself. */
+  submit(userId: string, organizationId: string, attemptId: string, now: Date = new Date()) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "evaluations.take");
+      let attempt = await settle(tx, await ownAttempt(tx, organizationId, attemptId, userId), now);
       const { snapshot } = await versionContent(tx, attempt.versionId);
       if (attempt.status === "IN_PROGRESS") {
-        await finalize(tx, attempt, snapshot.content, expired(attempt, now) ? "EXPIRED" : "SUBMITTED", now);
+        if (isPaced(snapshot.content)) fail(409, "ATTEMPT_PACED", "Confirm each question; the attempt ends by itself after the last one or at its time limit");
+        await finalize(tx, attempt, snapshot.content, "SUBMITTED", now);
         attempt = await ownAttempt(tx, organizationId, attemptId, userId);
         await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_ATTEMPT_SUBMITTED", targetType: "EvaluationAttempt", targetId: attemptId, metadata: { status: attempt.status } });
       }
@@ -465,11 +569,11 @@ export const evaluations = {
       if (!selected) return { evaluation: { id: ev.id, title: ev.title }, versions: comparison, selectedVersionId: null, stats: null };
       const { snapshot } = await versionContent(tx, selected);
       const scope = results.length ? await tx.evaluationResult.findMany({ where: { organizationId, evaluationId, versionId: selected }, select: { scoreCenti: true, maxScoreCenti: true, timeUsedSeconds: true, breakdown: true }, take: 50_000 }) : [];
-      const answers = await tx.$queryRaw<Array<{ questionId: string; optionId: string | null; count: number }>>(Prisma.sql`
-        SELECT a."questionId", a."optionId", count(*)::int AS "count"
+      const answers = await tx.$queryRaw<Array<{ questionId: string; optionId: string | null; closure: string | null; count: number }>>(Prisma.sql`
+        SELECT a."questionId", a."optionId", a."closure", count(*)::int AS "count"
         FROM "EvaluationAnswer" a JOIN "EvaluationAttempt" t ON t."id" = a."attemptId"
         WHERE t."organizationId" = ${organizationId} AND t."evaluationId" = ${evaluationId} AND t."versionId" = ${selected} AND t."status" IN ('SUBMITTED', 'EXPIRED')
-        GROUP BY a."questionId", a."optionId"`);
+        GROUP BY a."questionId", a."optionId", a."closure"`);
       const count = (status: string) => attempts.find((a) => a.versionId === selected && a.status === status)?._count._all ?? 0;
       const stats = buildStats(snapshot.content, scope as unknown as Parameters<typeof buildStats>[1], answers satisfies AnswerCount[], { inProgress: count("IN_PROGRESS"), submitted: count("SUBMITTED"), expired: count("EXPIRED") });
       return { evaluation: { id: ev.id, title: ev.title }, versions: comparison, selectedVersionId: selected, stats };

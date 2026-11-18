@@ -17,9 +17,9 @@ const asHttpError = (error) => {
 
 export async function servicesTransport({ dist, actorEmail }) {
   const load = (path) => import(pathToFileURL(resolve(dist, path)).href);
-  const [{ prisma }, { tenants }, { northTaxonomy }, { northData }, { northAnalyticsBindings }, content, { northAssets }, { northLanding }] = await Promise.all([
+  const [{ prisma }, { tenants }, { northTaxonomy }, { northData }, { northAnalyticsBindings }, content, { northAssets }, { northLanding }, { evaluations }] = await Promise.all([
     load("lib/database.js"), load("modules/tenancy/service.js"), load("modules/north/service.js"), load("modules/north/data/service.js"),
-    load("modules/north/data/binding-service.js"), load("modules/north/content-service.js"), load("modules/north/asset-service.js"), load("modules/north/landing-service.js"),
+    load("modules/north/data/binding-service.js"), load("modules/north/content-service.js"), load("modules/north/asset-service.js"), load("modules/north/landing-service.js"), load("modules/evaluations/service.js"),
   ]);
   const { northContent } = content;
   // The same reference resolvers buildApp() installs, so a draft's asset/binding references are validated exactly as over HTTP.
@@ -42,6 +42,23 @@ export async function servicesTransport({ dist, actorEmail }) {
       if ((match = /^\/organizations\/([^/]+)\/landing$/.exec(path))) {
         if (method === "GET") return ok(await northLanding.read(user, match[1]));
         if (method === "PUT") return ok(await northLanding.update(user, match[1], { ...body, expectedUpdatedAt: body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt) : body.expectedUpdatedAt }));
+      }
+      // Evaluations (scripts/import-evaluation.mjs): the same service calls the routes make, as the named actor.
+      if ((match = /^\/organizations\/([^/]+)\/evaluations(?:\/([^/]+))?(?:\/(sections|passages|questions|validate|publish|assignments)(?:\/([^/]+))?(?:\/(correct-option))?)?$/.exec(path))) {
+        const [, org, evId, sub, subId, leaf] = match;
+        const rev = body?.expectedRevision;
+        if (!evId && method === "GET") return ok(await evaluations.list(user, org));
+        if (!evId && method === "POST") return ok(await evaluations.create(user, org, body));
+        if (evId && !sub && method === "GET") return ok(await evaluations.get(user, org, evId));
+        if (evId && !sub && method === "PATCH") return ok(await evaluations.updateDetails(user, org, evId, body));
+        if (evId && !sub && method === "DELETE") { await evaluations.remove(user, org, evId); return ok(null); }
+        if (sub === "sections" && method === "POST") return ok(await evaluations.addSection(user, org, evId, body, rev));
+        if (sub === "passages" && method === "POST") return ok(await evaluations.addPassage(user, org, evId, body, rev));
+        if (sub === "questions" && method === "POST") return ok(await evaluations.addQuestion(user, org, evId, body, rev));
+        if (sub === "questions" && leaf === "correct-option" && method === "PUT") return ok(await evaluations.setCorrectOption(user, org, evId, subId, body.optionId, rev));
+        if (sub === "validate" && method === "POST") return ok(await evaluations.validate(user, org, evId));
+        if (sub === "publish" && method === "POST") return ok(await evaluations.publish(user, org, evId));
+        if (sub === "assignments" && method === "PUT") return ok(await evaluations.setAssignments(user, org, evId, (body.assignments ?? []).map((a) => ({ ...a, opensAt: a.opensAt ? new Date(a.opensAt) : null, closesAt: a.closesAt ? new Date(a.closesAt) : null }))));
       }
       if ((match = /^\/organizations\/([^/]+)\/datasets$/.exec(path)) && method === "GET") return ok(await northData.list(user, match[1]));
       if ((match = /^\/organizations\/([^/]+)\/datasets\/([^/]+)\/fields$/.exec(path)) && method === "GET") return ok(await northData.fields(user, match[1], match[2]));

@@ -43,6 +43,14 @@ export const questionSchema = z.object({
 export const sectionSchema = z.object({ id, title: text(200), description: text(2_000).optional() }).strict();
 export const passageSchema = z.object({ id, title: text(200), body: blocks }).strict();
 
+/** FREE: the person moves between questions and answers any time before submitting (autosaved). FORWARD_ONLY: questions open one at a
+ *  time in order, each answer must be CONFIRMED to the server before it closes, closed questions can never be reopened, and each question
+ *  has its own server-timed limit. */
+export const pacingSchema = z.object({
+  navigation: z.enum(["FREE", "FORWARD_ONLY"]),
+  questionSeconds: z.number().int().min(5).max(3_600).nullable(),
+}).strict();
+
 export const settingsSchema = z.object({
   durationMinutes: z.number().int().min(1).max(1_440).nullable(),
   /** null = unlimited. */
@@ -55,6 +63,8 @@ export const settingsSchema = z.object({
   /** When a person may see the correct answers and explanations: never, right after submitting, or after a date. */
   review: z.object({ mode: z.enum(["NEVER", "AFTER_SUBMIT", "AFTER_DATE"]), revealAfter: z.string().datetime({ offset: true }).nullable() }).strict(),
   ai: z.object({ allowedDuringAttempt: z.boolean() }).strict(),
+  /** Optional in stored documents (older versions are FREE). */
+  pacing: pacingSchema.default({ navigation: "FREE", questionSeconds: null }),
 }).strict();
 
 export const contentSchema = z.object({
@@ -79,6 +89,7 @@ export const defaultSettings = (): Settings => ({
   scoring: { wrongPenaltyPercent: 0, unansweredPenaltyPercent: 0, floorAtZero: true },
   review: { mode: "AFTER_SUBMIT", revealAfter: null },
   ai: { allowedDuringAttempt: false },
+  pacing: { navigation: "FREE", questionSeconds: null },
 });
 
 export const emptyContent = (): Content => ({ schemaVersion: 1, settings: defaultSettings(), sections: [], passages: [], questions: [] });
