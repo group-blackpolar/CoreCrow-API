@@ -60,10 +60,13 @@ export function reviewAvailable(content: Content, attemptClosed: boolean, now: D
   return mode === "AFTER_SUBMIT" || Boolean(revealAfter && now.getTime() >= Date.parse(revealAfter));
 }
 
-/** Correct answers and explanations, only when the version's review policy allows it for a closed attempt. */
+/** The review of a closed attempt: statement, options, the person's choice, the correct option and the explanation, only when the policy allows it. */
 export function reviewContent(content: Content, answers: ReadonlyMap<string, string | null>) {
-  return content.questions.map((question) => ({
+  return content.questions.map((question, index) => ({
     questionId: question.id,
+    number: index + 1,
+    prompt: question.prompt,
+    options: question.options.map((option, position) => ({ id: option.id, label: optionLabel(position), text: option.text })),
     selectedOptionId: answers.get(question.id) ?? null,
     correctOptionId: question.correctOptionId,
     outcome: questionOutcome(question, answers.get(question.id)),

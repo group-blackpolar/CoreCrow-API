@@ -176,6 +176,7 @@ test("evaluations: author, publish, assign, take, autosave, grade; no key leaks;
     assert.deepEqual(result.breakdown.byCategory.map((c: { key: string; correct: number }) => [c.key, c.correct]).sort(), [["alpha", 1], ["beta", 0]]);
     assert.equal(result.review.available, true, "v1 review policy was AFTER_SUBMIT");
     assert.equal(result.review.items[0].correctOptionId, (await prisma.evaluationVersion.findUniqueOrThrow({ where: { id: version1 } })).snapshot && (view.content.questions[0].options[1].id));
+    assert.deepEqual([result.review.items[0].number, result.review.items[0].options.length, result.review.items[0].options[0].label], [1, 4, "A"], "the review carries the statement and options");
     // Repeating the submit returns the same result and grades once.
     assert.deepEqual(ok(await call("POST", `${base}/evaluation-attempts/${attemptId}/submit`, student.cookie), 200), result);
     assert.equal(await prisma.evaluationResult.count({ where: { attemptId } }), 1);
