@@ -113,3 +113,35 @@ test("the evaluation_workspace panel component is a strict, validated schema", a
   assert.ok(!validate({ views: ["builder"], organizationId: "x" }).success, "no organization or data in the document");
   assert.ok(!validate({ views: ["admin"] }).success);
 });
+
+test("statistics: distribution, median, completion, difficulty per question with distractors, categories", async () => {
+  const { buildStats, distribution, median } = await import("../src/modules/evaluations/stats.js");
+  assert.equal(median([1, 3, 2]), 2);
+  assert.equal(median([1, 2, 3, 10]), 2.5);
+  assert.equal(median([]), null);
+  const buckets = distribution([0, 9.99, 10, 55, 100, 100]);
+  assert.deepEqual([buckets[0]!.count, buckets[1]!.count, buckets[5]!.count, buckets[9]!.count], [2, 1, 1, 2], "100 % falls in the last bucket");
+
+  const { content, ids } = build([4, 3, 5]);
+  const right = content.questions.map((q) => q.correctOptionId!);
+  const wrong = content.questions.map((q) => q.options.find((o) => o.id !== q.correctOptionId)!.id);
+  const result = (picks: Array<"right" | "wrong" | null>) => grade(content, answersFor(content, picks));
+  const rows = [result(["right", "right", "right"]), result(["right", "wrong", null]), result(["wrong", "wrong", null])].map((g) => ({ ...g, timeUsedSeconds: 60 }));
+  const answers = [
+    { questionId: ids[0]!, optionId: right[0]!, count: 2 }, { questionId: ids[0]!, optionId: wrong[0]!, count: 1 },
+    { questionId: ids[1]!, optionId: right[1]!, count: 1 }, { questionId: ids[1]!, optionId: wrong[1]!, count: 2 },
+    { questionId: ids[2]!, optionId: right[2]!, count: 1 },
+  ];
+  const stats = buildStats(content, rows, answers, { inProgress: 1, submitted: 2, expired: 1 });
+  assert.deepEqual([stats.attempts.started, stats.attempts.graded, stats.attempts.completionRate, stats.attempts.timedOutRate], [4, 3, 75, 25]);
+  assert.deepEqual([stats.score.meanPercent, stats.score.medianPercent, stats.score.minPercent, stats.score.maxPercent], [44.44, 33.33, 0, 100]);
+  assert.equal(stats.averageTimeSeconds, 60);
+  const [q1, q2, q3] = stats.questions;
+  assert.deepEqual([q1!.correctRate, q2!.correctRate, q3!.correctRate], [66.67, 33.33, 33.33]);
+  assert.deepEqual([q3!.omitted, q3!.correct, q3!.incorrect], [2, 1, 0]);
+  assert.deepEqual(q1!.options.filter((o) => o.picked > 0).map((o) => [o.label, o.picked, o.isCorrect]).sort(), [["A", 1, false], ["B", 2, true]].sort());
+  assert.deepEqual(stats.hardest.slice(0, 2), [ids[1], ids[2]], "hardest first, ties by position");
+  assert.equal(stats.categories.find((c) => c.category === null)!.unanswered, 2);
+  const none = buildStats(content, [], [], { inProgress: 0, submitted: 0, expired: 0 });
+  assert.deepEqual([none.attempts.completionRate, none.score.meanPercent, none.averageTimeSeconds, none.hardest], [null, null, null, []]);
+});

@@ -145,6 +145,17 @@ export async function evaluationRoutes(app: FastifyInstance) {
   contract(app, { method: "PUT", url: `${base}/:evaluationId/assignments`, tag, summary: "Replace the assignments: each addresses one role, group or person, with an optional window", params: evaluationParams,
     body: z.object({ assignments: z.array(assignment).max(200) }).strict(), response: z.object({ count: z.number().int() }),
     run: ({ user, params, body }) => evaluations.setAssignments(user.id, params.organizationId, params.evaluationId, body.assignments) });
+  contract(app, { method: "GET", url: `${base}/:evaluationId/stats`, tag, summary: "Statistics of one version (default: the latest with attempts): completion, score distribution, difficulty per question with distractors, categories, and a per-version comparison (needs evaluations.results.read)", params: evaluationParams,
+    query: z.object({ versionId: s.id.optional() }).strict(),
+    response: z.object({
+      evaluation: z.object({ id: s.id, title: z.string() }),
+      versions: z.array(z.object({ id: s.id, version: z.number().int(), publishedAt: s.date, questionCount: z.number().int(), maxPoints: z.number(), attempts: z.number().int(), graded: z.number().int(), meanPercent: z.number().nullable() })),
+      selectedVersionId: s.id.nullable(), stats: z.unknown(),
+    }),
+    run: ({ user, params, query }) => evaluations.stats(user.id, params.organizationId, params.evaluationId, query.versionId) });
+  contract(app, { method: "GET", url: "/organizations/:organizationId/evaluation-results/mine", tag, summary: "The caller's own closed attempts with scores across evaluations (their history)", params: s.orgParams,
+    response: z.array(z.object({ attemptId: s.id, evaluationId: s.id, title: z.string(), kind, attemptNumber: z.number().int(), status: z.enum(["IN_PROGRESS", "SUBMITTED", "EXPIRED"]), submittedAt: s.date.nullable(), scorePoints: z.number(), maxPoints: z.number(), percent: z.number() })),
+    run: ({ user, params }) => evaluations.myResults(user.id, params.organizationId) });
   contract(app, { method: "GET", url: `${base}/:evaluationId/attempts`, tag, summary: "Every attempt with its score (needs evaluations.results.read)", params: evaluationParams,
     response: z.array(z.object({ id: s.id, userId: s.id, name: z.string().nullable(), email: z.string().nullable(), versionId: s.id, attemptNumber: z.number().int(), status: z.enum(["IN_PROGRESS", "SUBMITTED", "EXPIRED"]), startedAt: s.date, submittedAt: s.date.nullable(), scorePoints: z.number().nullable(), maxPoints: z.number().nullable(), percent: z.number().nullable() })),
     run: ({ user, params }) => evaluations.attempts(user.id, params.organizationId, params.evaluationId) });

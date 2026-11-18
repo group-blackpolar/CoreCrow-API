@@ -203,6 +203,25 @@ test("evaluations: author, publish, assign, take, autosave, grade; no key leaks;
     assert.equal((await call("GET", `${base}/evaluation-attempts/${attemptId}/result`, other.cookie)).statusCode, 404);
   });
 
+  await t.test("statistics: per version, hardest questions with distractors, comparison between versions; only result readers; own history for students", async () => {
+    assert.equal((await call("GET", `${ev}/${id}/stats`, student.cookie)).statusCode, 403);
+    assert.equal((await call("GET", `${ev}/${id}/stats`, outsider.cookie)).statusCode >= 403, true);
+    const latest = ok(await call("GET", `${ev}/${id}/stats`, owner.cookie), 200);
+    assert.equal(latest.selectedVersionId, latest.versions.find((v: { version: number }) => v.version === 2).id, "defaults to the latest version with attempts");
+    assert.deepEqual(latest.versions.map((v: { version: number; attempts: number; graded: number; meanPercent: number }) => [v.version, v.attempts, v.graded, v.meanPercent]), [[1, 1, 1, 33.33], [2, 1, 1, 0]]);
+    const v1 = ok(await call("GET", `${ev}/${id}/stats?versionId=${version1}`, owner.cookie), 200).stats;
+    assert.deepEqual([v1.attempts.completionRate, v1.attempts.graded, v1.score.meanPercent, v1.averageTimeSeconds >= 0], [100, 1, 33.33, true]);
+    assert.deepEqual(v1.questions.map((q: { correctRate: number }) => q.correctRate), [100, 0, 0]);
+    assert.deepEqual(v1.hardest.slice(0, 2), [v1.questions[1].questionId, v1.questions[2].questionId], "hardest first");
+    assert.deepEqual([v1.questions[2].omitted, v1.questions[1].incorrect], [1, 1]);
+    assert.equal(v1.questions[1].options.filter((o: { picked: number }) => o.picked > 0).length, 1, "distractor counts");
+    assert.equal(v1.score.distribution.reduce((sum: number, b: { count: number }) => sum + b.count, 0), 1);
+    assert.equal((await call("GET", `${ev}/${id}/stats?versionId=cmforeign000000000000000000`, owner.cookie)).statusCode, 404);
+    const mine = ok(await call("GET", `${base}/evaluation-results/mine`, student.cookie), 200);
+    assert.deepEqual(mine.map((r: { attemptNumber: number; percent: number; title: string }) => [r.attemptNumber, r.percent, r.title]).sort(), [[1, 33.33, "Synthetic exam"], [2, 0, "Synthetic exam"]].sort());
+    assert.deepEqual(ok(await call("GET", `${base}/evaluation-results/mine`, other.cookie), 200), [], "nobody sees another person's history");
+  });
+
   await t.test("time limit: an attempt past its deadline is closed and graded by the server from what was saved", async () => {
     const timed = ok(await call("POST", ev, owner.cookie, { title: "Timed" }), 201).id as string;
     const sec = ok(await call("POST", `${ev}/${timed}/sections`, owner.cookie, { title: "S" }), 201).id as string;

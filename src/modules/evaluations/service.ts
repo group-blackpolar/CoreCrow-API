@@ -10,6 +10,7 @@ import { tenantRepository } from "../tenancy/repository.js";
 import { contentSchema, emptyContent, toCenti, type Block, type Content } from "./content.js";
 import { draftOps, type QuestionInput } from "./draft-ops.js";
 import { grade, percentOf, playerContent, reviewAvailable, reviewContent } from "./grading.js";
+import { buildStats, type AnswerCount } from "./stats.js";
 import { validateForPublish } from "./validation.js";
 
 /** Technical constant: allowance for network latency between the deadline and the last autosave/submit that left in time. */
@@ -423,6 +424,55 @@ export const evaluations = {
       if (attempt!.status === "IN_PROGRESS") fail(409, "ATTEMPT_OPEN", "The attempt has not been submitted");
       const { snapshot } = await versionContent(tx, attempt!.versionId);
       return resultView(tx, attempt!, snapshot, new Date(), reader && !owner);
+    });
+  },
+  /** The person's own closed attempts across evaluations, newest first: their history. */
+  myResults(userId: string, organizationId: string) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "evaluations.take");
+      const attempts = await tx.evaluationAttempt.findMany({ where: { organizationId, userId, status: { not: "IN_PROGRESS" } }, orderBy: [{ submittedAt: "desc" }, { id: "asc" }], take: 100 });
+      const results = new Map((await tx.evaluationResult.findMany({ where: { organizationId, attemptId: { in: attempts.map((a) => a.id) } } })).map((row) => [row.attemptId, row]));
+      const titles = new Map((await tx.evaluation.findMany({ where: { organizationId, id: { in: [...new Set(attempts.map((a) => a.evaluationId))] } }, select: { id: true, title: true, kind: true } })).map((ev) => [ev.id, ev]));
+      return attempts.flatMap((attempt) => {
+        const result = results.get(attempt.id);
+        const ev = titles.get(attempt.evaluationId);
+        return result && ev ? [{ attemptId: attempt.id, evaluationId: attempt.evaluationId, title: ev.title, kind: ev.kind, attemptNumber: attempt.attemptNumber, status: attempt.status, submittedAt: attempt.submittedAt, scorePoints: result.scoreCenti / 100, maxPoints: result.maxScoreCenti / 100, percent: percentOf(result.scoreCenti, result.maxScoreCenti) }] : [];
+      });
+    });
+  },
+  /**
+   * Statistics of one version (default: the latest with attempts) plus a per-version comparison. Only closed, graded attempts count;
+   * everything is read inside the caller's organization and needs evaluations.results.read.
+   */
+  stats(userId: string, organizationId: string, evaluationId: string, versionId?: string) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "evaluations.results.read");
+      const ev = await load(tx, organizationId, evaluationId);
+      const versions = await tx.evaluationVersion.findMany({ where: { organizationId, evaluationId }, orderBy: { version: "asc" }, select: { id: true, version: true, publishedAt: true, questionCount: true, maxScoreCenti: true } });
+      const attempts = await tx.evaluationAttempt.groupBy({ by: ["versionId", "status"], where: { organizationId, evaluationId }, _count: { _all: true } });
+      const results = await tx.evaluationResult.findMany({ where: { organizationId, evaluationId }, select: { versionId: true, scoreCenti: true, maxScoreCenti: true }, take: 50_000 });
+      const comparison = versions.map((version) => {
+        const mine = results.filter((row) => row.versionId === version.id);
+        const count = (status: string) => attempts.find((a) => a.versionId === version.id && a.status === status)?._count._all ?? 0;
+        return {
+          id: version.id, version: version.version, publishedAt: version.publishedAt, questionCount: version.questionCount, maxPoints: version.maxScoreCenti / 100,
+          attempts: count("IN_PROGRESS") + count("SUBMITTED") + count("EXPIRED"), graded: mine.length,
+          meanPercent: mine.length ? Math.round((mine.reduce((sum, row) => sum + percentOf(row.scoreCenti, row.maxScoreCenti), 0) / mine.length) * 100) / 100 : null,
+        };
+      });
+      if (versionId && !versions.some((version) => version.id === versionId)) fail(404, "NOT_FOUND", "Version not found");
+      const selected = versionId ?? [...comparison].reverse().find((version) => version.attempts > 0)?.id ?? ev.currentVersionId ?? comparison.at(-1)?.id ?? null;
+      if (!selected) return { evaluation: { id: ev.id, title: ev.title }, versions: comparison, selectedVersionId: null, stats: null };
+      const { snapshot } = await versionContent(tx, selected);
+      const scope = results.length ? await tx.evaluationResult.findMany({ where: { organizationId, evaluationId, versionId: selected }, select: { scoreCenti: true, maxScoreCenti: true, timeUsedSeconds: true, breakdown: true }, take: 50_000 }) : [];
+      const answers = await tx.$queryRaw<Array<{ questionId: string; optionId: string | null; count: number }>>(Prisma.sql`
+        SELECT a."questionId", a."optionId", count(*)::int AS "count"
+        FROM "EvaluationAnswer" a JOIN "EvaluationAttempt" t ON t."id" = a."attemptId"
+        WHERE t."organizationId" = ${organizationId} AND t."evaluationId" = ${evaluationId} AND t."versionId" = ${selected} AND t."status" IN ('SUBMITTED', 'EXPIRED')
+        GROUP BY a."questionId", a."optionId"`);
+      const count = (status: string) => attempts.find((a) => a.versionId === selected && a.status === status)?._count._all ?? 0;
+      const stats = buildStats(snapshot.content, scope as unknown as Parameters<typeof buildStats>[1], answers satisfies AnswerCount[], { inProgress: count("IN_PROGRESS"), submitted: count("SUBMITTED"), expired: count("EXPIRED") });
+      return { evaluation: { id: ev.id, title: ev.title }, versions: comparison, selectedVersionId: selected, stats };
     });
   },
   myAttempts(userId: string, organizationId: string, evaluationId: string) {
