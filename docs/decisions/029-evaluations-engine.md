@@ -74,3 +74,20 @@ publication, review NEVER, attempts exhausted, results access, deadline expiry, 
 - `available` reads each current snapshot to expose duration/attempt limits (fine for tens of evaluations; denormalize if it grows).
 - Draft-level "preview as student" does not exist yet.
 - Not deployed; the production migration needs the usual pre-run `pg_dump`.
+
+## Phase 5 addendum — Exam Builder, Exam Player, results (NORTH)
+Hosting: a new panel component `evaluation_workspace` (`{ views: ("builder"|"player"|"results")[], kind?: "EXAM"|"FORM", title? }`, strict schema, no organization or data inside the document)
+is placed in a published panel, exactly like `document_workspace`. Which panel hosts it is data: `scripts/organizations/stress-test.mjs` puts it in *Evaluations > Exams* and *Forms*
+(builder + player + results, filtered by kind) and *Attempts and results* (results). Each view appears only to members holding its permission; CORECROW authorizes every request.
+- **Builder** (`North-BP/src/features/evaluations`): list (create, duplicate, archive/restore, delete drafts), editor with Content (sections, shared reference texts, questions with 2–12 options, radio to mark the correct one,
+  points, category, explanation, reorder), Settings (duration, attempts, scoring penalties, review policy, AI flag), Assignments (role / group / person + window) and Publishing (server-side validation list, publish, versions).
+  Edits are optimistic and saved per question after a pause through ONE serialized queue carrying the revision; a stale revision reloads the draft instead of overwriting.
+- **Player**: focus-mode overlay (`fixed inset-0`, `h-dvh`, safe-area padding). ≥1024px two columns (reference text | question, independent scroll, 40/60 · 50/50 · 60/40 switch remembered locally); below, one column with the text one tap away in a bottom sheet
+  that keeps the question and choice; question navigator in a sheet (<1280px) or a right rail (≥1280px); sticky bottom bar with 44px+ targets; timer from the server clock; submit confirmation with the unanswered count.
+- **Autosave** (`answerSync.ts`, pure and unit-tested): per-question monotonic `seq`, one in-flight write per question, retry with backoff (1 s → 30 s) keeping the same seq, adoption of a newer server answer (other tab/device), flush on reconnect/visibility, unload warning while unsaved.
+  At 0:00 the work is sent and the attempt submitted; the server enforces the deadline regardless.
+- **Results**: own result (score, counts, time, per-category and per-section bars, review only if the version's policy released it — the review payload now carries statement and options), and an authors' table of every attempt with drill-down.
+- i18n es/en (`pack22`, parity-tested). Studio treats the component like `document_workspace` (not addable; preview notice).
+
+Limits of this phase: images and tables in questions are supported by the API and rendered by the player, but the Builder edits text only (existing image/table blocks are preserved, not creatable);
+no statistics view (Phase 6); no AI drafting (Phase 7).
