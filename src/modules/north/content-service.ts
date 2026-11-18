@@ -14,6 +14,7 @@ import { northContentRepository as repo } from "./content-repository.js";
 import { cloneNorthPanelDocument } from "./clone-document.js";
 import { buildDraftReport } from "./content-validation.js";
 import { gatherDraftFacts } from "./content-facts.js";
+import { documentViewer, filterDocumentForViewer } from "./document-visibility.js";
 
 type RevisionInput = {
   document: unknown;
@@ -256,8 +257,10 @@ export const northContent = {
     if (!(await hasNorthCapability(tx, userId, "north.content.read", target))) fail(404, "NOT_FOUND", "Content not found");
     const allowedLocales = new Set([panel.publishedRevision.defaultLocale, ...(panel.publishedRevision.fallbackLocales as string[])]);
     const resolvedLocale = requestedLocale && allowedLocales.has(requestedLocale) ? requestedLocale : panel.publishedRevision.defaultLocale;
+    const viewer = await documentViewer(tx, organizationId, userId);
     return {
       ...revisionView(panel.publishedRevision),
+      document: filterDocumentForViewer(panel.publishedRevision.document as unknown as { sections: never[] }, viewer) as unknown as Prisma.JsonValue,
       locale: { requested: requestedLocale ?? null, resolved: resolvedLocale, fallbackChain: [resolvedLocale, ...[...allowedLocales].filter((item) => item !== resolvedLocale)] },
     };
   },

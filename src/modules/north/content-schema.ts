@@ -13,6 +13,12 @@ const safeUrl = z.string().url().max(2_048).refine((value) => {
   return protocol === "https:" || protocol === "http:" || protocol === "mailto:";
 }, "URL protocol is not allowed");
 
+// D3: shown only to members holding one of these roles or belonging to one of these groups (see document-visibility.ts).
+const componentVisibility = z.object({
+  roles: z.array(z.enum(["OWNER", "ADMIN", "BILLING_ADMIN", "MEMBER", "VIEWER"])).max(5).optional(),
+  groupIds: z.array(resourceId).max(50).optional(),
+}).strict().refine((value) => (value.roles?.length ?? 0) + (value.groupIds?.length ?? 0) > 0, "Visibility needs at least one role or group");
+
 const breakpoint = z.object({
   x: z.number().int().min(0).max(11),
   y: z.number().int().min(0).max(10_000),
@@ -108,6 +114,9 @@ const catalog = {
   // Interactive tenant document workspace (list, editor, PDF, delivery). Renders only for authenticated members;
   // all data and permissions come from the /documents contracts, never from this document.
   document_workspace: z.object({ typeKey: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/), title: localized.optional() }).strict(),
+  // Evaluations workspace (ADR 029): builder, player and results for the organization's evaluations. Renders for authenticated members;
+  // all data and permissions come from the /evaluations contracts, never from this document. `kind` narrows the list to exams or forms.
+  evaluation_workspace: z.object({ views: z.array(z.enum(["builder", "player", "results"])).min(1).max(3), kind: z.enum(["EXAM", "FORM"]).optional(), title: localized.optional() }).strict(),
   // Information-page blocks (static copy; the numbers on such a page come from bound kpi_card components, never from here).
   // Hero: eyebrow, title, body, a few chips, an optional side note and the organization logo.
   hero: z.object({
@@ -226,6 +235,7 @@ export const northPanelDocumentInput = z.object({
       schemaVersion: z.number().int().min(1),
       props: z.record(z.string(), z.unknown()),
       bindings,
+      visibility: componentVisibility.optional(),
       layout: northResponsiveLayout,
       order: z.number().int().min(0).max(100_000),
     }).strict()).max(10_000),
@@ -350,6 +360,7 @@ export async function validateNorthPanelDocument(
   const components = new Set<string>();
   const assets = new Set<string>();
   const bindingReferences: Array<z.infer<typeof bindingSchema>> = [];
+  const visibilityGroups = new Set<string>();
   let componentCount = 0;
   assertNoExecutableContent(document);
   for (const section of document.sections) {
@@ -359,6 +370,7 @@ export async function validateNorthPanelDocument(
     for (const component of section.components) {
       if (components.has(component.id)) fail(422, "PANEL_DOCUMENT_INVALID", "Component IDs must be unique");
       components.add(component.id);
+      for (const groupId of component.visibility?.groupIds ?? []) visibilityGroups.add(groupId);
       const key = `${component.type}@${component.schemaVersion}`;
       if (!Object.hasOwn(northComponentRegistry, key)) fail(422, "COMPONENT_SCHEMA_UNKNOWN", "Component type or schema version is not registered");
       const type = component.type as NorthComponentType;
@@ -371,6 +383,11 @@ export async function validateNorthPanelDocument(
     }
   }
   if (componentCount > limits.componentsPerPanel) fail(422, "PANEL_COMPONENT_LIMIT_EXCEEDED", `Panel cannot contain more than ${limits.componentsPerPanel} components`);
+  if (visibilityGroups.size) {
+    if (!context.tx) fail(422, "VISIBILITY_VALIDATION_UNAVAILABLE", "Visibility groups cannot be validated");
+    if ((await context.tx!.organizationGroup.count({ where: { organizationId: context.organizationId, id: { in: [...visibilityGroups] } } })) !== visibilityGroups.size)
+      fail(422, "VISIBILITY_GROUP_INVALID", "A visibility group does not exist in this organization");
+  }
   if (assets.size) {
     if (!context.validateAssetReference) fail(422, "ASSET_VALIDATION_UNAVAILABLE", "Asset references cannot be validated");
     for (const assetId of assets)

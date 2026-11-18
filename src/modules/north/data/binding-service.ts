@@ -1,3 +1,4 @@
+import { documentViewer, filterDocumentForViewer } from "../document-visibility.js";
 import type { Prisma } from "../../../lib/database.js";
 import { fail } from "../../../shared/errors.js";
 import { transaction, type Transaction } from "../../../shared/transaction.js";
@@ -110,7 +111,7 @@ async function authorizedPublishedPanel(tx: Transaction, userId: string, organiz
 async function authorizedPublishedBinding(tx: Transaction, userId: string, organizationId: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[]) {
       const { published } = await authorizedPublishedPanel(tx, userId, organizationId, panelId);
       const binding = await tx.northAnalyticsBinding.findFirst({ where: { id: bindingId, organizationId, panelId } });
-      if (!binding || !referenced(published.document as unknown as NorthPanelDocument, binding)) fail(404, "NOT_FOUND", "Binding not found");
+      if (!binding || !referenced(filterDocumentForViewer(published.document as unknown as NorthPanelDocument, await documentViewer(tx, organizationId, userId)), binding)) fail(404, "NOT_FOUND", "Binding not found");
       await authorizeDataset(tx, userId, organizationId, binding.datasetId, "north.data.query");
       const query = datasetQuerySchema.parse(binding.query);
       const allowed = allowedBindingFilterSchema.array().parse(binding.allowedFilters);

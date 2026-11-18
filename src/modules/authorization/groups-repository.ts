@@ -1,6 +1,14 @@
 import type { Transaction } from "../../shared/transaction.js";
 
 export const groupsRepository = {
+  /** How many of these group ids exist in the organization (tenant-checks a list of group references). */
+  countIn(tx: Transaction, organizationId: string, ids: string[]) {
+    return tx.organizationGroup.count({ where: { organizationId, id: { in: ids } } });
+  },
+  /** The groups a membership belongs to. */
+  groupIdsOf(tx: Transaction, organizationId: string, membershipId: string) {
+    return tx.organizationGroupMember.findMany({ where: { organizationId, membershipId }, select: { groupId: true } }).then((rows) => rows.map((row) => row.groupId));
+  },
   list(tx: Transaction, organizationId: string) {
     return tx.organizationGroup.findMany({
       where: { organizationId },

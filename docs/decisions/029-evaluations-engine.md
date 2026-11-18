@@ -1,0 +1,102 @@
+# 029 — Evaluations engine (Phase 4: backend and API)
+
+Status: implemented and tested in CoreCrow (2026-11-17). Not deployed. No Exam Builder / Exam Player UI yet (Phase 5).
+
+## Scope and rule
+A generic module, `src/modules/evaluations`, enabled for **any** organization that holds the permissions. Nothing names an organization,
+an exam, a question count or an option count. Synthetic fixtures live only in tests. The first real exam is created later through the API.
+
+## Model (migration `20261117180000_evaluations`, additive and reversible; rollback SQL in its header)
+```mermaid
+erDiagram
+  Evaluation ||--o{ EvaluationVersion : "publishes (immutable)"
+  Evaluation ||--o{ EvaluationAssignment : "who may take"
+  EvaluationVersion ||--o{ EvaluationAttempt : "pins the key"
+  EvaluationAttempt ||--o{ EvaluationAnswer : "one row per question, seq-guarded"
+  EvaluationAttempt ||--|| EvaluationResult : "graded once"
+```
+- **Draft = one validated JSON document** on `Evaluation.draft` (sections, reference texts, questions, options, correct option, settings),
+  edited with optimistic concurrency (`draftRevision`, optional `expectedRevision` on every write). Same idea as North panel revisions (ADR 014).
+  Question-level API operations are pure functions over that document (`draft-ops.ts`).
+- **Version = immutable snapshot incl. the answer key** (`EvaluationVersion`, database trigger rejects UPDATE/DELETE/TRUNCATE). Attempts pin a
+  `versionId`; editing the draft or publishing v2 never changes an attempt in progress or a past result.
+- Tenant integrity by composite foreign keys (version→evaluation, attempt→version, assignment→group/membership, result→attempt all carry `organizationId`).
+- One open attempt per person and evaluation is a **partial unique index** (a double click or two tabs cannot open two).
+- Points are integers in hundredths ("centi") everywhere; percent is derived.
+
+## Content rules
+Single-choice questions with 2–12 options (labels A, B, C… derived from position), optional shared reference text per question, sections, category
+(competency) per question, per-question points, explanation. Blocks are plain text/list/image(North asset of the same organization)/table; nothing is interpreted as markup.
+Draft saving is lenient; **publication is strict** (`validation.ts`): ≥1 question, ≥2 non-empty options, exactly one correct option that exists, points > 0,
+known section/text, `AFTER_DATE` needs a date. Failure → `422 EVALUATION_INVALID`; `POST …/validate` lists every issue.
+Settings (per version): duration, max attempts (null = unlimited), scoring (wrong/unanswered penalty %, floor at zero), review policy (NEVER / AFTER_SUBMIT / AFTER_DATE), AI-during-attempt flag.
+
+## Grading and key protection
+`grading.ts` is pure and deterministic and runs **on the server from the pinned version**; the client sends only choices. Results (correct / incorrect /
+unanswered, score, max, percent, time used, per-category and per-section breakdown) are persisted once (`EvaluationResult.attemptId` is the key), so a repeated submit returns the same result.
+The player payload (`playerContent`) carries neither `correctOptionId` nor explanations. Review (key + explanations) is returned only when the version's policy allows it for a
+**closed** attempt, or to holders of `evaluations.results.read`. A person with only `evaluations.take` can reach no authoring, version, assignment or other person's result endpoint.
+Deadlines are enforced lazily: any access after `deadlineAt` (+10 s network allowance, `CLOSE_GRACE_MS`) closes the attempt as `EXPIRED` and grades what was saved.
+
+## Autosave and conflicts
+`PUT …/answers` takes `{questionId, optionId|null, seq}`; the server ignores a write whose `seq` is not newer than the stored one and returns the authoritative state for the questions
+sent (`applied`, `ignored`, `answers`). State lives in PostgreSQL, never only in the browser; any tab or device that loads the attempt sees the same answers.
+
+## Permissions (added to `policy.ts`)
+| Permission | Default roles | Grants |
+| --- | --- | --- |
+| `evaluations.read` | OWNER, ADMIN | list (no content/key), versions, assignments |
+| `evaluations.create` / `.update` / `.delete` | OWNER, ADMIN | create, edit draft (**includes the key**), delete never-published drafts |
+| `evaluations.publish` | OWNER, ADMIN | publish a version |
+| `evaluations.manage` | OWNER, ADMIN | assignments, archive/unarchive |
+| `evaluations.results.read` | OWNER, ADMIN | all attempts, any result with review |
+| `evaluations.take` | OWNER, ADMIN, MEMBER, VIEWER | list *assigned* evaluations, attempt, autosave, submit, own result |
+Taking additionally requires an assignment (role, group or person, optional window) — default deny; unassigned or unpublished looks like `404`.
+
+## API (`/v1/organizations/:organizationId/…`, documented in `openapi.json`)
+Authoring: `GET|POST /evaluations`, `GET|PATCH|DELETE /evaluations/:id`, `POST …/duplicate|archive|unarchive|validate|publish`, `GET …/versions`,
+`POST …/sections|passages|questions`, `PATCH|DELETE …/sections/:id|passages/:id|questions/:id`, `PUT …/sections/order|questions/order`, `PUT …/questions/:id/correct-option`,
+`GET|PUT …/assignments`, `GET …/attempts`. Taking: `GET /evaluations/available`, `POST /evaluations/:id/attempts`, `GET /evaluations/:id/my-attempts`,
+`GET /evaluation-attempts/:attemptId`, `PUT …/answers`, `POST …/submit`, `GET …/result`.
+Errors: `EVALUATION_INVALID`, `EVALUATION_REVISION_CONFLICT`, `EVALUATION_ORDER_INVALID`, `EVALUATION_CORRECT_OPTION_INVALID`, `EVALUATION_SECTION_NOT_EMPTY`, `EVALUATION_ARCHIVED`,
+`EVALUATION_HAS_HISTORY`, `EVALUATION_ASSIGNMENT_INVALID|CONFLICT`, `EVALUATION_WINDOW_CLOSED`, `EVALUATION_ATTEMPTS_EXHAUSTED`, `ATTEMPT_CLOSED|OPEN|QUESTION_UNKNOWN|OPTION_UNKNOWN`.
+All mutations are audited (`EVALUATION_*`, with the operation name, never the content). The organization always comes from the path and is checked against the principal's membership.
+
+## Verification
+`tests/evaluations.test.ts` (8 unit checks: schema, draft operations, publication rules, grading incl. penalties and breakdowns, player view without key, review policy) and
+`tests/evaluations.integration.test.ts` (14 checks: full authoring→publication→assignment→attempt→autosave→grade flow, concurrency on start, stale-write handling, key change after
+publication, review NEVER, attempts exhausted, results access, deadline expiry, cross-tenant isolation, trigger immutability, lifecycle, audit). The authorization matrix sweeps the new routes
+(no session, foreign tenant, blocked network). Legacy `integration.test.ts` (23) still passes on a fresh database.
+
+## Limitations / next
+- No UI yet (Phase 5). Statistics (difficulty, distributions, historical comparison) are Phase 6; `GET …/attempts` is the raw material.
+- Only single-choice questions. Shuffling, question bank reuse and AI drafting are not implemented.
+- `available` reads each current snapshot to expose duration/attempt limits (fine for tens of evaluations; denormalize if it grows).
+- Draft-level "preview as student" does not exist yet.
+- Not deployed; the production migration needs the usual pre-run `pg_dump`.
+
+## Phase 5 addendum — Exam Builder, Exam Player, results (NORTH)
+Hosting: a new panel component `evaluation_workspace` (`{ views: ("builder"|"player"|"results")[], kind?: "EXAM"|"FORM", title? }`, strict schema, no organization or data inside the document)
+is placed in a published panel, exactly like `document_workspace`. Which panel hosts it is data: `scripts/organizations/stress-test.mjs` puts it in *Evaluations > Exams* and *Forms*
+(builder + player + results, filtered by kind) and *Attempts and results* (results). Each view appears only to members holding its permission; CORECROW authorizes every request.
+- **Builder** (`North-BP/src/features/evaluations`): list (create, duplicate, archive/restore, delete drafts), editor with Content (sections, shared reference texts, questions with 2–12 options, radio to mark the correct one,
+  points, category, explanation, reorder), Settings (duration, attempts, scoring penalties, review policy, AI flag), Assignments (role / group / person + window) and Publishing (server-side validation list, publish, versions).
+  Edits are optimistic and saved per question after a pause through ONE serialized queue carrying the revision; a stale revision reloads the draft instead of overwriting.
+- **Player**: focus-mode overlay (`fixed inset-0`, `h-dvh`, safe-area padding). ≥1024px two columns (reference text | question, independent scroll, 40/60 · 50/50 · 60/40 switch remembered locally); below, one column with the text one tap away in a bottom sheet
+  that keeps the question and choice; question navigator in a sheet (<1280px) or a right rail (≥1280px); sticky bottom bar with 44px+ targets; timer from the server clock; submit confirmation with the unanswered count.
+- **Autosave** (`answerSync.ts`, pure and unit-tested): per-question monotonic `seq`, one in-flight write per question, retry with backoff (1 s → 30 s) keeping the same seq, adoption of a newer server answer (other tab/device), flush on reconnect/visibility, unload warning while unsaved.
+  At 0:00 the work is sent and the attempt submitted; the server enforces the deadline regardless.
+- **Results**: own result (score, counts, time, per-category and per-section bars, review only if the version's policy released it — the review payload now carries statement and options), and an authors' table of every attempt with drill-down.
+- i18n es/en (`pack22`, parity-tested). Studio treats the component like `document_workspace` (not addable; preview notice).
+
+Limits of this phase: images and tables in questions are supported by the API and rendered by the player, but the Builder edits text only (existing image/table blocks are preserved, not creatable);
+no statistics view (Phase 6); no AI drafting (Phase 7).
+
+## Phase 6 addendum — statistics and history
+- `GET /organizations/:org/evaluations/:id/stats[?versionId=]` (needs `evaluations.results.read`): for one version (default: the latest with attempts) — attempts started / in progress / submitted / timed out, completion and time-out rate,
+  mean / median / min / max percent, a 10-bucket distribution, average time, **difficulty per question** (correct / wrong / omitted, correct rate, hardest first) with **distractor counts** per option, per-category percent, and a **per-version comparison**
+  (attempts, graded, mean). Versions are never mixed: questions and keys differ between them. Pure maths in `stats.ts`; SQL only aggregates answers (tenant-bound in the query).
+- `GET /organizations/:org/evaluation-results/mine`: the caller's closed attempts across evaluations (their history). Nobody reads another person's history there; authors use `…/attempts` and `…/result`.
+- NORTH: Results > Statistics (cards, histogram, expandable hardest questions with distractor bars, categories, version table) and "My results" under Take. Verified in a browser with 8 synthetic students and two versions (1280 px and 375 px, no horizontal overflow).
+- Persistence ("advanced"): already server-authoritative since Phase 4 (seq-guarded autosave, any device, reload). Not added: a browser-side backup (the brief forbids relying on localStorage) or per-question time tracking.
+- Limits: statistics are computed on demand from up to 50 000 results per evaluation (no materialized table); "completion" counts submitted or timed-out attempts over started ones; question text in the table is the first paragraph, truncated.

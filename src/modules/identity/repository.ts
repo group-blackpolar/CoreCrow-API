@@ -15,6 +15,10 @@ export const publicUser = {
   createdAt: true,
 } as const;
 export const identities = {
+  /** Display identity of several people at once (name, email). */
+  summaries(tx: Transaction, ids: string[]) {
+    return tx.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
+  },
   get(id: string) {
     return prisma.user.findUnique({ where: { id }, select: publicUser });
   },
