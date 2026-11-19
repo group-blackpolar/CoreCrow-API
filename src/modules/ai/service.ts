@@ -6,6 +6,8 @@ import { aiConfiguration, requireAIEnabled, type AIConfiguration } from "./confi
 import { authorizeAI } from "./authorization.js";
 import { aiRepository as repo } from "./repository.js";
 import { GeminiProvider } from "./gemini.provider.js";
+import { FallbackProvider } from "./fallback.provider.js";
+import { OpenAICompatibleProvider } from "./openai.provider.js";
 import type { AIProvider } from "./provider.interface.js";
 import type { AIProviderMessage, AIProviderResponse, AIUsage } from "./provider.types.js";
 import { aiTools, type AIToolRegistry } from "./tool-registry.js";
@@ -160,11 +162,15 @@ export class AIService {
 
   private enabled() { return requireAIEnabled(this.configuration); }
   private provider() {
-    return this.providerInstance ??= new GeminiProvider(
+    const gemini = new GeminiProvider(
       this.configuration.geminiApiKey,
       this.configuration.providerTimeoutMs,
       this.configuration.geminiBaseUrl,
     );
+    const backup = this.configuration.fallback;
+    return this.providerInstance ??= backup
+      ? new FallbackProvider(gemini, new OpenAICompatibleProvider(backup.apiKey, backup.baseUrl, backup.model, this.configuration.providerTimeoutMs))
+      : gemini;
   }
 
   async resumePendingRuns() {

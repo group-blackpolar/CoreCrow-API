@@ -39,16 +39,20 @@ export function aiConfiguration() {
     geminiBaseUrl:
       process.env.AI_GEMINI_BASE_URL?.trim() ||
       "https://generativelanguage.googleapis.com",
+    // Optional OpenAI-compatible backup (Groq, Mistral, OpenRouter...) used when Gemini is rate limited; all three must be set.
+    fallback: (process.env.AI_FALLBACK_API_KEY?.trim() && process.env.AI_FALLBACK_BASE_URL?.trim() && process.env.AI_FALLBACK_MODEL?.trim())
+      ? { apiKey: process.env.AI_FALLBACK_API_KEY.trim(), baseUrl: process.env.AI_FALLBACK_BASE_URL.trim(), model: process.env.AI_FALLBACK_MODEL.trim() }
+      : null,
     providerTimeoutMs: integer("AI_PROVIDER_TIMEOUT_MS", 45_000, 1_000),
     runTimeoutMs: integer("AI_RUN_TIMEOUT_MS", 90_000, 5_000),
     maxToolRounds: integer("AI_MAX_TOOL_ROUNDS", 6),
-    maxOutputTokens: integer("AI_MAX_OUTPUT_TOKENS", 2_048, 1, 8_192),
-    contextMaxMessages: integer("AI_CONTEXT_MAX_MESSAGES", 50, 1, 100),
-    contextMaxCharacters: integer("AI_CONTEXT_MAX_CHARACTERS", 64_000, 8_000, 256_000),
+    maxOutputTokens: integer("AI_MAX_OUTPUT_TOKENS", 4_096, 1, 8_192),
+    contextMaxMessages: integer("AI_CONTEXT_MAX_MESSAGES", 80, 1, 100),
+    contextMaxCharacters: integer("AI_CONTEXT_MAX_CHARACTERS", 128_000, 8_000, 256_000),
     messageMaxCharacters: integer("AI_MESSAGE_MAX_CHARACTERS", 8_000, 1, 8_000),
-    userConcurrentRuns: integer("AI_USER_CONCURRENT_RUNS", 1),
+    userConcurrentRuns: integer("AI_USER_CONCURRENT_RUNS", 2),
     organizationConcurrentRuns: integer("AI_ORGANIZATION_CONCURRENT_RUNS", 3),
-    userRunsPerMinute: integer("AI_USER_RUNS_PER_MINUTE", 6),
+    userRunsPerMinute: integer("AI_USER_RUNS_PER_MINUTE", 10),
     organizationRunsPerMinute: integer("AI_ORGANIZATION_RUNS_PER_MINUTE", 30),
     actionTtlSeconds: integer("AI_ACTION_TTL_SECONDS", 600, 30),
     pricingVersion: process.env.AI_PRICING_VERSION?.trim() || "unpriced-v1",
