@@ -25,8 +25,9 @@ export const auth = betterAuth({
   plugins: [openAPI({ disableDefaultReference: true })],
   logger: { disabled: true },
   session: {
-    expiresIn: 60 * 60 * 12,
-    disableSessionRefresh: true,
+    // Sliding window: 7 days of inactivity ends a session; activity extends it at most once per hour.
+    expiresIn: 60 * 60 * 24 * 7,
+    updateAge: 60 * 60,
     cookieCache: { enabled: false },
   },
   emailAndPassword: {
