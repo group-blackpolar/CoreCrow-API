@@ -14,6 +14,13 @@ function combinedSignal(signal: AbortSignal | undefined, timeoutMs: number) {
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
+// Quota errors are not fixed by an immediate retry: back off (1.5s, 3s), aborting early if the run is cancelled.
+const pause = (attempt: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 1_500 * (attempt + 1));
+    signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
+
 function contents(request: AIProviderRequest): Content[] {
   return request.messages.map((message) => {
     if (message.role === "tool") {
@@ -121,8 +128,10 @@ export class GeminiProvider implements AIProvider {
         return normalized(await this.models.generateContent(this.parameters(request, signal)));
       } catch (error) {
         const mapped = providerError(error);
-        if (attempt < 1 && ["AI_PROVIDER_RATE_LIMITED", "AI_PROVIDER_UNAVAILABLE"].includes(mapped.code))
+        if (attempt < 2 && !signal?.aborted && ["AI_PROVIDER_RATE_LIMITED", "AI_PROVIDER_UNAVAILABLE"].includes(mapped.code)) {
+          await pause(attempt, signal);
           continue;
+        }
         throw mapped;
       }
     }
@@ -153,8 +162,10 @@ export class GeminiProvider implements AIProvider {
         return;
       } catch (error) {
         const mapped = providerError(error);
-        if (!emitted && attempt < 1 && ["AI_PROVIDER_RATE_LIMITED", "AI_PROVIDER_UNAVAILABLE"].includes(mapped.code))
+        if (!emitted && attempt < 2 && !signal?.aborted && ["AI_PROVIDER_RATE_LIMITED", "AI_PROVIDER_UNAVAILABLE"].includes(mapped.code)) {
+          await pause(attempt, signal);
           continue;
+        }
         throw mapped;
       }
     }
