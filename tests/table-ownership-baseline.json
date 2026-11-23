@@ -92,7 +92,9 @@
     "EvaluationAssignment": "evaluations",
     "EvaluationAttempt": "evaluations",
     "EvaluationAnswer": "evaluations",
-    "EvaluationResult": "evaluations"
+    "EvaluationResult": "evaluations",
+    "EvaluationCategory": "evaluations",
+    "EvaluationFeedback": "evaluations"
   },
   "exceptions": [
     "ai:NorthCategory",
