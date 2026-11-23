@@ -3,8 +3,8 @@
 // entry of the acting account applies. Nothing here is specific to an exam.
 //
 // definition = {
-//   key (stable, lowercase), kind, title, description?, settings (the evaluation settings object),
-//   sections: [{ title, description?, passage?: { title, body: Block[] }, questions: [{ prompt: Block[], category?, points?, options: string[], correct: "A".."L", explanation?: Block[] }] }],
+//   key (stable, lowercase), kind, title, description?, settings (the evaluation settings object), categoryKey? (an existing category), skills? ([{ id, competency, label, strength, gap, study, strategy }]),
+//   sections: [{ title, description?, passage?: { title, body: Block[] }, questions: [{ prompt: Block[], category?, topic?, skills?: string[], difficulty?, reference?, points?, options: string[], correct: "A".."L", explanation?: Block[] }] }],
 //   assignments?: [{ role | groupId | userId, opensAt?, closesAt? }], publish?: boolean
 // }
 // Idempotent by `key` within the organization: if an evaluation with that key exists NOTHING is changed (the content belongs to its editors from then
@@ -22,14 +22,19 @@ export async function importEvaluation(call, organizationSlug, definition, log =
   const created = (await call("POST", base, { key: definition.key, kind: definition.kind, title: definition.title, description: definition.description ?? null })).json;
   const id = created.id;
   try {
-    let revision = (await call("PATCH", `${base}/${id}`, { settings: definition.settings, expectedRevision: created.draftRevision })).json.draftRevision;
+    if (definition.categoryKey) {
+      const category = (await call("GET", `/organizations/${organization.id}/evaluation-categories`)).json.categories.find((item) => item.key === definition.categoryKey);
+      if (!category) throw new Error(`Category "${definition.categoryKey}" does not exist: run scripts/ensure-evaluation-categories.mjs first`);
+      await call("PUT", `${base}/${id}/category`, { categoryId: category.id });
+    }
+    let revision = (await call("PATCH", `${base}/${id}`, { settings: definition.settings, ...(definition.skills ? { skills: definition.skills } : {}), expectedRevision: created.draftRevision })).json.draftRevision;
     const op = async (method, path, body) => { const result = (await call(method, `${base}/${id}${path}`, { ...body, expectedRevision: revision })).json; revision = result.draftRevision; return result; };
     const order = []; // [questionDefinition] in the order they were added
     for (const section of definition.sections) {
       const sectionId = (await op("POST", "/sections", { title: section.title, ...(section.description ? { description: section.description } : {}) })).id;
       const passageId = section.passage ? (await op("POST", "/passages", { title: section.passage.title, body: section.passage.body })).id : null;
       for (const question of section.questions) {
-        await op("POST", "/questions", { sectionId, passageId, category: question.category ?? null, prompt: question.prompt, points: question.points ?? 1, explanation: question.explanation ?? [], options: question.options.map((text) => ({ text })) });
+        await op("POST", "/questions", { sectionId, passageId, category: question.category ?? null, topic: question.topic ?? null, skills: question.skills ?? [], ...(question.difficulty ? { difficulty: question.difficulty } : {}), reference: question.reference ?? null, prompt: question.prompt, points: question.points ?? 1, explanation: question.explanation ?? [], options: question.options.map((text) => ({ text })) });
         order.push(question);
       }
     }
@@ -54,4 +59,29 @@ export async function importEvaluation(call, organizationSlug, definition, log =
     await call("DELETE", `${base}/${id}`).catch(() => undefined);
     throw error;
   }
+}
+
+/**
+ * Idempotent initializer of evaluation categories: creates the ones whose key is missing (PUT .../by-key/:key never touches an existing one) and
+ * assigns existing evaluations (by key) that have no category yet. definition = { categories: [{ key, name, description?, color?, position?, evaluations?: [evaluationKey] }] }.
+ */
+export async function ensureCategories(call, organizationSlug, definition, log = () => {}) {
+  const organization = (await call("GET", "/organizations")).json.find((item) => item.slug === organizationSlug);
+  if (!organization) throw new Error(`Organization "${organizationSlug}" not found for this session`);
+  const base = `/organizations/${organization.id}`;
+  const report = [];
+  for (const [index, { key, evaluations = [], ...fields }] of definition.categories.entries()) {
+    const { created, category } = (await call("PUT", `${base}/evaluation-categories/by-key/${key}`, { position: index, ...fields })).json;
+    const assigned = [];
+    if (evaluations.length) {
+      const rows = (await call("GET", `${base}/evaluations`)).json;
+      for (const evaluationKey of evaluations) {
+        const row = rows.find((item) => item.key === evaluationKey);
+        if (row && !row.categoryId) { await call("PUT", `${base}/evaluations/${row.id}/category`, { categoryId: category.id }); assigned.push(evaluationKey); }
+      }
+    }
+    log(`category ${key}: ${created ? "created" : "already existed"}${assigned.length ? `, assigned ${assigned.join(", ")}` : ""}`);
+    report.push({ key, created, assigned });
+  }
+  return report;
 }

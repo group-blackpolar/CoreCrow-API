@@ -42,6 +42,14 @@ export function validateForPublish(content: Content): Issue[] {
       if (question.sectionId !== previous) { if (seen.has(question.sectionId)) add("EVALUATION_SECTION_ORDER", `questions[${index}]`, "Questions of a section must be consecutive in a forward-only evaluation"); seen.add(question.sectionId); previous = question.sectionId; }
     });
   }
+  const skillIds = new Set(content.skills.map((skill) => skill.id));
+  if (skillIds.size !== content.skills.length) add("EVALUATION_DUPLICATE_ID", "skills", "Skill identifiers must be unique");
+  content.questions.forEach((question, index) => { if (question.skills.some((id) => !skillIds.has(id))) add("EVALUATION_SKILL_UNKNOWN", `questions[${index}]`, "Question uses a skill that is not defined"); });
+  const { levels } = content.settings.performance;
+  const mins = levels.map((level) => level.minPercent);
+  if (new Set(mins).size !== mins.length || new Set(levels.map((level) => level.key)).size !== levels.length) add("EVALUATION_LEVELS_INVALID", "settings.performance", "Level keys and thresholds must be unique");
+  if (!mins.includes(0)) add("EVALUATION_LEVELS_INVALID", "settings.performance", "One level must start at 0 %");
+  if (content.settings.pacing.sessionMinutes !== null && content.settings.pacing.navigation !== "FORWARD_ONLY") add("EVALUATION_SESSION_LIMIT_NEEDS_PACING", "settings.pacing", "A session limit needs forward-only navigation");
   if (content.settings.review.mode === "AFTER_DATE" && !content.settings.review.revealAfter) add("EVALUATION_REVIEW_DATE_REQUIRED", "settings.review", "A reveal date is required");
   return issues;
 }

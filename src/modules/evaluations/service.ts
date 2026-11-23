@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { Prisma, type EvaluationKind, type TenantRole } from "../../lib/database.js";
 import { DomainError, fail } from "../../shared/errors.js";
 import { transaction, type Transaction } from "../../shared/transaction.js";
@@ -8,8 +9,9 @@ import { identities } from "../identity/repository.js";
 import { northAssets } from "../north/asset-service.js";
 import { tenantRepository } from "../tenancy/repository.js";
 import { contentSchema, emptyContent, toCenti, type Block, type Content } from "./content.js";
+import { buildFeedback, GENERATOR, type Evidence, type Feedback } from "./feedback.js";
 import { draftOps, type QuestionInput } from "./draft-ops.js";
-import { grade, percentOf, playerContent, reviewAvailable, reviewContent } from "./grading.js";
+import { grade, percentOf, playerContent, questionOutcome, reviewAvailable, reviewContent } from "./grading.js";
 import { planPaced, type Closure, type PacedPlan } from "./paced.js";
 import { buildStats, type AnswerCount } from "./stats.js";
 import { validateForPublish } from "./validation.js";
@@ -32,7 +34,7 @@ function imageAssetIds(content: Content) {
 }
 
 const authorView = (ev: Awaited<ReturnType<typeof load>>) => ({
-  id: ev.id, key: ev.key, kind: ev.kind, title: ev.title, description: ev.description, status: ev.status,
+  id: ev.id, key: ev.key, kind: ev.kind, categoryId: ev.categoryId, title: ev.title, description: ev.description, status: ev.status,
   draftRevision: ev.draftRevision, publishedRevision: ev.publishedRevision, currentVersionId: ev.currentVersionId,
   hasUnpublishedChanges: ev.publishedRevision === null || ev.draftRevision > ev.publishedRevision,
   content: parse(ev.draft), createdAt: ev.createdAt, updatedAt: ev.updatedAt,
@@ -79,11 +81,25 @@ const isPaced = (content: Content) => content.settings.pacing.navigation === "FO
 /** What grading needs: the confirmed answers, and (paced) every question that was not confirmed or omitted in time = invalid_timeout. */
 async function gradingInput(tx: Transaction, attemptId: string, content: Content) {
   const rows = await tx.evaluationAnswer.findMany({ where: { attemptId } });
-  if (!isPaced(content)) return { answers: new Map<string, string | null>(rows.map((row) => [row.questionId, row.optionId])), timedOut: new Set<string>() };
+  // Time spent per question: only attempts that recorded when the server opened and closed it (paced) have it.
+  const seconds = new Map<string, number>(rows.flatMap((row) => (row.openedAt && row.closedAt ? [[row.questionId, Math.max(0, Math.round((row.closedAt.getTime() - row.openedAt.getTime()) / 1000))] as [string, number]] : [])));
+  if (!isPaced(content)) return { answers: new Map<string, string | null>(rows.map((row) => [row.questionId, row.optionId])), timedOut: new Set<string>(), seconds };
   const answers = new Map<string, string | null>();
   const settled = new Set<string>();
   for (const row of rows) if (row.closure === "CONFIRMED" || row.closure === "OMITTED") { answers.set(row.questionId, row.closure === "CONFIRMED" ? row.optionId : null); settled.add(row.questionId); }
-  return { answers, timedOut: new Set(content.questions.map((question) => question.id).filter((id) => !settled.has(id))) };
+  return { answers, timedOut: new Set(content.questions.map((question) => question.id).filter((id) => !settled.has(id))), seconds };
+}
+
+/** Appends a feedback version for a closed attempt (never overwrites one): generated only from the pinned version and what the attempt did. */
+async function writeFeedback(tx: Transaction, attempt: { id: string; organizationId: string }, content: Content, reason: string, createdBy: string | null, onlyIfChanged = false) {
+  const input = await gradingInput(tx, attempt.id, content);
+  const result = grade(content, input.answers, input.timedOut);
+  const evidence: Evidence[] = content.questions.map((question) => ({ questionId: question.id, outcome: questionOutcome(question, input.answers.get(question.id), input.timedOut.has(question.id)), seconds: input.seconds.get(question.id) ?? null }));
+  const feedback = buildFeedback(content, result, evidence);
+  const latest = await tx.evaluationFeedback.findFirst({ where: { attemptId: attempt.id }, orderBy: { version: "desc" } });
+  if (onlyIfChanged && latest && isDeepStrictEqual(latest.content, JSON.parse(JSON.stringify(feedback)))) return { row: latest, changed: false };
+  const row = await tx.evaluationFeedback.create({ data: { attemptId: attempt.id, organizationId: attempt.organizationId, version: (latest?.version ?? 0) + 1, generator: GENERATOR, content: json(feedback), reason, createdBy } });
+  return { row, changed: true };
 }
 
 async function finalize(tx: Transaction, attempt: AttemptRow, content: Content, status: "SUBMITTED" | "EXPIRED", at: Date) {
@@ -91,13 +107,15 @@ async function finalize(tx: Transaction, attempt: AttemptRow, content: Content, 
   const result = grade(content, answers, timedOut);
   const end = attempt.deadlineAt && at > attempt.deadlineAt ? attempt.deadlineAt : at;
   await tx.evaluationAttempt.update({ where: { id: attempt.id }, data: { status, submittedAt: end } });
-  return tx.evaluationResult.create({
+  const created = await tx.evaluationResult.create({
     data: {
       attemptId: attempt.id, organizationId: attempt.organizationId, evaluationId: attempt.evaluationId, versionId: attempt.versionId, userId: attempt.userId,
       correct: result.correct, incorrect: result.incorrect, unanswered: result.unanswered, timedOut: result.timedOut, scoreCenti: result.scoreCenti, maxScoreCenti: result.maxScoreCenti,
       timeUsedSeconds: Math.max(0, Math.round((end.getTime() - attempt.startedAt.getTime()) / 1000)), breakdown: json(result.breakdown),
     },
   });
+  await writeFeedback(tx, attempt, content, "AUTO", null);
+  return created;
 }
 
 /** Persists what the server's clock already decided for a paced attempt (timeouts, the next question opening, the end) and returns the plan. */
@@ -123,6 +141,7 @@ function pacedPlan(attempt: AttemptRow, content: Content, rows: Array<{ question
     questionIds: content.questions.map((question) => question.id),
     rows: rows.map((row) => ({ questionId: row.questionId, openedAt: row.openedAt ?? attempt.startedAt, closedAt: row.closedAt, closure: row.closure as Closure | null })),
     startedAt: attempt.startedAt, questionMs: seconds === null ? null : seconds * 1000, globalDeadline: attempt.deadlineAt, now,
+    sectionOf: content.questions.map((question) => question.sectionId), sessionMs: content.settings.pacing.sessionMinutes === null ? null : content.settings.pacing.sessionMinutes * 60_000,
   });
 }
 
@@ -154,13 +173,19 @@ async function resultView(tx: Transaction, attempt: { id: string; organizationId
   const available = reviewAvailable(snapshot.content, true, now);
   const graded = available || includeReview ? await gradingInput(tx, attempt.id, snapshot.content) : null;
   const { mode, revealAfter } = snapshot.content.settings.review;
+  // Feedback: the latest version; attempts closed before feedback existed get a first one on demand (appended, the result itself is untouched).
+  let feedbackRow = await tx.evaluationFeedback.findFirst({ where: { attemptId: attempt.id }, orderBy: { version: "desc" } });
+  if (!feedbackRow) feedbackRow = (await writeFeedback(tx, attempt, snapshot.content, "BACKFILL", null)).row;
+  const versions = includeReview ? await tx.evaluationFeedback.findMany({ where: { attemptId: attempt.id }, orderBy: { version: "desc" }, select: { version: true, generator: true, reason: true, createdBy: true, createdAt: true } }) : null;
   return {
     attemptId: attempt.id, evaluationId: attempt.evaluationId, status: attempt.status, submittedAt: attempt.submittedAt,
     correct: row.correct, incorrect: row.incorrect, unanswered: row.unanswered, timedOut: row.timedOut,
     scorePoints: points(row.scoreCenti), maxPoints: points(row.maxScoreCenti), percent: percentOf(row.scoreCenti, row.maxScoreCenti), timeUsedSeconds: row.timeUsedSeconds,
     breakdown: { byCategory: breakdown.byCategory.map(group), bySection: breakdown.bySection.map(group) },
     // The correct answers and explanations leave the server only when the version's review policy allows it (or for result readers).
-    review: { available: available || includeReview, policy: mode, availableAt: mode === "AFTER_DATE" ? revealAfter : null, items: graded ? reviewContent(snapshot.content, graded.answers, graded.timedOut) : null },
+    review: { available: available || includeReview, policy: mode, availableAt: mode === "AFTER_DATE" ? revealAfter : null, items: graded ? reviewContent(snapshot.content, graded.answers, graded.timedOut, graded.seconds) : null },
+    feedback: { version: feedbackRow.version, createdAt: feedbackRow.createdAt, ...(feedbackRow.content as unknown as Feedback), ...(versions ? { versions } : {}) },
+    levels: snapshot.content.settings.performance.levels.map(({ key, label, minPercent }) => ({ key, label, minPercent })),
   };
 }
 
@@ -221,7 +246,7 @@ export const evaluations = {
       const versions = await tx.evaluationVersion.findMany({ where: { organizationId, id: { in: rows.flatMap((row) => (row.currentVersionId ? [row.currentVersionId] : [])) } }, select: { id: true, version: true } });
       const number = new Map(versions.map((version) => [version.id, version.version]));
       return rows.map((ev) => ({
-        id: ev.id, key: ev.key, kind: ev.kind, title: ev.title, description: ev.description, status: ev.status, draftRevision: ev.draftRevision,
+        id: ev.id, key: ev.key, kind: ev.kind, categoryId: ev.categoryId, title: ev.title, description: ev.description, status: ev.status, draftRevision: ev.draftRevision,
         questionCount: parse(ev.draft).questions.length, currentVersion: ev.currentVersionId ? number.get(ev.currentVersionId) ?? null : null,
         hasUnpublishedChanges: ev.publishedRevision === null || ev.draftRevision > ev.publishedRevision, updatedAt: ev.updatedAt,
       }));
@@ -234,13 +259,14 @@ export const evaluations = {
       return authorView(await load(tx, organizationId, id));
     });
   },
-  updateDetails(userId: string, organizationId: string, id: string, input: { title?: string; description?: string | null; settings?: Content["settings"]; expectedRevision?: number }) {
+  updateDetails(userId: string, organizationId: string, id: string, input: { title?: string; description?: string | null; settings?: Content["settings"]; skills?: Content["skills"]; expectedRevision?: number }) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.update");
       const ev = await load(tx, organizationId, id);
       if (ev.status === "ARCHIVED") fail(409, "EVALUATION_ARCHIVED", "Archived evaluations cannot be edited");
       if (input.expectedRevision !== undefined && input.expectedRevision !== ev.draftRevision) fail(409, "EVALUATION_REVISION_CONFLICT", "The evaluation changed since it was loaded");
-      const content = input.settings ? draftOps.settings(parse(ev.draft), input.settings) : parse(ev.draft);
+      const base = input.settings ? draftOps.settings(parse(ev.draft), input.settings) : parse(ev.draft);
+      const content = input.skills ? { ...base, skills: input.skills } : base;
       const checked = contentSchema.safeParse(content);
       if (!checked.success) fail(422, "EVALUATION_CONTENT_INVALID", "The settings do not match the evaluation schema");
       const updated = await tx.evaluation.update({ where: { id }, data: { ...(input.title !== undefined ? { title: input.title } : {}), ...(input.description !== undefined ? { description: input.description } : {}), draft: json(checked.data), draftRevision: { increment: 1 } } });
@@ -263,6 +289,17 @@ export const evaluations = {
   setCorrectOption: (u: string, o: string, e: string, questionId: string, optionId: string, rev?: number) =>
     mutate(u, o, e, `question.correct-option:${questionId}`, rev, (c) => plain(draftOps.setCorrectOption(c, questionId, optionId))),
 
+  /** The category is metadata of the evaluation, not draft content: changing it does not create an unpublished revision. */
+  setCategory(userId: string, organizationId: string, id: string, categoryId: string | null) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "evaluations.update");
+      const ev = await load(tx, organizationId, id);
+      if (categoryId && !(await tx.evaluationCategory.count({ where: { id: categoryId, organizationId } }))) fail(422, "CROSS_TENANT_RESOURCE", "Category not found in this organization");
+      const updated = await tx.evaluation.update({ where: { id: ev.id }, data: { categoryId } });
+      await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_CATEGORY_ASSIGNED", targetType: "Evaluation", targetId: ev.id, metadata: { categoryId } });
+      return authorView(updated);
+    });
+  },
   validate(userId: string, organizationId: string, id: string) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.update");
@@ -375,15 +412,20 @@ export const evaluations = {
       const now = new Date();
       const rows = await tx.evaluation.findMany({ where: { organizationId, status: "PUBLISHED", currentVersionId: { not: null } }, orderBy: [{ title: "asc" }, { id: "asc" }], take: 200 });
       const out = [];
+      // The person's closed attempts and their grades, read once for every evaluation (ADR 032: state + last grade per exam).
+      const mineAll = await tx.evaluationAttempt.findMany({ where: { organizationId, userId }, orderBy: [{ submittedAt: "desc" }, { attemptNumber: "desc" }], select: { id: true, evaluationId: true, status: true, deadlineAt: true, submittedAt: true } });
+      const grades = new Map((await tx.evaluationResult.findMany({ where: { organizationId, userId }, select: { attemptId: true, scoreCenti: true, maxScoreCenti: true } })).map((row) => [row.attemptId, percentOf(row.scoreCenti, row.maxScoreCenti)]));
       for (const ev of rows) {
         const window = await eligibility(tx, organizationId, ev.id, member, now);
         if (!window.assigned) continue;
         const { snapshot } = await versionContent(tx, ev.currentVersionId!);
-        const attempts = await tx.evaluationAttempt.findMany({ where: { organizationId, evaluationId: ev.id, userId }, select: { id: true, status: true, deadlineAt: true } });
+        const attempts = mineAll.filter((attempt) => attempt.evaluationId === ev.id);
         const open = attempts.find((attempt) => attempt.status === "IN_PROGRESS" && !expired(attempt, now));
         const used = attempts.filter((attempt) => attempt.status !== "IN_PROGRESS" || expired(attempt, now)).length;
         const max = snapshot.content.settings.maxAttempts;
+        const last = attempts.find((attempt) => grades.has(attempt.id));
         out.push({
+          categoryId: ev.categoryId, state: open ? "IN_PROGRESS" : used > 0 ? "COMPLETED" : "TODO", lastAttemptId: last?.id ?? null, lastPercent: last ? grades.get(last.id) ?? null : null, lastSubmittedAt: last?.submittedAt ?? null,
           id: ev.id, kind: ev.kind, title: ev.title, description: ev.description, durationMinutes: snapshot.content.settings.durationMinutes, questionCount: snapshot.content.questions.length,
           maxAttempts: max, pacing: snapshot.content.settings.pacing, sectionCount: snapshot.content.sections.length, attemptsUsed: used, openAttemptId: open?.id ?? null, opensAt: window.opensAt, closesAt: window.closesAt,
           canStart: window.open && (open !== undefined || max === null || used < max),
@@ -528,6 +570,18 @@ export const evaluations = {
       if (attempt!.status === "IN_PROGRESS") fail(409, "ATTEMPT_OPEN", "The attempt has not been submitted");
       const { snapshot } = await versionContent(tx, attempt!.versionId);
       return resultView(tx, attempt!, snapshot, new Date(), reader && !owner);
+    });
+  },
+  /** Admin-only regeneration of an attempt's feedback: appends a new version (who, when, why) only if the deterministic output differs from the latest one. */
+  regenerateFeedback(userId: string, organizationId: string, attemptId: string) {
+    return transaction(async (tx) => {
+      await authorize(tx, userId, organizationId, "evaluations.manage");
+      const attempt = await tx.evaluationAttempt.findFirst({ where: { id: attemptId, organizationId } }) ?? fail(404, "NOT_FOUND", "Attempt not found");
+      if (attempt.status === "IN_PROGRESS") fail(409, "ATTEMPT_OPEN", "The attempt has not been submitted");
+      const { snapshot } = await versionContent(tx, attempt.versionId);
+      const { row, changed } = await writeFeedback(tx, attempt, snapshot.content, "REGENERATED", userId, true);
+      if (changed) await audit.append(tx, { actorId: userId, organizationId, action: "EVALUATION_FEEDBACK_REGENERATED", targetType: "EvaluationAttempt", targetId: attemptId, metadata: { version: row.version } });
+      return { version: row.version, changed };
     });
   },
   /** The person's own closed attempts across evaluations, newest first: their history. */

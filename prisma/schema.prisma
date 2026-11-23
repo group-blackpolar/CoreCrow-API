@@ -2028,12 +2028,48 @@ model Evaluation {
   currentVersionId String?
   /// draftRevision captured by the last publication: draftRevision > publishedRevision means unpublished changes.
   publishedRevision Int?
+  /// ADR 032: optional category (composite FK with the organization is hand-written in migration 20261123120000).
+  categoryId     String?
   createdBy      String
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
   @@unique([id, organizationId])
   @@index([organizationId, status, updatedAt])
+}
+
+/// ADR 032. Administrable, persistent category of evaluations (name, description, color, optional North image asset, status, order).
+model EvaluationCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  name           String
+  description    String?
+  color          String   @default("#4f46e5")
+  imageAssetId   String?
+  status         String   @default("ACTIVE")
+  position       Int      @default(0)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, key])
+  @@unique([id, organizationId])
+}
+
+/// ADR 032. Append-only: every generation (or admin regeneration) of an attempt's feedback is a new version.
+model EvaluationFeedback {
+  id             String   @id @default(cuid())
+  attemptId      String
+  organizationId String
+  version        Int
+  generator      String
+  content        Json
+  reason         String
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  @@unique([attemptId, version])
 }
 
 /// Immutable (database trigger): the snapshot holds the content AND its answer key as published.

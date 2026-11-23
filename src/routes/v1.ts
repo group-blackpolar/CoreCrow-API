@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { documentRoutes } from "./documents.js";
 import { aiRoutes } from "./ai.js";
 import { evaluationRoutes } from "./evaluations.js";
+import { evaluationCategoryRoutes } from "./evaluation-categories.js";
 import { securityAccessRoutes } from "./security-access.js";
 import { northDataRoutes } from "./v1/north-data.js";
 import { northContentRoutes } from "./v1/north-content.js";
@@ -15,6 +16,7 @@ export async function v1Routes(app: FastifyInstance) {
   await app.register(documentRoutes);
   await app.register(aiRoutes);
   await app.register(evaluationRoutes);
+  await app.register(evaluationCategoryRoutes);
   await app.register(securityAccessRoutes);
   await app.register(northDataRoutes);
   await app.register(northContentRoutes);
