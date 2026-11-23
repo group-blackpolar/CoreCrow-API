@@ -17,9 +17,9 @@ const asHttpError = (error) => {
 
 export async function servicesTransport({ dist, actorEmail }) {
   const load = (path) => import(pathToFileURL(resolve(dist, path)).href);
-  const [{ prisma }, { tenants }, { northTaxonomy }, { northData }, { northAnalyticsBindings }, content, { northAssets }, { northLanding }, { evaluations }] = await Promise.all([
+  const [{ prisma }, { tenants }, { northTaxonomy }, { northData }, { northAnalyticsBindings }, content, { northAssets }, { northLanding }, { evaluations }, { evaluationCategories }] = await Promise.all([
     load("lib/database.js"), load("modules/tenancy/service.js"), load("modules/north/service.js"), load("modules/north/data/service.js"),
-    load("modules/north/data/binding-service.js"), load("modules/north/content-service.js"), load("modules/north/asset-service.js"), load("modules/north/landing-service.js"), load("modules/evaluations/service.js"),
+    load("modules/north/data/binding-service.js"), load("modules/north/content-service.js"), load("modules/north/asset-service.js"), load("modules/north/landing-service.js"), load("modules/evaluations/service.js"), load("modules/evaluations/categories.js"),
   ]);
   const { northContent } = content;
   // The same reference resolvers buildApp() installs, so a draft's asset/binding references are validated exactly as over HTTP.
@@ -43,6 +43,10 @@ export async function servicesTransport({ dist, actorEmail }) {
         if (method === "GET") return ok(await northLanding.read(user, match[1]));
         if (method === "PUT") return ok(await northLanding.update(user, match[1], { ...body, expectedUpdatedAt: body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt) : body.expectedUpdatedAt }));
       }
+      // Evaluation categories (ADR 032): list, idempotent initializer by key, and assigning an evaluation to one.
+      if (method === "GET" && (match = /^\/organizations\/([^/]+)\/evaluation-categories$/.exec(path))) return ok(await evaluationCategories.list(user, match[1]));
+      if (method === "PUT" && (match = /^\/organizations\/([^/]+)\/evaluation-categories\/by-key\/([^/]+)$/.exec(path))) return ok(await evaluationCategories.ensure(user, match[1], match[2], body));
+      if (method === "PUT" && (match = /^\/organizations\/([^/]+)\/evaluations\/([^/]+)\/category$/.exec(path))) return ok(await evaluations.setCategory(user, match[1], match[2], body.categoryId));
       // Evaluations (scripts/import-evaluation.mjs): the same service calls the routes make, as the named actor.
       if ((match = /^\/organizations\/([^/]+)\/evaluations(?:\/([^/]+))?(?:\/(sections|passages|questions|validate|publish|assignments)(?:\/([^/]+))?(?:\/(correct-option))?)?$/.exec(path))) {
         const [, org, evId, sub, subId, leaf] = match;
