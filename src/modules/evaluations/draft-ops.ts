@@ -9,6 +9,7 @@ const notFound = (what: string): never => fail(404, "NOT_FOUND", `${what} not fo
 export type QuestionInput = {
   sectionId: string; passageId?: string | null; category?: string | null; prompt?: Block[]; explanation?: Block[]; points?: number;
   options?: Array<{ id?: string; text: string }>; correctOptionId?: string | null;
+  topic?: string | null; skills?: string[]; difficulty?: Question["difficulty"]; reference?: string | null;
 };
 
 function withOptionIds(options: Array<{ id?: string; text: string }>) {
@@ -65,6 +66,7 @@ export const draftOps = {
     const question: Question = {
       id: newId(), sectionId: input.sectionId, passageId: input.passageId ?? null, category: input.category ?? null,
       prompt: input.prompt ?? [], options, correctOptionId: input.correctOptionId ?? null, explanation: input.explanation ?? [], points: input.points ?? 1,
+      topic: input.topic ?? null, skills: input.skills ?? [], difficulty: input.difficulty ?? null, reference: input.reference ?? null,
     };
     checkRefs(content, question);
     return { content: { ...content, questions: [...content.questions, question] }, id: question.id };
@@ -82,6 +84,10 @@ export const draftOps = {
       ...(patch.prompt !== undefined ? { prompt: patch.prompt } : {}),
       ...(patch.explanation !== undefined ? { explanation: patch.explanation } : {}),
       ...(patch.points !== undefined ? { points: patch.points } : {}),
+      ...(patch.topic !== undefined ? { topic: patch.topic } : {}),
+      ...(patch.skills !== undefined ? { skills: patch.skills } : {}),
+      ...(patch.difficulty !== undefined ? { difficulty: patch.difficulty } : {}),
+      ...(patch.reference !== undefined ? { reference: patch.reference } : {}),
       options,
       correctOptionId: correct && options.some((option) => option.id === correct) ? correct : null,
     };

@@ -4995,9 +4995,13 @@ paths:
                         questionSeconds:
                           type: integer
                           nullable: true
+                        sessionMinutes:
+                          type: integer
+                          nullable: true
                       required:
                         - navigation
                         - questionSeconds
+                        - sessionMinutes
                       additionalProperties: false
                     sectionCount:
                       type: integer
@@ -5014,8 +5018,47 @@ paths:
                       type: string
                       format: date-time
                       nullable: true
+                    sections:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          title:
+                            type: string
+                          description:
+                            type: string
+                            nullable: true
+                          questionCount:
+                            type: integer
+                        required:
+                          - id
+                          - title
+                          - description
+                          - questionCount
+                        additionalProperties: false
                     canStart:
                       type: boolean
+                    categoryId:
+                      type: string
+                      nullable: true
+                    state:
+                      type: string
+                      enum:
+                        - TODO
+                        - IN_PROGRESS
+                        - COMPLETED
+                    lastAttemptId:
+                      type: string
+                      nullable: true
+                    lastPercent:
+                      type: number
+                      nullable: true
+                    lastSubmittedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
                   required:
                     - id
                     - kind
@@ -5030,7 +5073,13 @@ paths:
                     - openAttemptId
                     - opensAt
                     - closesAt
+                    - sections
                     - canStart
+                    - categoryId
+                    - state
+                    - lastAttemptId
+                    - lastPercent
+                    - lastSubmittedAt
                   additionalProperties: false
         4XX:
           description: Default Response
@@ -5174,9 +5223,13 @@ paths:
                       questionSeconds:
                         type: integer
                         nullable: true
+                      sessionMinutes:
+                        type: integer
+                        nullable: true
                     required:
                       - navigation
                       - questionSeconds
+                      - sessionMinutes
                     additionalProperties: false
                   progress: {}
                   current: {}
@@ -5638,9 +5691,13 @@ paths:
                       questionSeconds:
                         type: integer
                         nullable: true
+                      sessionMinutes:
+                        type: integer
+                        nullable: true
                     required:
                       - navigation
                       - questionSeconds
+                      - sessionMinutes
                     additionalProperties: false
                   progress: {}
                   current: {}
@@ -6022,9 +6079,13 @@ paths:
                           questionSeconds:
                             type: integer
                             nullable: true
+                          sessionMinutes:
+                            type: integer
+                            nullable: true
                         required:
                           - navigation
                           - questionSeconds
+                          - sessionMinutes
                         additionalProperties: false
                       progress: {}
                       current: {}
@@ -6298,6 +6359,8 @@ paths:
                       - policy
                       - availableAt
                     additionalProperties: false
+                  feedback: {}
+                  levels: {}
                 required:
                   - attemptId
                   - evaluationId
@@ -6548,6 +6611,8 @@ paths:
                       - policy
                       - availableAt
                     additionalProperties: false
+                  feedback: {}
+                  levels: {}
                 required:
                   - attemptId
                   - evaluationId
@@ -6841,6 +6906,9 @@ paths:
                   key:
                     type: string
                     nullable: true
+                  categoryId:
+                    type: string
+                    nullable: true
                   kind:
                     type: string
                     enum:
@@ -6877,6 +6945,7 @@ paths:
                 required:
                   - id
                   - key
+                  - categoryId
                   - kind
                   - title
                   - description
@@ -6996,6 +7065,9 @@ paths:
                   key:
                     type: string
                     nullable: true
+                  categoryId:
+                    type: string
+                    nullable: true
                   kind:
                     type: string
                     enum:
@@ -7032,6 +7104,7 @@ paths:
                 required:
                   - id
                   - key
+                  - categoryId
                   - kind
                   - title
                   - description
@@ -7202,6 +7275,12 @@ paths:
                           minimum: 5
                           maximum: 3600
                           nullable: true
+                        sessionMinutes:
+                          type: integer
+                          minimum: 1
+                          maximum: 1440
+                          nullable: true
+                          default: null
                       required:
                         - navigation
                         - questionSeconds
@@ -7209,6 +7288,52 @@ paths:
                       default:
                         navigation: FREE
                         questionSeconds: null
+                        sessionMinutes: null
+                    performance:
+                      type: object
+                      properties:
+                        levels:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              key:
+                                type: string
+                                pattern: ^[A-Za-z0-9_-]{1,64}$
+                              label:
+                                type: string
+                                maxLength: 40
+                              minPercent:
+                                type: number
+                                minimum: 0
+                                maximum: 100
+                              summary:
+                                type: string
+                                maxLength: 400
+                            required:
+                              - key
+                              - label
+                              - minPercent
+                            additionalProperties: false
+                          minItems: 1
+                          maxItems: 8
+                      required:
+                        - levels
+                      additionalProperties: false
+                      default:
+                        levels:
+                          - key: low
+                            label: Bajo
+                            minPercent: 0
+                          - key: basic
+                            label: Básico
+                            minPercent: 40
+                          - key: high
+                            label: Alto
+                            minPercent: 60
+                          - key: superior
+                            label: Superior
+                            minPercent: 80
                   required:
                     - durationMinutes
                     - maxAttempts
@@ -7216,6 +7341,42 @@ paths:
                     - review
                     - ai
                   additionalProperties: false
+                skills:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        pattern: ^[A-Za-z0-9_-]{1,64}$
+                      competency:
+                        type: string
+                        maxLength: 80
+                      label:
+                        type: string
+                        maxLength: 120
+                      strength:
+                        type: string
+                        maxLength: 240
+                      gap:
+                        type: string
+                        maxLength: 240
+                      study:
+                        type: string
+                        maxLength: 300
+                      strategy:
+                        type: string
+                        maxLength: 300
+                    required:
+                      - id
+                      - competency
+                      - label
+                      - strength
+                      - gap
+                      - study
+                      - strategy
+                    additionalProperties: false
+                  maxItems: 200
                 expectedRevision:
                   type: integer
                   minimum: 1
@@ -7250,6 +7411,9 @@ paths:
                     minLength: 1
                     maxLength: 128
                   key:
+                    type: string
+                    nullable: true
+                  categoryId:
                     type: string
                     nullable: true
                   kind:
@@ -7288,6 +7452,7 @@ paths:
                 required:
                   - id
                   - key
+                  - categoryId
                   - kind
                   - title
                   - description
@@ -7470,11 +7635,25 @@ paths:
                 required:
                   - error
                 additionalProperties: false
-  /v1/organizations/{organizationId}/evaluations/{evaluationId}/duplicate:
-    post:
-      summary: Copy the draft into a new evaluation
+  /v1/organizations/{organizationId}/evaluations/{evaluationId}/category:
+    put:
+      summary: Assign the evaluation to a category (or clear it); metadata only, no
+        new draft revision
       tags:
         - Evaluations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categoryId:
+                  type: string
+                  nullable: true
+              required:
+                - categoryId
+              additionalProperties: false
       parameters:
         - schema:
             type: string
@@ -7493,7 +7672,7 @@ paths:
       security:
         - sessionCookie: []
       responses:
-        "201":
+        "200":
           description: Default Response
           content:
             application/json:
@@ -7505,6 +7684,9 @@ paths:
                     minLength: 1
                     maxLength: 128
                   key:
+                    type: string
+                    nullable: true
+                  categoryId:
                     type: string
                     nullable: true
                   kind:
@@ -7543,6 +7725,165 @@ paths:
                 required:
                   - id
                   - key
+                  - categoryId
+                  - kind
+                  - title
+                  - description
+                  - status
+                  - draftRevision
+                  - publishedRevision
+                  - currentVersionId
+                  - hasUnpublishedChanges
+                  - createdAt
+                  - updatedAt
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/evaluations/{evaluationId}/duplicate:
+    post:
+      summary: Copy the draft into a new evaluation
+      tags:
+        - Evaluations
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: evaluationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  key:
+                    type: string
+                    nullable: true
+                  categoryId:
+                    type: string
+                    nullable: true
+                  kind:
+                    type: string
+                    enum:
+                      - EXAM
+                      - FORM
+                  title:
+                    type: string
+                  description:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                      - DRAFT
+                      - PUBLISHED
+                      - ARCHIVED
+                  draftRevision:
+                    type: integer
+                  publishedRevision:
+                    type: integer
+                    nullable: true
+                  currentVersionId:
+                    type: string
+                    nullable: true
+                  hasUnpublishedChanges:
+                    type: boolean
+                  content: {}
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - key
+                  - categoryId
                   - kind
                   - title
                   - description
@@ -7661,6 +8002,9 @@ paths:
                   key:
                     type: string
                     nullable: true
+                  categoryId:
+                    type: string
+                    nullable: true
                   kind:
                     type: string
                     enum:
@@ -7697,6 +8041,7 @@ paths:
                 required:
                   - id
                   - key
+                  - categoryId
                   - kind
                   - title
                   - description
@@ -7815,6 +8160,9 @@ paths:
                   key:
                     type: string
                     nullable: true
+                  categoryId:
+                    type: string
+                    nullable: true
                   kind:
                     type: string
                     enum:
@@ -7851,6 +8199,7 @@ paths:
                 required:
                   - id
                   - key
+                  - categoryId
                   - kind
                   - title
                   - description
@@ -9179,6 +9528,26 @@ paths:
                   type: string
                   pattern: ^[A-Za-z0-9_-]{1,64}$
                   nullable: true
+                topic:
+                  type: string
+                  maxLength: 120
+                  nullable: true
+                skills:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[A-Za-z0-9_-]{1,64}$
+                  maxItems: 10
+                difficulty:
+                  type: string
+                  enum:
+                    - EASY
+                    - MEDIUM
+                    - HARD
+                reference:
+                  type: string
+                  maxLength: 300
+                  nullable: true
                 expectedRevision:
                   type: integer
                   minimum: 1
@@ -9499,6 +9868,26 @@ paths:
                 correctOptionId:
                   type: string
                   pattern: ^[A-Za-z0-9_-]{1,64}$
+                  nullable: true
+                topic:
+                  type: string
+                  maxLength: 120
+                  nullable: true
+                skills:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[A-Za-z0-9_-]{1,64}$
+                  maxItems: 10
+                difficulty:
+                  type: string
+                  enum:
+                    - EASY
+                    - MEDIUM
+                    - HARD
+                reference:
+                  type: string
+                  maxLength: 300
                   nullable: true
                 expectedRevision:
                   type: integer
@@ -10875,6 +11264,797 @@ paths:
                     - maxPoints
                     - percent
                   additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/evaluation-attempts/{attemptId}/feedback/regenerate:
+    post:
+      summary: "Regenerate the feedback of a closed attempt (needs
+        evaluations.manage): appends a new version only if the deterministic
+        output changed; grades are never touched"
+      tags:
+        - Evaluations
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: attemptId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
+                  changed:
+                    type: boolean
+                required:
+                  - version
+                  - changed
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/evaluation-categories:
+    get:
+      summary: "Categories with the numbers of the caller: assigned exams, completed,
+        in progress (needs evaluations.take or evaluations.read)"
+      tags:
+        - Evaluations
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+          in: query
+          name: includeArchived
+          required: false
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                        key:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                          nullable: true
+                        color:
+                          type: string
+                        imageAssetId:
+                          type: string
+                          nullable: true
+                        status:
+                          type: string
+                          enum:
+                            - ACTIVE
+                            - ARCHIVED
+                        position:
+                          type: integer
+                        counts:
+                          type: object
+                          properties:
+                            total:
+                              type: integer
+                            completed:
+                              type: integer
+                            inProgress:
+                              type: integer
+                          required:
+                            - total
+                            - completed
+                            - inProgress
+                          additionalProperties: false
+                      required:
+                        - id
+                        - key
+                        - name
+                        - description
+                        - color
+                        - imageAssetId
+                        - status
+                        - position
+                        - counts
+                      additionalProperties: false
+                  uncategorized:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      completed:
+                        type: integer
+                      inProgress:
+                        type: integer
+                    required:
+                      - total
+                      - completed
+                      - inProgress
+                    additionalProperties: false
+                required:
+                  - categories
+                  - uncategorized
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+    post:
+      summary: Create a category (needs evaluations.manage); 409 if the key exists
+      tags:
+        - Evaluations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9-]{0,78}$
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                color:
+                  type: string
+                  pattern: ^#[0-9a-fA-F]{6}$
+                imageAssetId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  nullable: true
+                position:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                status:
+                  type: string
+                  enum:
+                    - ACTIVE
+                    - ARCHIVED
+              required:
+                - key
+                - name
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  key:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    type: string
+                    nullable: true
+                  color:
+                    type: string
+                  imageAssetId:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                      - ACTIVE
+                      - ARCHIVED
+                  position:
+                    type: integer
+                required:
+                  - id
+                  - key
+                  - name
+                  - description
+                  - color
+                  - imageAssetId
+                  - status
+                  - position
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/evaluation-categories/by-key/{key}:
+    put:
+      summary: "Idempotent initializer: creates the category if the key is absent,
+        otherwise returns it unchanged (needs evaluations.manage)"
+      tags:
+        - Evaluations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                color:
+                  type: string
+                  pattern: ^#[0-9a-fA-F]{6}$
+                imageAssetId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  nullable: true
+                position:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                status:
+                  type: string
+                  enum:
+                    - ACTIVE
+                    - ARCHIVED
+              required:
+                - name
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,78}$
+          in: path
+          name: key
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: boolean
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      key:
+                        type: string
+                      name:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      color:
+                        type: string
+                      imageAssetId:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - ACTIVE
+                          - ARCHIVED
+                      position:
+                        type: integer
+                    required:
+                      - id
+                      - key
+                      - name
+                      - description
+                      - color
+                      - imageAssetId
+                      - status
+                      - position
+                    additionalProperties: false
+                required:
+                  - created
+                  - category
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+  /v1/organizations/{organizationId}/evaluation-categories/{categoryId}:
+    patch:
+      summary: Edit name, description, color, image, order or status (needs
+        evaluations.manage)
+      tags:
+        - Evaluations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                color:
+                  type: string
+                  pattern: ^#[0-9a-fA-F]{6}$
+                imageAssetId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  nullable: true
+                position:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                status:
+                  type: string
+                  enum:
+                    - ACTIVE
+                    - ARCHIVED
+              additionalProperties: false
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: categoryId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                  key:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    type: string
+                    nullable: true
+                  color:
+                    type: string
+                  imageAssetId:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                      - ACTIVE
+                      - ARCHIVED
+                  position:
+                    type: integer
+                required:
+                  - id
+                  - key
+                  - name
+                  - description
+                  - color
+                  - imageAssetId
+                  - status
+                  - position
+                additionalProperties: false
         4XX:
           description: Default Response
           content:

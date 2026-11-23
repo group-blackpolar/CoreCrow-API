@@ -6,10 +6,11 @@
 //   or, server side as a named actor:
 //   node scripts/import-evaluation.mjs <definition.mjs> --org <slug> --in-process --actor <email> [--dist /app/dist]
 //
+// A definition file with `categories` instead (scripts/evaluations/categories.mjs) creates missing categories and assigns listed evaluations that have none.
 // The acting account needs evaluations.create/update/publish/manage in the organization. Existing evaluations with the same key are never modified.
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { importEvaluation } from "./lib/import-evaluation-core.mjs";
+import { ensureCategories, importEvaluation } from "./lib/import-evaluation-core.mjs";
 
 const argv = process.argv.slice(2);
 const definitionPath = argv[0]?.startsWith("--") ? undefined : argv[0];
@@ -37,7 +38,8 @@ async function call(method, path, body, headers = {}, attempt = 0) {
 
 try {
   const definition = (await import(pathToFileURL(resolve(definitionPath)).href)).default;
-  console.log(JSON.stringify(await importEvaluation(call, organization, definition, (line) => console.log(line))));
+  // A definition with `categories` initializes categories (idempotent); otherwise it is one evaluation.
+  console.log(JSON.stringify(await (definition.categories ? ensureCategories : importEvaluation)(call, organization, definition, (line) => console.log(line))));
 } finally {
   await transport?.close();
 }

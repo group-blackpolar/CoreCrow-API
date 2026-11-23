@@ -65,7 +65,7 @@ export function reviewAvailable(content: Content, attemptClosed: boolean, now: D
 }
 
 /** The review of a closed attempt: statement, options, the person's choice, the correct option and the explanation, only when the policy allows it. */
-export function reviewContent(content: Content, answers: ReadonlyMap<string, string | null>, timedOut: ReadonlySet<string> = new Set()) {
+export function reviewContent(content: Content, answers: ReadonlyMap<string, string | null>, timedOut: ReadonlySet<string> = new Set(), seconds: ReadonlyMap<string, number> = new Map()) {
   return content.questions.map((question, index) => ({
     questionId: question.id,
     number: index + 1,
@@ -75,5 +75,6 @@ export function reviewContent(content: Content, answers: ReadonlyMap<string, str
     correctOptionId: question.correctOptionId,
     outcome: questionOutcome(question, answers.get(question.id), timedOut.has(question.id)),
     explanation: question.explanation,
+    competency: question.category, topic: question.topic, difficulty: question.difficulty, reference: question.reference, seconds: seconds.get(question.id) ?? null,
   }));
 }

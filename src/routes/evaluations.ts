@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { contract } from "../contracts/route.js";
 import * as s from "../contracts/schemas.js";
-import { blocks, settingsSchema } from "../modules/evaluations/content.js";
+import { blocks, settingsSchema, skillSchema } from "../modules/evaluations/content.js";
 import { evaluations } from "../modules/evaluations/service.js";
 
 /**
@@ -16,6 +16,7 @@ const attemptParams = s.orgParams.extend({ attemptId: s.id });
 const expectedRevision = z.number().int().min(1).optional();
 const revisionQuery = z.object({ expectedRevision: z.coerce.number().int().min(1).optional() }).strict();
 const kind = z.enum(["EXAM", "FORM"]);
+const pacingView = z.object({ navigation: z.enum(["FREE", "FORWARD_ONLY"]), questionSeconds: z.number().int().nullable(), sessionMinutes: z.number().int().nullable() });
 const status = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 
 const questionFields = {
@@ -24,6 +25,8 @@ const questionFields = {
   /** Any number of options (2 to 12 to publish), identified to people by letters A, B, C ... by position. */
   options: z.array(z.object({ id: itemId.optional(), text: z.string().max(2_000) }).strict()).max(12).optional(),
   correctOptionId: itemId.nullable().optional(),
+  /** ADR 032 pedagogical tags. */
+  topic: z.string().max(120).nullable().optional(), skills: z.array(itemId).max(10).optional(), difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).optional(), reference: z.string().max(300).nullable().optional(),
 };
 const createQuestion = z.object({ ...questionFields, expectedRevision }).strict();
 const updateQuestion = z.object({ ...questionFields, sectionId: itemId.optional(), expectedRevision }).strict();
@@ -31,13 +34,13 @@ const order = z.object({ ids: z.array(itemId).max(500), expectedRevision }).stri
 const draftResult = z.object({ draftRevision: z.number().int(), id: z.string().optional() });
 
 const authorView = z.object({
-  id: s.id, key: z.string().nullable(), kind, title: z.string(), description: z.string().nullable(), status, draftRevision: z.number().int(), publishedRevision: z.number().int().nullable(),
+  id: s.id, key: z.string().nullable(), categoryId: z.string().nullable(), kind, title: z.string(), description: z.string().nullable(), status, draftRevision: z.number().int(), publishedRevision: z.number().int().nullable(),
   currentVersionId: z.string().nullable(), hasUnpublishedChanges: z.boolean(), content: z.unknown(), createdAt: s.date, updatedAt: s.date,
 });
 const versionSummary = z.object({ id: s.id, version: z.number().int(), publishedAt: s.date, questionCount: z.number().int(), maxPoints: z.number() });
 const attemptView = z.object({
   id: s.id, evaluationId: s.id, status: z.enum(["IN_PROGRESS", "SUBMITTED", "EXPIRED"]), attemptNumber: z.number().int(), startedAt: s.date, deadlineAt: s.date.nullable(), serverTime: s.date,
-  evaluation: z.unknown(), remainingSeconds: z.number().nullable(), pacing: z.object({ navigation: z.enum(["FREE", "FORWARD_ONLY"]), questionSeconds: z.number().int().nullable() }),
+  evaluation: z.unknown(), remainingSeconds: z.number().nullable(), pacing: pacingView,
   /** Paced attempts only: how many questions are closed, which one is open and until when (server clock). */
   progress: z.unknown(), current: z.unknown(),
   /** The evaluation as a person taking it sees it: no correct option, no explanations. Null once the attempt is closed. */
@@ -49,6 +52,8 @@ const resultView = z.object({
   correct: z.number().int(), incorrect: z.number().int(), unanswered: z.number().int(), timedOut: z.number().int(), scorePoints: z.number(), maxPoints: z.number(), percent: z.number(), timeUsedSeconds: z.number().int(),
   breakdown: z.object({ byCategory: z.array(group), bySection: z.array(group) }),
   review: z.object({ available: z.boolean(), policy: z.enum(["NEVER", "AFTER_SUBMIT", "AFTER_DATE"]), availableAt: z.string().nullable(), items: z.unknown() }),
+  /** ADR 032: latest feedback version (competency results, paragraphs, improvement plan) and the evaluation's own performance levels. */
+  feedback: z.unknown(), levels: z.unknown(),
 });
 
 export async function evaluationRoutes(app: FastifyInstance) {
@@ -57,7 +62,7 @@ export async function evaluationRoutes(app: FastifyInstance) {
 
   // ----------------------------------------------------------------------------------------------------------- taking
   contract(app, { method: "GET", url: `${base}/available`, tag, summary: "Evaluations assigned to the caller (needs evaluations.take)", params: s.orgParams,
-    response: z.array(z.object({ id: s.id, kind, title: z.string(), description: z.string().nullable(), durationMinutes: z.number().nullable(), questionCount: z.number().int(), maxAttempts: z.number().nullable(), pacing: z.object({ navigation: z.enum(["FREE", "FORWARD_ONLY"]), questionSeconds: z.number().int().nullable() }), sectionCount: z.number().int(), attemptsUsed: z.number().int(), openAttemptId: z.string().nullable(), opensAt: s.date.nullable(), closesAt: s.date.nullable(), canStart: z.boolean() })),
+    response: z.array(z.object({ id: s.id, kind, title: z.string(), description: z.string().nullable(), durationMinutes: z.number().nullable(), questionCount: z.number().int(), maxAttempts: z.number().nullable(), pacing: pacingView, sectionCount: z.number().int(), attemptsUsed: z.number().int(), openAttemptId: z.string().nullable(), opensAt: s.date.nullable(), closesAt: s.date.nullable(), sections: z.array(z.object({ id: z.string(), title: z.string(), description: z.string().nullable(), questionCount: z.number().int() })), canStart: z.boolean(), categoryId: z.string().nullable(), state: z.enum(["TODO", "IN_PROGRESS", "COMPLETED"]), lastAttemptId: z.string().nullable(), lastPercent: z.number().nullable(), lastSubmittedAt: s.date.nullable() })),
     run: ({ user, params }) => evaluations.available(user.id, params.organizationId) });
   contract(app, { method: "POST", url: `${base}/:evaluationId/attempts`, tag, summary: "Start an attempt, or resume the one in progress; the content carries no answer key", params: evaluationParams, response: attemptView,
     rateLimit: 30, run: ({ user, params }) => evaluations.startAttempt(user.id, params.organizationId, params.evaluationId) });
@@ -92,8 +97,11 @@ export async function evaluationRoutes(app: FastifyInstance) {
   contract(app, { method: "GET", url: `${base}/:evaluationId`, tag, summary: "The editor's view of the draft, including the answer key (needs evaluations.update)", params: evaluationParams, response: authorView,
     run: ({ user, params }) => evaluations.get(user.id, params.organizationId, params.evaluationId) });
   contract(app, { method: "PATCH", url: `${base}/:evaluationId`, tag, summary: "Edit title, description and settings (duration, attempts, scoring rules, review policy, AI policy)", params: evaluationParams,
-    body: z.object({ title: z.string().trim().min(1).max(200).optional(), description: z.string().max(2_000).nullable().optional(), settings: settingsSchema.optional(), expectedRevision }).strict(), response: authorView,
+    body: z.object({ title: z.string().trim().min(1).max(200).optional(), description: z.string().max(2_000).nullable().optional(), settings: settingsSchema.optional(), skills: z.array(skillSchema).max(200).optional(), expectedRevision }).strict(), response: authorView,
     run: ({ user, params, body }) => evaluations.updateDetails(user.id, params.organizationId, params.evaluationId, body) });
+  contract(app, { method: "PUT", url: `${base}/:evaluationId/category`, tag, summary: "Assign the evaluation to a category (or clear it); metadata only, no new draft revision", params: evaluationParams,
+    body: z.object({ categoryId: z.string().nullable() }).strict(), response: authorView,
+    run: ({ user, params, body }) => evaluations.setCategory(user.id, params.organizationId, params.evaluationId, body.categoryId) });
   contract(app, { method: "DELETE", url: `${base}/:evaluationId`, tag, summary: "Delete a never-published draft (published evaluations are archived instead)", params: evaluationParams, status: 204, response: z.null(),
     run: async ({ user, params, reply }) => { await evaluations.remove(user.id, params.organizationId, params.evaluationId); reply.code(204); return null; } });
   contract(app, { method: "POST", url: `${base}/:evaluationId/duplicate`, tag, summary: "Copy the draft into a new evaluation", params: evaluationParams, status: 201, response: authorView,
@@ -163,6 +171,9 @@ export async function evaluationRoutes(app: FastifyInstance) {
   contract(app, { method: "GET", url: "/organizations/:organizationId/evaluation-results/mine", tag, summary: "The caller's own closed attempts with scores across evaluations (their history)", params: s.orgParams,
     response: z.array(z.object({ attemptId: s.id, evaluationId: s.id, title: z.string(), kind, attemptNumber: z.number().int(), status: z.enum(["IN_PROGRESS", "SUBMITTED", "EXPIRED"]), submittedAt: s.date.nullable(), scorePoints: z.number(), maxPoints: z.number(), percent: z.number() })),
     run: ({ user, params }) => evaluations.myResults(user.id, params.organizationId) });
+  contract(app, { method: "POST", url: "/organizations/:organizationId/evaluation-attempts/:attemptId/feedback/regenerate", tag, summary: "Regenerate the feedback of a closed attempt (needs evaluations.manage): appends a new version only if the deterministic output changed; grades are never touched", params: attemptParams,
+    response: z.object({ version: z.number().int(), changed: z.boolean() }),
+    run: ({ user, params }) => evaluations.regenerateFeedback(user.id, params.organizationId, params.attemptId) });
   contract(app, { method: "GET", url: `${base}/:evaluationId/attempts`, tag, summary: "Every attempt with its score (needs evaluations.results.read)", params: evaluationParams,
     response: z.array(z.object({ id: s.id, userId: s.id, name: z.string().nullable(), email: z.string().nullable(), versionId: s.id, attemptNumber: z.number().int(), status: z.enum(["IN_PROGRESS", "SUBMITTED", "EXPIRED"]), startedAt: s.date, submittedAt: s.date.nullable(), scorePoints: z.number().nullable(), maxPoints: z.number().nullable(), percent: z.number().nullable() })),
     run: ({ user, params }) => evaluations.attempts(user.id, params.organizationId, params.evaluationId) });

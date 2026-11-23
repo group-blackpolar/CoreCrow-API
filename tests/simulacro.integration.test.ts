@@ -79,7 +79,7 @@ test("simulacro: idempotent import, paced attempts, exact-limit and timeout rule
     assert.ok(c.questions.every((q: { options: unknown[]; correctOptionId: string | null; explanation: unknown[] }) => q.options.length === 4 && q.correctOptionId && q.explanation.length === 1));
     const letters = definition.sections.flatMap((s: { questions: Array<{ correct: string }> }) => s.questions.map((q) => q.correct));
     assert.deepEqual(c.questions.map((q: { options: Array<{ id: string }>; correctOptionId: string }) => String.fromCharCode(65 + q.options.findIndex((o) => o.id === q.correctOptionId))), letters, "the stored key is the one in the definition");
-    assert.deepEqual([c.settings.durationMinutes, c.settings.pacing, c.settings.scoring.wrongPenaltyPercent, c.settings.review.mode], [30, { navigation: "FORWARD_ONLY", questionSeconds: 120 }, 0, "AFTER_SUBMIT"]);
+    assert.deepEqual([c.settings.durationMinutes, c.settings.pacing, c.settings.scoring.wrongPenaltyPercent, c.settings.review.mode], [30, { navigation: "FORWARD_ONLY", questionSeconds: 120, sessionMinutes: null }, 0, "AFTER_SUBMIT"]);
     assert.equal(view.key, "lectura-critica-principito-01");
   });
 
@@ -100,7 +100,7 @@ test("simulacro: idempotent import, paced attempts, exact-limit and timeout rule
 
   await t.test("starting: explicit, one open question at a time, 30-minute cap, no key and no other questions delivered", async () => {
     const available = ok(await call("GET", `${base}/evaluations/available`, alice.cookie), 200);
-    assert.deepEqual([available[0].sectionCount, available[0].questionCount, available[0].durationMinutes, available[0].pacing], [3, 15, 30, { navigation: "FORWARD_ONLY", questionSeconds: 120 }]);
+    assert.deepEqual([available[0].sectionCount, available[0].questionCount, available[0].durationMinutes, available[0].pacing], [3, 15, 30, { navigation: "FORWARD_ONLY", questionSeconds: 120, sessionMinutes: null }]);
     const started = await call("POST", `${base}/evaluations/${evaluationId}/attempts`, alice.cookie);
     const view = ok(started, 200);
     pace.alice.id = view.id;

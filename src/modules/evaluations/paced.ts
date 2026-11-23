@@ -17,17 +17,22 @@ export type PacedPlan = {
   finished: "NONE" | "ALL_CLOSED" | "GLOBAL_DEADLINE";
 };
 
-export function planPaced(input: { questionIds: readonly string[]; rows: readonly PacedRow[]; startedAt: Date; questionMs: number | null; globalDeadline: Date | null; now: Date }): PacedPlan {
-  const { questionIds, startedAt, questionMs, globalDeadline, now } = input;
+export function planPaced(input: { questionIds: readonly string[]; rows: readonly PacedRow[]; startedAt: Date; questionMs: number | null; globalDeadline: Date | null; now: Date;
+  /** Optional per-session limit: `sectionOf[i]` is the section of question i; a session starts when its first question opens and lasts `sessionMs`. */
+  sectionOf?: readonly string[]; sessionMs?: number | null }): PacedPlan {
+  const { questionIds, startedAt, questionMs, globalDeadline, now, sectionOf, sessionMs } = input;
+  let sessionKey: string | undefined;
+  let sessionEnd: number | null = null;
   const byQuestion = new Map(input.rows.map((row) => [row.questionId, row]));
   const timeouts: PacedPlan["timeouts"] = [];
   let openedAt = startedAt;
   for (let index = 0; index < questionIds.length; index += 1) {
     const questionId = questionIds[index]!;
     const row = byQuestion.get(questionId);
-    if (row?.closedAt) { openedAt = row.closedAt; continue; }
     const start = row?.openedAt ?? openedAt;
-    const limits = [questionMs === null ? null : start.getTime() + questionMs, globalDeadline?.getTime() ?? null].filter((value): value is number => value !== null);
+    if (sectionOf && sessionMs && sectionOf[index] !== sessionKey) { sessionKey = sectionOf[index]; sessionEnd = start.getTime() + sessionMs; }
+    if (row?.closedAt) { openedAt = row.closedAt; continue; }
+    const limits = [questionMs === null ? null : start.getTime() + questionMs, globalDeadline?.getTime() ?? null, sessionMs ? sessionEnd : null].filter((value): value is number => value !== null);
     const end = limits.length ? Math.min(...limits) : null;
     // Strictly after the limit: a request arriving exactly at it is still on time.
     if (end !== null && now.getTime() > end) {
