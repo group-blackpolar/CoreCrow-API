@@ -19,6 +19,14 @@ import { validateForPublish } from "./validation.js";
 /** Technical constant: allowance for network latency between the deadline and the last autosave/submit that left in time. */
 export const CLOSE_GRACE_MS = 10_000;
 
+/**
+ * Taking an evaluation is the contended path: a whole class writes at once. Serializable isolation made unrelated students abort each other (predicate
+ * locks over small tables: measured, see ADR 032), so these operations run READ COMMITTED behind a transaction-scoped advisory lock per attempt (per
+ * person and evaluation when starting). Requests of the SAME attempt are serialized, exactly the guarantee the paced rules need (one confirmation wins,
+ * a repeat sees the closed question); requests of different attempts never wait for each other.
+ */
+const attemptTx = <T>(lock: string | null, work: (tx: Transaction) => Promise<T>) =>
+  transaction(async (tx) => { if (lock) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`; return work(tx); }, { isolationLevel: "ReadCommitted" });
 const notFound = (): never => fail(404, "NOT_FOUND", "Evaluation not found");
 const parse = (value: unknown): Content => contentSchema.parse(value);
 const json = (value: unknown) => value as Prisma.InputJsonValue;
@@ -407,7 +415,7 @@ export const evaluations = {
 
   // -------------------------------------------------------------------------------------------------------------- taking
   available(userId: string, organizationId: string) {
-    return transaction(async (tx) => {
+    return attemptTx(null, async (tx) => {
       const member = await authorize(tx, userId, organizationId, "evaluations.take");
       const now = new Date();
       const rows = await tx.evaluation.findMany({ where: { organizationId, status: "PUBLISHED", currentVersionId: { not: null } }, orderBy: [{ title: "asc" }, { id: "asc" }], take: 200 });
@@ -427,7 +435,7 @@ export const evaluations = {
         out.push({
           categoryId: ev.categoryId, state: open ? "IN_PROGRESS" : used > 0 ? "COMPLETED" : "TODO", lastAttemptId: last?.id ?? null, lastPercent: last ? grades.get(last.id) ?? null : null, lastSubmittedAt: last?.submittedAt ?? null,
           id: ev.id, kind: ev.kind, title: ev.title, description: ev.description, durationMinutes: snapshot.content.settings.durationMinutes, questionCount: snapshot.content.questions.length,
-          maxAttempts: max, pacing: snapshot.content.settings.pacing, sectionCount: snapshot.content.sections.length, attemptsUsed: used, openAttemptId: open?.id ?? null, opensAt: window.opensAt, closesAt: window.closesAt,
+          maxAttempts: max, pacing: snapshot.content.settings.pacing, sectionCount: snapshot.content.sections.length, sections: snapshot.content.sections.map((section) => ({ id: section.id, title: section.title, description: section.description ?? null, questionCount: snapshot.content.questions.filter((question) => question.sectionId === section.id).length })), attemptsUsed: used, openAttemptId: open?.id ?? null, opensAt: window.opensAt, closesAt: window.closesAt,
           canStart: window.open && (open !== undefined || max === null || used < max),
         });
       }
@@ -436,7 +444,7 @@ export const evaluations = {
   },
   /** Starts an attempt, or returns the one in progress (a double click or a second tab never opens two). */
   startAttempt(userId: string, organizationId: string, evaluationId: string, now: Date = new Date()) {
-    return transaction(async (tx) => {
+    return attemptTx(`evaluation:${evaluationId}:${userId}`, async (tx) => {
       const member = await authorize(tx, userId, organizationId, "evaluations.take");
       const ev = await tx.evaluation.findFirst({ where: { id: evaluationId, organizationId, status: "PUBLISHED", currentVersionId: { not: null } } });
       const window = ev ? await eligibility(tx, organizationId, evaluationId, member, now) : null;
@@ -461,7 +469,7 @@ export const evaluations = {
     });
   },
   getAttempt(userId: string, organizationId: string, attemptId: string, now: Date = new Date()) {
-    return transaction(async (tx) => {
+    return attemptTx(`attempt:${attemptId}`, async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
       const attempt = await settle(tx, await ownAttempt(tx, organizationId, attemptId, userId), now);
       return attemptView(tx, attempt, now);
@@ -470,7 +478,7 @@ export const evaluations = {
   /** Autosave of the selection. A write whose `seq` is not newer than the stored one is ignored, so a late retry never overwrites a later answer.
    *  In a paced attempt only the open question accepts a (draft) selection; it is NOT an answer until it is confirmed. */
   saveAnswers(userId: string, organizationId: string, attemptId: string, answers: Array<{ questionId: string; optionId: string | null; seq: number }>, now: Date = new Date()) {
-    return transaction(async (tx) => {
+    return attemptTx(`attempt:${attemptId}`, async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
       const before = await ownAttempt(tx, organizationId, attemptId, userId);
       if (before.status !== "IN_PROGRESS") fail(409, "ATTEMPT_CLOSED", "The attempt is closed");
@@ -513,7 +521,7 @@ export const evaluations = {
    * server just decided (a timeout) is persisted rather than rolled back.
    */
   confirmAnswer(userId: string, organizationId: string, attemptId: string, input: { questionId: string; optionId: string | null }, now: Date = new Date()) {
-    return transaction(async (tx) => {
+    return attemptTx(`attempt:${attemptId}`, async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
       const before = await ownAttempt(tx, organizationId, attemptId, userId);
       const { snapshot } = await versionContent(tx, before.versionId);
@@ -546,7 +554,7 @@ export const evaluations = {
   },
   /** Grades on the server from the immutable version. Repeating the request returns the same result. A paced attempt ends by itself. */
   submit(userId: string, organizationId: string, attemptId: string, now: Date = new Date()) {
-    return transaction(async (tx) => {
+    return attemptTx(`attempt:${attemptId}`, async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.take");
       let attempt = await settle(tx, await ownAttempt(tx, organizationId, attemptId, userId), now);
       const { snapshot } = await versionContent(tx, attempt.versionId);

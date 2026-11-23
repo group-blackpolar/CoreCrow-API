@@ -7273,6 +7273,34 @@
                         "format": "date-time",
                         "nullable": true
                       },
+                      "sections": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "questionCount": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "title",
+                            "description",
+                            "questionCount"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
                       "canStart": {
                         "type": "boolean"
                       },
@@ -7316,6 +7344,7 @@
                       "openAttemptId",
                       "opensAt",
                       "closesAt",
+                      "sections",
                       "canStart",
                       "categoryId",
                       "state",

@@ -61,7 +61,7 @@ export function buildFeedback(content: Content, result: GradeResult, evidence: r
     const correct = rows.length - failed.length;
     const levelRow = levels.find((item) => item.key === level.key);
     sentences.push(`Tu desempeño en ${title} es de nivel ${level.label} (${correct} de ${rows.length} aciertos, ${percent} %).${levelRow?.summary ? ` ${levelRow.summary}` : ""}`);
-    if (dominated.length) sentences.push(`Demostraste que puedes ${join(dominated.slice(0, MAX_SKILLS_IN_PARAGRAPH).map((id) => lower(skillById.get(id)!.strength)))}.`);
+    if (dominated.length) sentences.push(`Demostraste que puedes ${join(dominated.slice(0, 2).map((id) => lower(skillById.get(id)!.strength)))}.`);
     if (gaps.length) {
       sentences.push(`Presentaste dificultades para ${join(gaps.map(([id, numbers]) => `${lower(skillById.get(id)!.gap)} (${questionsLabel(numbers)})`))}.`);
     } else if (!failed.length) sentences.push("No se evidenciaron dificultades en las preguntas evaluadas de esta competencia.");
