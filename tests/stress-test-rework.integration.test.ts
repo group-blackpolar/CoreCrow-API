@@ -90,6 +90,8 @@ test("stress test rework: categories, Simulacro 02, competencies, feedback, hist
     const row = await prisma.evaluation.findUniqueOrThrow({ where: { id: evaluationId } });
     const lectura = await prisma.evaluationCategory.findFirstOrThrow({ where: { organizationId: org, key: "lectura-critica" } });
     assert.equal(row.categoryId, lectura.id);
+    const listed = ok(await call("GET", `${base}/evaluations`, owner.cookie), 200).find((item: { id: string }) => item.id === evaluationId);
+    assert.equal(listed.categoryId, lectura.id, "the authors' list carries the category (the builder groups by it)");
     assert.equal(row.title, "Lectura Critica - Mi planta naranja-lima | Simulacro 02");
     assert.equal((await importEvaluation(as(owner.cookie), slug, definition)).created, false);
     assert.equal(row.draftRevision, row.publishedRevision, "assigning the category did not leave unpublished changes");

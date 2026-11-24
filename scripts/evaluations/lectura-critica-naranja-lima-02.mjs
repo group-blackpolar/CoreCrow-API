@@ -35,7 +35,8 @@ export default {
       { key: "superior", label: "Superior", minPercent: 80, summary: "Tu dominio de esta competencia es sólido y consistente." },
     ] },
   },
-  assignments: [{ role: "MEMBER" }, { role: "VIEWER" }],
+  // Owners and administrators can also take it (to try it as a student); authors still need evaluations.results.read to see anyone else's result.
+  assignments: [{ role: "OWNER" }, { role: "ADMIN" }, { role: "MEMBER" }, { role: "VIEWER" }],
   publish: true,
   // Wording used by the feedback service (strength / gap are infinitive phrases; study is a noun phrase; strategy is an instruction).
   skills: [
