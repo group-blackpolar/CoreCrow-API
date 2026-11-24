@@ -90,6 +90,8 @@ test("stress test rework: categories, Simulacro 02, competencies, feedback, hist
     const row = await prisma.evaluation.findUniqueOrThrow({ where: { id: evaluationId } });
     const lectura = await prisma.evaluationCategory.findFirstOrThrow({ where: { organizationId: org, key: "lectura-critica" } });
     assert.equal(row.categoryId, lectura.id);
+    const listed = ok(await call("GET", `${base}/evaluations`, owner.cookie), 200).find((item: { id: string }) => item.id === evaluationId);
+    assert.equal(listed.categoryId, lectura.id, "the authors' list carries the category (the builder groups by it)");
     assert.equal(row.title, "Lectura Critica - Mi planta naranja-lima | Simulacro 02");
     assert.equal((await importEvaluation(as(owner.cookie), slug, definition)).created, false);
     assert.equal(row.draftRevision, row.publishedRevision, "assigning the category did not leave unpublished changes");
@@ -251,6 +253,31 @@ test("stress test rework: categories, Simulacro 02, competencies, feedback, hist
     // other's listing only has its own exam and category
     const own = ok(await call("GET", `${baseB}/evaluation-categories`, other.cookie), 200);
     assert.equal(own.categories.length, 2);
+  });
+
+  await t.test("versions published before ADR 032 (no skills, levels, session limit or tags in the snapshot) keep working over HTTP: list, attempt, submit, result, review", async () => {
+    // A legacy version is inserted directly (the table is immutable, so it is created, not rewritten): the shape the production Simulacro 01 has.
+    const source = await prisma.evaluationVersion.findFirstOrThrow({ where: { id: (await prisma.evaluationAttempt.findUniqueOrThrow({ where: { id: attemptId } })).versionId } });
+    const legacy = JSON.parse(JSON.stringify(source.snapshot));
+    delete legacy.content.skills; delete legacy.content.settings.performance; delete legacy.content.settings.pacing.sessionMinutes;
+    legacy.content.settings.pacing = { navigation: "FREE", questionSeconds: null }; legacy.content.settings.durationMinutes = null;
+    for (const question of legacy.content.questions) { delete question.topic; delete question.skills; delete question.difficulty; delete question.reference; }
+    const old = await prisma.evaluation.create({ data: { organizationId: org, key: `legacy-${prefix}`, title: "Legacy exam", status: "PUBLISHED", draft: source.snapshot as never, createdBy: owner.id } });
+    const version = await prisma.evaluationVersion.create({ data: { organizationId: org, evaluationId: old.id, version: 1, snapshot: legacy, questionCount: 15, maxScoreCenti: 1500, publishedBy: owner.id } });
+    await prisma.evaluation.update({ where: { id: old.id }, data: { currentVersionId: version.id } });
+    await prisma.evaluationAssignment.create({ data: { organizationId: org, evaluationId: old.id, role: "MEMBER" } });
+
+    const listed = ok(await call("GET", `${base}/evaluations/available`, bob.cookie), 200).find((row: { id: string }) => row.id === old.id);
+    assert.deepEqual([listed.pacing, listed.state], [{ navigation: "FREE", questionSeconds: null, sessionMinutes: null }, "TODO"]);
+    const categoriesView = ok(await call("GET", `${base}/evaluation-categories`, bob.cookie), 200);
+    assert.ok(categoriesView.uncategorized.total >= 1);
+    const started = ok(await call("POST", `${base}/evaluations/${old.id}/attempts`, bob.cookie), 200);
+    assert.equal(started.content.questions.length, 15);
+    const finished = ok(await call("POST", `${base}/evaluation-attempts/${started.id}/submit`, bob.cookie), 200);
+    assert.deepEqual(finished.levels.map((level: any) => level.label), ["Bajo", "Básico", "Alto", "Superior"], "default levels for a legacy version");
+    assert.equal(finished.feedback.competencies.length, 3);
+    const again = ok(await call("GET", `${base}/evaluation-attempts/${started.id}/result`, owner.cookie), 200);
+    assert.equal(again.review.items.length, 15);
   });
 
   await t.test("archiving a category hides it from students and keeps the exams; administrators can still list it", async () => {

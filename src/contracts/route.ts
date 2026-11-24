@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, HTTPMethods } from "fastify";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { error } from "./schemas.js";
@@ -7,6 +8,14 @@ import { DomainError } from "../shared/errors.js";
 import { networkOf } from "../modules/security-access/device.js";
 import { withRequestContext, type Inspection } from "../shared/request-context.js";
 import { inspectionFor } from "../modules/authorization/inspection.js";
+/**
+ * Rate-limit bucket for routes people use in bulk from a shared network (a whole class taking an exam behind one NAT): the signed session cookie when it has the
+ * shape of a session, otherwise the IP. A forged cookie only buys a fresh bucket on routes that then answer 401, never access.
+ */
+export function sessionBucket(request: { headers: { cookie?: string }; ip: string }) {
+  const found = /(?:^|;\s*)(?:__Secure-)?[A-Za-z0-9._-]*session_token=([A-Za-z0-9%._~+/=-]{20,512})(?:;|$)/.exec(request.headers.cookie ?? "");
+  return found ? `s:${createHash("sha256").update(found[1]!).digest("hex").slice(0, 32)}` : `ip:${request.ip}`;
+}
 const json = (schema: z.ZodTypeAny) =>
   zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
 export function contract<
@@ -28,6 +37,8 @@ export function contract<
     public?: boolean;
     security?: Array<Record<string, never[]>>;
     rateLimit?: number;
+    /** Count the rate limit per session instead of per IP (see sessionBucket). */
+    perSession?: boolean;
     idempotency?: boolean;
     headers?: {
       properties: Record<string, { type: "string"; description?: string; pattern?: string }>;
@@ -47,7 +58,7 @@ export function contract<
     method: options.method,
     url: options.url,
     config: options.rateLimit
-      ? { rateLimit: { max: options.rateLimit, timeWindow: "1 minute" } }
+      ? { rateLimit: { max: options.rateLimit, timeWindow: "1 minute", ...(options.perSession ? { keyGenerator: sessionBucket } : {}) } }
       : {},
     schema: {
       tags: [options.tag],

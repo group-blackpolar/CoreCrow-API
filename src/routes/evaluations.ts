@@ -65,31 +65,31 @@ export async function evaluationRoutes(app: FastifyInstance) {
     response: z.array(z.object({ id: s.id, kind, title: z.string(), description: z.string().nullable(), durationMinutes: z.number().nullable(), questionCount: z.number().int(), maxAttempts: z.number().nullable(), pacing: pacingView, sectionCount: z.number().int(), attemptsUsed: z.number().int(), openAttemptId: z.string().nullable(), opensAt: s.date.nullable(), closesAt: s.date.nullable(), sections: z.array(z.object({ id: z.string(), title: z.string(), description: z.string().nullable(), questionCount: z.number().int() })), canStart: z.boolean(), categoryId: z.string().nullable(), state: z.enum(["TODO", "IN_PROGRESS", "COMPLETED"]), lastAttemptId: z.string().nullable(), lastPercent: z.number().nullable(), lastSubmittedAt: s.date.nullable() })),
     run: ({ user, params }) => evaluations.available(user.id, params.organizationId) });
   contract(app, { method: "POST", url: `${base}/:evaluationId/attempts`, tag, summary: "Start an attempt, or resume the one in progress; the content carries no answer key", params: evaluationParams, response: attemptView,
-    rateLimit: 30, run: ({ user, params }) => evaluations.startAttempt(user.id, params.organizationId, params.evaluationId) });
+    rateLimit: 30, perSession: true, run: ({ user, params }) => evaluations.startAttempt(user.id, params.organizationId, params.evaluationId) });
   contract(app, { method: "GET", url: `${base}/:evaluationId/my-attempts`, tag, summary: "The caller's attempts of one evaluation", params: evaluationParams,
     response: z.array(z.object({ id: s.id, attemptNumber: z.number().int(), status: z.enum(["IN_PROGRESS", "SUBMITTED", "EXPIRED"]), startedAt: s.date, submittedAt: s.date.nullable() })),
     run: ({ user, params }) => evaluations.myAttempts(user.id, params.organizationId, params.evaluationId) });
-  contract(app, { method: "GET", url: "/organizations/:organizationId/evaluation-attempts/:attemptId", tag, summary: "Own attempt: progress, saved answers, remaining time (closes it if the deadline passed)", params: attemptParams, response: attemptView,
+  contract(app, { method: "GET", url: "/organizations/:organizationId/evaluation-attempts/:attemptId", tag, summary: "Own attempt: progress, saved answers, remaining time (closes it if the deadline passed)", params: attemptParams, response: attemptView, rateLimit: 240, perSession: true,
     run: ({ user, params }) => evaluations.getAttempt(user.id, params.organizationId, params.attemptId) });
   contract(app, { method: "PUT", url: "/organizations/:organizationId/evaluation-attempts/:attemptId/answers", tag,
     summary: "Autosave answers. A write whose seq is not newer than the stored one is ignored (reported in `ignored`); the response returns the authoritative state",
-    params: attemptParams, rateLimit: 240,
+    params: attemptParams, rateLimit: 240, perSession: true,
     body: z.object({ answers: z.array(z.object({ questionId: itemId, optionId: itemId.nullable(), seq: z.number().int().min(0).max(2_000_000_000) }).strict()).min(1).max(200) }).strict(),
     response: z.object({ status: z.enum(["IN_PROGRESS", "EXPIRED", "SUBMITTED"]), applied: z.array(z.string()), ignored: z.array(z.string()), answers: z.array(z.object({ questionId: z.string(), optionId: z.string().nullable(), seq: z.number().int() })) }),
     run: ({ user, params, body }) => evaluations.saveAnswers(user.id, params.organizationId, params.attemptId, body.answers) });
   contract(app, { method: "POST", url: "/organizations/:organizationId/evaluation-attempts/:attemptId/confirm", tag,
     summary: "Paced attempts: confirm the answer of the open question (optionId null = close it without answering). Accepted only if the SERVER clock says the question is still open; the response says whether it was accepted and carries the state the server decided",
-    params: attemptParams, rateLimit: 240, body: z.object({ questionId: itemId, optionId: itemId.nullable() }).strict(),
+    params: attemptParams, rateLimit: 240, perSession: true, body: z.object({ questionId: itemId, optionId: itemId.nullable() }).strict(),
     response: z.object({ accepted: z.boolean(), reason: z.enum(["TIMEOUT", "ALREADY_CLOSED", "NOT_CURRENT", "ATTEMPT_CLOSED"]).nullable(), attempt: attemptView }),
     run: ({ user, params, body }) => evaluations.confirmAnswer(user.id, params.organizationId, params.attemptId, body) });
   contract(app, { method: "POST", url: "/organizations/:organizationId/evaluation-attempts/:attemptId/submit", tag, summary: "Finish and grade on the server from the immutable version; repeating it returns the same result", params: attemptParams, response: resultView,
-    rateLimit: 30, run: ({ user, params }) => evaluations.submit(user.id, params.organizationId, params.attemptId) });
+    rateLimit: 30, perSession: true, run: ({ user, params }) => evaluations.submit(user.id, params.organizationId, params.attemptId) });
   contract(app, { method: "GET", url: "/organizations/:organizationId/evaluation-attempts/:attemptId/result", tag, summary: "Result of a closed attempt: the caller's own, or any with evaluations.results.read", params: attemptParams, response: resultView,
     run: ({ user, params }) => evaluations.result(user.id, params.organizationId, params.attemptId) });
 
   // --------------------------------------------------------------------------------------------------------- authoring
   contract(app, { method: "GET", url: base, tag, summary: "List evaluations (needs evaluations.read; no content, no answer key)", params: s.orgParams, query: z.object({ status: status.optional() }).strict(),
-    response: z.array(z.object({ id: s.id, key: z.string().nullable(), kind, title: z.string(), description: z.string().nullable(), status, draftRevision: z.number().int(), questionCount: z.number().int(), currentVersion: z.number().int().nullable(), hasUnpublishedChanges: z.boolean(), updatedAt: s.date })),
+    response: z.array(z.object({ id: s.id, key: z.string().nullable(), categoryId: z.string().nullable(), kind, title: z.string(), description: z.string().nullable(), status, draftRevision: z.number().int(), questionCount: z.number().int(), currentVersion: z.number().int().nullable(), hasUnpublishedChanges: z.boolean(), updatedAt: s.date })),
     run: ({ user, params, query }) => evaluations.list(user.id, params.organizationId, query.status) });
   contract(app, { method: "POST", url: base, tag, summary: "Create an empty draft", params: s.orgParams, status: 201,
     body: z.object({ key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,78}$/).optional(), kind: kind.optional(), title: z.string().trim().min(1).max(200), description: z.string().max(2_000).nullable().optional() }).strict(), response: authorView,

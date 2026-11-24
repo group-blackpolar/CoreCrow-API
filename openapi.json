@@ -9700,6 +9700,10 @@
                         "type": "string",
                         "nullable": true
                       },
+                      "categoryId": {
+                        "type": "string",
+                        "nullable": true
+                      },
                       "kind": {
                         "type": "string",
                         "enum": [
@@ -9743,6 +9747,7 @@
                     "required": [
                       "id",
                       "key",
+                      "categoryId",
                       "kind",
                       "title",
                       "description",

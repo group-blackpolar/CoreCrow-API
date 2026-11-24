@@ -157,7 +157,10 @@ const expired = (attempt: { status: string; deadlineAt: Date | null }, now: Date
 
 async function versionContent(tx: Transaction, versionId: string) {
   const version = await tx.evaluationVersion.findUniqueOrThrow({ where: { id: versionId } });
-  return { version, snapshot: version.snapshot as unknown as Snapshot };
+  // Versions published before a schema addition (ADR 032: skills, levels, session limit, tags) are read through the current schema, whose defaults fill the new
+  // fields: an immutable old snapshot must keep working everywhere without being rewritten.
+  const stored = version.snapshot as unknown as { evaluation: Snapshot["evaluation"]; content: unknown };
+  return { version, snapshot: { evaluation: stored.evaluation, content: parse(stored.content) } as Snapshot };
 }
 
 /**
