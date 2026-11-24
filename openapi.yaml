@@ -11785,6 +11785,134 @@ paths:
                 required:
                   - error
                 additionalProperties: false
+  /v1/organizations/{organizationId}/evaluation-categories/{categoryId}/image:
+    get:
+      summary: Signed read of the category image (needs evaluations.take or
+        evaluations.read; no north.asset.read required)
+      tags:
+        - Evaluations
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: organizationId
+          required: true
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          in: path
+          name: categoryId
+          required: true
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      method:
+                        type: string
+                        enum:
+                          - PUT
+                          - GET
+                      headers:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                    required:
+                      - url
+                      - method
+                      - headers
+                      - expiresAt
+                    additionalProperties: false
+                required:
+                  - download
+                additionalProperties: false
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        5XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      requestId:
+                        type: string
+                      currentRevision:
+                        type: integer
+                        minimum: 1
+                      currentETag:
+                        type: string
+                      bindings:
+                        type: integer
+                        minimum: 0
+                      panels:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - code
+                      - message
+                      - requestId
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
   /v1/organizations/{organizationId}/evaluation-categories/by-key/{key}:
     put:
       summary: "Idempotent initializer: creates the category if the key is absent,

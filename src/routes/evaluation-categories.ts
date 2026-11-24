@@ -21,6 +21,9 @@ export async function evaluationCategoryRoutes(app: FastifyInstance) {
     query: z.object({ includeArchived: z.enum(["true", "false"]).optional() }).strict(),
     response: z.object({ categories: z.array(category.extend({ counts })), uncategorized: counts }),
     run: ({ user, params, query }) => evaluationCategories.list(user.id, params.organizationId, query.includeArchived === "true") });
+  contract(app, { method: "GET", url: `${base}/:categoryId/image`, tag, summary: "Signed read of the category image (needs evaluations.take or evaluations.read; no north.asset.read required)", params: categoryParams,
+    response: z.object({ download: s.northSignedObjectRequest }),
+    run: ({ user, params }) => evaluationCategories.image(user.id, params.organizationId, params.categoryId) });
   contract(app, { method: "POST", url: base, tag, summary: "Create a category (needs evaluations.manage); 409 if the key exists", params: s.orgParams, status: 201,
     body: z.object({ key, ...fields }).strict(), response: category,
     run: ({ user, params, body }) => evaluationCategories.create(user.id, params.organizationId, body) });

@@ -280,6 +280,29 @@ test("stress test rework: categories, Simulacro 02, competencies, feedback, hist
     assert.equal(again.review.items.length, 15);
   });
 
+  await t.test("the category image is readable by people who take exams without north.asset.read, only for THAT category, and never across organizations", async () => {
+    const { NorthAssetService, configureNorthAssetService } = await import("../src/modules/north/asset-service.js");
+    const { FakeObjectStorage } = await import("../src/infrastructure/object-storage.js");
+    const { FakeMalwareScanner } = await import("../src/infrastructure/malware-scanner.js");
+    const { assetConfiguration } = await import("../src/infrastructure/asset-config.js");
+    const storage = new FakeObjectStorage();
+    configureNorthAssetService(new NorthAssetService({ storage, scanner: new FakeMalwareScanner(), config: assetConfiguration() }));
+    const versionId = storage.put(`north-assets/${org}/${prefix}-cover`, { bytes: new Uint8Array([1, 2, 3]), mime: "image/png", checksum: "0".repeat(64) });
+    const lectura = await prisma.evaluationCategory.findFirstOrThrow({ where: { organizationId: org, key: "lectura-critica" } });
+    const asset = await prisma.northAsset.create({ data: { organizationId: org, ownerId: owner.id, filename: "cover.png", mime: "image/png", size: 10n, checksum: "0".repeat(64), storageKey: `north-assets/${org}/${prefix}-cover`, storageVersionId: versionId, status: "READY", confirmedAt: new Date() } });
+    await prisma.evaluationCategory.update({ where: { id: lectura.id }, data: { imageAssetId: asset.id } });
+    // alice is a plain MEMBER: she cannot read the asset library...
+    assert.equal((await call("GET", `${base}/assets/${asset.id}/read`, alice.cookie)).statusCode, 403);
+    // ...but she can read the image her category references.
+    const image = ok(await call("GET", `${base}/evaluation-categories/${lectura.id}/image`, alice.cookie), 200);
+    assert.ok(image.download.url.length > 10);
+    // a category without image, an archived one, another organization's person: nothing
+    const ingles = await prisma.evaluationCategory.findFirstOrThrow({ where: { organizationId: org, key: "ingles" } });
+    assert.equal((await call("GET", `${base}/evaluation-categories/${ingles.id}/image`, alice.cookie)).statusCode, 404);
+    assert.ok([403, 404].includes((await call("GET", `${base}/evaluation-categories/${lectura.id}/image`, carol.cookie)).statusCode));
+    assert.equal((await call("GET", `${base}/evaluation-categories/${lectura.id}/image`)).statusCode, 401);
+  });
+
   await t.test("archiving a category hides it from students and keeps the exams; administrators can still list it", async () => {
     const ingles = await prisma.evaluationCategory.findFirstOrThrow({ where: { organizationId: org, key: "ingles" } });
     ok(await call("PATCH", `${base}/evaluation-categories/${ingles.id}`, owner.cookie, { status: "ARCHIVED" }), 200);

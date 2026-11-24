@@ -33,6 +33,19 @@ export const evaluationCategories = {
       uncategorized: count(assigned.filter((exam) => !exam.categoryId || !rows.some((row) => row.id === exam.categoryId))),
     };
   },
+  /**
+   * Signed read of THE image a category references. Whoever may take or read evaluations may see it (it is the look of the exam area, like the organization icon),
+   * so members do not need north.asset.read on the whole asset library; archived categories and categories of other organizations are 404.
+   */
+  async image(userId: string, organizationId: string, categoryId: string) {
+    const assetId = await transaction(async (tx) => {
+      const { permissions } = await resolvePermissions(tx, userId, organizationId);
+      if (!(permissions as readonly string[]).some((permission) => permission === "evaluations.take" || permission === "evaluations.read")) fail(403, "FORBIDDEN", "Not allowed");
+      const category = await tx.evaluationCategory.findFirst({ where: { id: categoryId, organizationId, status: "ACTIVE" }, select: { imageAssetId: true } });
+      return category?.imageAssetId ?? fail(404, "NOT_FOUND", "Image not found");
+    });
+    return northAssets.signedReadAuthorizedElsewhere(organizationId, assetId);
+  },
   create(userId: string, organizationId: string, input: CategoryInput & { key: string }) {
     return transaction(async (tx) => {
       await authorize(tx, userId, organizationId, "evaluations.manage");
