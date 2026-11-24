@@ -255,6 +255,26 @@ test("stress test rework: categories, Simulacro 02, competencies, feedback, hist
     assert.equal(own.categories.length, 2);
   });
 
+  await t.test("versions published before ADR 032 (no skills, levels, session limit or tags in the snapshot) keep working over HTTP: list, attempt, result, review", async () => {
+    // Rewrite every version of this organization as a pre-ADR-032 snapshot (the table is immutable in production; the local test database lets us bypass the trigger).
+    const strip = (snapshot: unknown) => {
+      const legacy = JSON.parse(JSON.stringify(snapshot));
+      delete legacy.content.skills; delete legacy.content.settings.performance; delete legacy.content.settings.pacing.sessionMinutes;
+      for (const question of legacy.content.questions) { delete question.topic; delete question.skills; delete question.difficulty; delete question.reference; }
+      return legacy;
+    };
+    await prisma.$executeRawUnsafe('ALTER TABLE "EvaluationVersion" DISABLE TRIGGER USER');
+    try { for (const version of await prisma.evaluationVersion.findMany({ where: { organizationId: org } })) await prisma.evaluationVersion.update({ where: { id: version.id }, data: { snapshot: strip(version.snapshot) } }); }
+    finally { await prisma.$executeRawUnsafe('ALTER TABLE "EvaluationVersion" ENABLE TRIGGER USER'); }
+    const legacy = ok(await call("GET", `${base}/evaluation-attempts/${attemptId}/result`, alice.cookie), 200);
+    assert.equal(legacy.percent, result.percent);
+    assert.deepEqual(legacy.levels.map((level: any) => level.label), ["Bajo", "Básico", "Alto", "Superior"], "default levels for a legacy version");
+    assert.equal(legacy.review.items.length, 15);
+    const listed = ok(await call("GET", `${base}/evaluations/available`, alice.cookie), 200);
+    assert.equal(listed[0].pacing.sessionMinutes, null);
+    assert.equal(ok(await call("GET", `${base}/evaluation-attempts/${attemptId}`, alice.cookie), 200).status, "SUBMITTED");
+  });
+
   await t.test("archiving a category hides it from students and keeps the exams; administrators can still list it", async () => {
     const ingles = await prisma.evaluationCategory.findFirstOrThrow({ where: { organizationId: org, key: "ingles" } });
     ok(await call("PATCH", `${base}/evaluation-categories/${ingles.id}`, owner.cookie, { status: "ARCHIVED" }), 200);
