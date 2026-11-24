@@ -203,6 +203,22 @@ export class NorthAssetService {
     return { download };
   }
 
+  /**
+   * Signs a read of a READY asset WITHOUT checking north.asset.read: ONLY for callers that already authorized the person for a narrower purpose that names this
+   * exact asset (for example the image an evaluation category references, ADR 032). The organization is still part of the lookup, so nothing crosses tenants.
+   */
+  async signedReadAuthorizedElsewhere(organizationId: string, assetId: string) {
+    const asset = await transaction(async (tx) => {
+      const current = await repo.asset(tx, organizationId, assetId);
+      if (!current || current.deletedAt || current.status !== "READY") fail(404, "NOT_FOUND", "Image not found");
+      return current;
+    });
+    const download = await this.dependencies.storage.signedGet({
+      key: asset.storageKey, versionId: pinnedVersion(asset), filename: "image", mime: asset.mime, ttlSeconds: this.dependencies.config.readUrlTtlSeconds,
+    });
+    return { download };
+  }
+
   async delete(userId: string, organizationId: string, assetId: string) {
     const asset = await transaction(async (tx) => {
       const current = await this.scoped(tx, userId, organizationId, assetId, "north.asset.delete");
@@ -250,6 +266,7 @@ export const northAssets = {
   confirm: (...args: Parameters<NorthAssetService["confirm"]>) => configured.confirm(...args),
   signedRead: (...args: Parameters<NorthAssetService["signedRead"]>) => configured.signedRead(...args),
   signedIconRead: (...args: Parameters<NorthAssetService["signedIconRead"]>) => configured.signedIconRead(...args),
+  signedReadAuthorizedElsewhere: (...args: Parameters<NorthAssetService["signedReadAuthorizedElsewhere"]>) => configured.signedReadAuthorizedElsewhere(...args),
   delete: (...args: Parameters<NorthAssetService["delete"]>) => configured.delete(...args),
   validateReference: (...args: Parameters<NorthAssetService["validateReference"]>) => configured.validateReference(...args),
 };
