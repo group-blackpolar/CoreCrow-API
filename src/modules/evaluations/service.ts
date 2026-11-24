@@ -595,6 +595,27 @@ export const evaluations = {
       return { version: row.version, changed };
     });
   },
+  /** What the assistant may be told about an evaluation the person is working on: only if they may edit it, and never the answer key. */
+  aiBrief(userId: string, organizationId: string, evaluationId: string) {
+    return transaction(async (tx) => {
+      try { await authorize(tx, userId, organizationId, "evaluations.update"); } catch { return null; }
+      const ev = await tx.evaluation.findFirst({ where: { id: evaluationId, organizationId }, select: { id: true, title: true, status: true, kind: true } });
+      return ev ? { id: ev.id, title: ev.title, status: ev.status, kind: ev.kind } : null;
+    });
+  },
+  /**
+   * Is the assistant blocked for this person right now? Yes while they have an attempt in progress (deadline not passed) whose version does
+   * not allow AI during the attempt. Decided on the server from the immutable version; the interface hiding the button is only a courtesy.
+   */
+  async aiBlockedByAttempt(tx: Transaction, userId: string, organizationId: string, now: Date = new Date()) {
+    const open = await tx.evaluationAttempt.findMany({ where: { organizationId, userId, status: "IN_PROGRESS" }, select: { versionId: true, deadlineAt: true } });
+    for (const attempt of open) {
+      if (attempt.deadlineAt && attempt.deadlineAt.getTime() < now.getTime()) continue; // already over, only waiting to be closed
+      const { snapshot } = await versionContent(tx, attempt.versionId);
+      if (!snapshot.content.settings.ai.allowedDuringAttempt) return true;
+    }
+    return false;
+  },
   /** The person's own closed attempts across evaluations, newest first: their history. */
   myResults(userId: string, organizationId: string) {
     return transaction(async (tx) => {

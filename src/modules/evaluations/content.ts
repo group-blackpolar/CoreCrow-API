@@ -43,6 +43,8 @@ export const questionSchema = z.object({
   skills: z.array(id).max(10).default([]),
   difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).nullable().default(null),
   reference: text(300).nullable().default(null),
+  /** Written by the assistant: it blocks publication until a person marks it reviewed (never settable through the public API). */
+  aiDraft: z.boolean().optional(),
 }).strict();
 
 /** A skill a question exercises. The wording is DATA (authored per evaluation): the feedback service only assembles it with the person's real results. */
