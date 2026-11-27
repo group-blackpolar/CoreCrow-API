@@ -1,3 +1,4 @@
+import { gated } from "./query-gate.js";
 import { Prisma, type NorthDatasetFieldType } from "../../../lib/database.js";
 import { fail } from "../../../shared/errors.js";
 import { transaction } from "../../../shared/transaction.js";
@@ -87,17 +88,7 @@ const workMem = Number(process.env.NORTH_DATASET_QUERY_WORK_MEM_MB);
 export const DATASET_QUERY_WORK_MEM_MB = Number.isFinite(workMem) && workMem > 0 ? Math.min(Math.max(Math.round(workMem), 4), 512) : 64;
 export const readTransaction = { isolationLevel: "ReadCommitted" as const, timeoutMilliseconds: DATASET_QUERY_TIMEOUT_MS + 5_000 };
 
-/** A dashboard fires a dozen heavy aggregates at once; running them all together makes every one miss the timeout. Excess waits here, outside any transaction. */
-const MAX_CONCURRENT = 4;
-let running = 0;
-const waiting: Array<() => void> = [];
-/** `maxWaiting` bounds the queue for callers that are not authenticated (RM-012): beyond it the request is refused with a stable 503 instead of piling up. */
-export async function gated<T>(work: () => Promise<T>, maxWaiting = Infinity): Promise<T> {
-  if (running >= MAX_CONCURRENT && waiting.length >= maxWaiting) fail(503, "SERVICE_BUSY", "Too many concurrent queries, retry shortly");
-  if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
-  running += 1;
-  try { return await work(); } finally { running -= 1; waiting.shift()?.(); }
-}
+export { gated };
 
 export const northDatasetQuery = {
   execute(userId: string, organizationId: string, datasetId: string, query: DatasetQuery) {

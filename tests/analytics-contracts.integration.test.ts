@@ -152,6 +152,24 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     assert.equal(expectStatus(await results(countByDay, { filters: february, compare: true, fresh: true }), 200).rows[0].n, "406");
   });
 
+  await t.test("results: an edited binding is served with its new query at once, never from a result cached before the edit", async () => {
+    const name = `edited-${prefix}`;
+    const count = { mode: "AGGREGATE", measures: [{ operation: "COUNT", alias: "n" }] };
+    const bindingId = await makeBinding(name, count);
+    // A binding is only readable once the published document references it.
+    const draftNow = await call("GET", `/v1/organizations/${org}/panels/${panel.id}/draft`, owner.cookie);
+    const document = expectStatus(draftNow, 200).document;
+    document.sections[0].components.push(component("edited", "kpi_card", { label: { en: "Edited" }, valueKey: "n" }, { data: ref(bindingId) }, 6));
+    const saved = expectStatus(await call("PATCH", `/v1/organizations/${org}/panels/${panel.id}/draft`, owner.cookie, { document }, { "if-match": String(draftNow.headers.etag) }), 200);
+    const check = expectStatus(await call("POST", `/v1/organizations/${org}/panels/${panel.id}/draft/validate`, owner.cookie), 200);
+    expectStatus(await call("POST", `/v1/organizations/${org}/panels/${panel.id}/publish`, owner.cookie, undefined, { "if-match": check.etag ?? saved.etag }), 200);
+    assert.equal(expectStatus(await results(bindingId, { filters: [] }), 200).rows[0].n, "12000");
+    const edited = { mode: "AGGREGATE", measures: [{ operation: "COUNT_DISTINCT", fieldId: consignee, alias: "n" }, { operation: "COUNT", alias: "rows" }] };
+    expectStatus(await call("PUT", `/v1/organizations/${org}/panels/${panel.id}/analytics-bindings/${bindingId}`, owner.cookie, { name, datasetId: dataset.id, query: edited, allowedFilters: filters }), 200);
+    const after = expectStatus(await results(bindingId, { filters: [] }), 200).rows[0];
+    assert.deepEqual([after.n, after.rows], ["1000", "12000"], "the new query answers immediately");
+  });
+
   await t.test("facets: search, paging, counts and date buckets serialize correctly", async () => {
     const facets = (body: unknown, cookie = owner.cookie) => call("POST", `/v1/organizations/${org}/panels/${panel.id}/analytics-bindings/${grid}/facets`, cookie, body);
     const page = expectStatus(await facets({ fieldId: consignee, limit: 20 }), 200);

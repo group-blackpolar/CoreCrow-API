@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { contract } from "../../contracts/route.js";
+import { callerGone, contract } from "../../contracts/route.js";
 import * as s from "../../contracts/schemas.js";
 import { storageSummary } from "../../modules/north/storage-usage.js";
 import { northCapabilities } from "../../modules/authorization/policy.js";
@@ -53,7 +53,7 @@ export async function northContentRoutes(app: FastifyInstance) {
     summary: "Resolve only a binding referenced by this exact published panel and apply allowlisted runtime filters", params: panelBindingDetailParams,
     body: z.object({ filters: z.array(datasetQueryFilter).max(10).default([]) }).merge(bindingRuntimeOptions).strict(),
     response: s.northAnalyticsBindingResult, rateLimit: 300,
-    run: ({ user, params, body }) => { const { filters, ...options } = body; return northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, filters, options); },
+    run: ({ user, params, body, reply }) => { const { filters, ...options } = body; return northAnalyticsBindings.results(user.id, params.organizationId, params.panelId, params.bindingId, filters, options, callerGone(reply)); },
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/panels/:panelId/analytics-bindings/:bindingId/export", tag: "NORTH analytics",
@@ -78,7 +78,7 @@ export async function northContentRoutes(app: FastifyInstance) {
       granularity: z.enum(["DAY", "MONTH", "QUARTER", "YEAR"]).optional(),
     }).strict(),
     response: s.northAnalyticsFacetResult, rateLimit: 180,
-    run: ({ user, params, body }) => northAnalyticsBindings.facets(user.id, params.organizationId, params.panelId, params.bindingId, body),
+    run: ({ user, params, body, reply }) => northAnalyticsBindings.facets(user.id, params.organizationId, params.panelId, params.bindingId, body, callerGone(reply)),
   });
   contract(app, {
     method: "POST", url: "/organizations/:organizationId/assets/uploads", tag: "NORTH assets",
@@ -576,7 +576,7 @@ export async function northContentRoutes(app: FastifyInstance) {
     response: s.northAnalyticsBindingResult,
     run: async ({ params, body, reply }) => {
       reply.header("cache-control", "no-store");
-      return northShowcase.results(params.organizationSlug, params.panelId, params.bindingId, body.filters);
+      return northShowcase.results(params.organizationSlug, params.panelId, params.bindingId, body.filters, callerGone(reply));
     },
   });
   contract(app, {
