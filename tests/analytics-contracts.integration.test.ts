@@ -109,7 +109,7 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
   const component = (idValue: string, type: string, props: unknown, bindings: unknown, order: number) => ({ id: idValue, type, schemaVersion: 1, props, bindings, order, layout: { desktop: { ...cell, y: order * 3 }, tablet: { ...cell, y: order * 3 }, mobile: { ...cell, w: 12, y: order * 3 } } });
   const draft = expectStatus(await call("PATCH", `/v1/organizations/${org}/panels/${panel.id}/draft`, owner.cookie, { document: documentOf([
     component("k", "kpi_card", { label: { en: "Rows" }, valueKey: "n", format: "number", icon: "container", tone: "blue", variant: "trend", comparison: {} }, { data: ref(countByDay) }, 0),
-    component("g", "data_grid", { title: { en: "Results" }, columns: [{ key: consignee, label: { en: "Consignee" }, kind: "text" }, { key: "n", label: { en: "Rows" }, kind: "bar" }], pageSizes: [10, 20], defaultPageSize: 10 }, { data: ref(grid) }, 1),
+    component("g", "data_grid", { title: { en: "Results" }, columns: [{ key: consignee, label: { en: "Consignee" }, kind: "text" }, { key: "n", label: { en: "Rows" }, kind: "bar" }], pageSizes: [10, 20], defaultPageSize: 10, defaultSort: { key: "kg", direction: "DESC" } }, { data: ref(grid) }, 1),
     component("f", "filter_bar", { title: { en: "Filters" } }, {}, 2),
     component("c", "line_chart", { categoryKey: day, series: [{ key: "n", label: { en: "Rows" } }] }, { data: ref(monthly) }, 3),
     component("d", "donut_chart", { categoryKey: consignee, valueKey: "n", totalKey: "n", maxSlices: 5, legend: "right" }, { data: ref(grid), total: ref(countByDay) }, 4),
@@ -168,6 +168,52 @@ test("analytics contracts: bindings, facets, components and branding over HTTP",
     expectStatus(await call("PUT", `/v1/organizations/${org}/panels/${panel.id}/analytics-bindings/${bindingId}`, owner.cookie, { name, datasetId: dataset.id, query: edited, allowedFilters: filters }), 200);
     const after = expectStatus(await results(bindingId, { filters: [] }), 200).rows[0];
     assert.deepEqual([after.n, after.rows], ["1000", "12000"], "the new query answers immediately");
+  });
+
+  await t.test("pages inside the binding's limit are cut from one result and match the ones computed directly", async () => {
+    const { queryCacheStats, evictDatasetResults } = await import("../src/modules/north/data/query-service.js");
+    const sort = { key: "kg", direction: "DESC" };
+    evictDatasetResults(org, dataset.id);
+    const whole = expectStatus(await results(grid, { filters: [], sort }), 200);
+    assert.equal(whole.rows.length, 50, "the binding's own limit");
+    const misses = queryCacheStats.misses;
+    for (const [offset, limit] of [[0, 10], [10, 10], [37, 13], [40, 10], [0, 50]] as const) {
+      const page = expectStatus(await results(grid, { filters: [], sort, offset, limit }), 200);
+      assert.deepEqual(page.rows, whole.rows.slice(offset, offset + limit), `${offset}+${limit}`);
+      assert.equal(page.rowCount, page.rows.length);
+      assert.equal(page.totalRows, 1000);
+    }
+    assert.equal(queryCacheStats.misses, misses, "no page inside the limit is computed again");
+    // Beyond the limit the page is computed directly: it must continue exactly where the full result ends.
+    const beyond = expectStatus(await results(grid, { filters: [], sort, offset: 45, limit: 10 }), 200);
+    assert.equal(queryCacheStats.misses, misses + 1);
+    assert.deepEqual(beyond.rows.slice(0, 5), whole.rows.slice(45, 50));
+    assert.equal(beyond.rows.length, 10);
+    const empty = expectStatus(await results(grid, { filters: [{ fieldId: consignee, operator: "EQ", value: "nobody" }], sort, offset: 0, limit: 10 }), 200);
+    assert.deepEqual([empty.rows, empty.totalRows], [[], 0]);
+  });
+
+  await t.test("warm-up: the opening requests of a published view find their results already computed", async () => {
+    const { queryCacheStats, evictDatasetResults } = await import("../src/modules/north/data/query-service.js");
+    const { warmPublishedViews } = await import("../src/modules/north/data/view-warmup.js");
+    evictDatasetResults(org, dataset.id);
+    const summary = await warmPublishedViews();
+    assert.ok(summary.queries >= 5, JSON.stringify(summary));
+    assert.equal(summary.failed, 0);
+    const facets = (body: unknown) => call("POST", `/v1/organizations/${org}/panels/${panel.id}/analytics-bindings/${grid}/facets`, owner.cookie, body);
+    const misses = queryCacheStats.misses;
+    // The same bodies NORTH sends when a view opens.
+    expectStatus(await results(countByDay, { filters: [], compare: true }), 200);
+    expectStatus(await results(monthly, { filters: [] }), 200);
+    expectStatus(await results(grid, { filters: [], sort: { key: "kg", direction: "DESC" }, offset: 0, limit: 17 }), 200);
+    expectStatus(await facets({ limit: 50, fieldId: consignee, filters: [] }), 200);
+    for (const granularity of ["MONTH", "YEAR"]) expectStatus(await facets({ limit: 100, fieldId: day, filters: [], granularity }), 200);
+    assert.equal(queryCacheStats.misses, misses, "nothing had to be computed when the view opened");
+    // Warming never replaces authorization.
+    assert.equal((await results(countByDay, { filters: [] }, outsider.cookie)).statusCode, 404);
+    const again = queryCacheStats.misses;
+    await warmPublishedViews();
+    assert.equal(queryCacheStats.misses, again, "a repeated sweep computes nothing new");
   });
 
   await t.test("facets: search, paging, counts and date buckets serialize correctly", async () => {

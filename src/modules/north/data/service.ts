@@ -1,4 +1,5 @@
 import { Prisma, type NorthDatasetImportStatus } from "../../../lib/database.js";
+import { evictDatasetResults } from "./query-service.js";
 import { DomainError, fail } from "../../../shared/errors.js";
 import { datasetImportStorageFromEnvironment } from "./import-storage.js";
 import { transaction } from "../../../shared/transaction.js";
@@ -404,6 +405,7 @@ export const northData = {
       });
       return jobs.map((job) => job.storageKey);
     }, { timeoutMilliseconds: 120_000 });
+    evictDatasetResults(organizationId, datasetId);
     await deleteImportBlobs(storageKeys);
     return null;
   },

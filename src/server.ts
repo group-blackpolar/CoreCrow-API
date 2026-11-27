@@ -4,6 +4,7 @@ import { startContactNotificationWorker } from "./modules/business/contact-notif
 import { ai } from "./modules/ai/service.js";
 import { startSecurityRetention } from "./modules/security-access/retention.js";
 import { startImportRetention } from "./modules/north/data/retention.js";
+import { startViewWarmup } from "./modules/north/data/view-warmup.js";
 if (process.env.NODE_ENV === "production") {
   if (
     !process.env.BETTER_AUTH_SECRET ||
@@ -24,11 +25,13 @@ const app = await buildApp();
 let stopContactNotifications: (() => void) | undefined;
 let stopRetention: (() => void) | undefined;
 let stopSecurityRetention: (() => void) | undefined;
+let stopViewWarmup: (() => void) | undefined;
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, async () => {
     stopContactNotifications?.();
     stopRetention?.();
     stopSecurityRetention?.();
+    stopViewWarmup?.();
     await app.close();
     await prisma.$disconnect();
   });
@@ -37,6 +40,10 @@ try {
   await ai.resumePendingRuns();
   stopRetention = startImportRetention((error) => app.log.error({ error }, "Import retention sweep failed"));
   stopSecurityRetention = startSecurityRetention((error) => app.log.error({ error }, "Security retention sweep failed"));
+  stopViewWarmup = startViewWarmup(
+    (error) => app.log.error({ error }, "View warm-up failed"),
+    (summary) => app.log.error(summary, "View warm-up could not prepare some queries"),
+  );
   if (process.env.CONTACT_NOTIFICATIONS_ENABLED === "true")
     stopContactNotifications = startContactNotificationWorker((error) =>
       app.log.error({ error }, "Contact notification worker failed"),

@@ -103,18 +103,32 @@ export const northDatasetQuery = {
  * Result cache. A revision is immutable, so (org, dataset, active revision, query) fully determines the result: a new import
  * activates a new revision id and old entries are simply never hit again. Callers authorize BEFORE calling, so a hit leaks nothing.
  * Concurrent identical queries share one execution. In-process only (ponytail: per-container; Redis if several API replicas matter).
+ * Least recently used entries leave first, so what dashboards keep opening stays. The long life is safe because the key
+ * holds the revision and the whole query; erasing a dataset also drops its entries from memory.
  */
-const CACHE_TTL_MS = 10 * 60_000;
+const CACHE_TTL_MS = 12 * 60 * 60_000;
 const CACHE_MAX_ENTRIES = 500;
 const CACHE_MAX_ROWS = 2_000;
 const resultCache = new Map<string, { at: number; value: Promise<unknown> }>();
+export const queryCacheStats = { hits: 0, misses: 0 };
+
+export function evictDatasetResults(organizationId: string, datasetId: string) {
+  const prefix = `${organizationId}|${datasetId}|`;
+  for (const key of resultCache.keys()) if (key.startsWith(prefix)) resultCache.delete(key);
+}
 
 export async function executeDatasetQuery(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery) {
   const active = await tx.northDataset.findFirst({ where: { id: datasetId, organizationId, status: "ACTIVE" }, select: { activeRevisionId: true } });
   if (!active?.activeRevisionId) return executeDatasetQueryUncached(tx, organizationId, datasetId, query);
   const key = `${organizationId}|${datasetId}|${active.activeRevisionId}|${JSON.stringify(query)}`;
   const hit = resultCache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as ReturnType<typeof executeDatasetQueryUncached>;
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    resultCache.delete(key);
+    resultCache.set(key, hit);
+    queryCacheStats.hits += 1;
+    return hit.value as ReturnType<typeof executeDatasetQueryUncached>;
+  }
+  queryCacheStats.misses += 1;
   const value = executeDatasetQueryUncached(tx, organizationId, datasetId, query);
   resultCache.set(key, { at: Date.now(), value });
   if (resultCache.size > CACHE_MAX_ENTRIES) resultCache.delete(resultCache.keys().next().value!);
