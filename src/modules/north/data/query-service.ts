@@ -1,3 +1,4 @@
+import { gated } from "./query-gate.js";
 import { Prisma, type NorthDatasetFieldType } from "../../../lib/database.js";
 import { fail } from "../../../shared/errors.js";
 import { transaction } from "../../../shared/transaction.js";
@@ -87,17 +88,7 @@ const workMem = Number(process.env.NORTH_DATASET_QUERY_WORK_MEM_MB);
 export const DATASET_QUERY_WORK_MEM_MB = Number.isFinite(workMem) && workMem > 0 ? Math.min(Math.max(Math.round(workMem), 4), 512) : 64;
 export const readTransaction = { isolationLevel: "ReadCommitted" as const, timeoutMilliseconds: DATASET_QUERY_TIMEOUT_MS + 5_000 };
 
-/** A dashboard fires a dozen heavy aggregates at once; running them all together makes every one miss the timeout. Excess waits here, outside any transaction. */
-const MAX_CONCURRENT = 4;
-let running = 0;
-const waiting: Array<() => void> = [];
-/** `maxWaiting` bounds the queue for callers that are not authenticated (RM-012): beyond it the request is refused with a stable 503 instead of piling up. */
-export async function gated<T>(work: () => Promise<T>, maxWaiting = Infinity): Promise<T> {
-  if (running >= MAX_CONCURRENT && waiting.length >= maxWaiting) fail(503, "SERVICE_BUSY", "Too many concurrent queries, retry shortly");
-  if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
-  running += 1;
-  try { return await work(); } finally { running -= 1; waiting.shift()?.(); }
-}
+export { gated };
 
 export const northDatasetQuery = {
   execute(userId: string, organizationId: string, datasetId: string, query: DatasetQuery) {
@@ -112,18 +103,32 @@ export const northDatasetQuery = {
  * Result cache. A revision is immutable, so (org, dataset, active revision, query) fully determines the result: a new import
  * activates a new revision id and old entries are simply never hit again. Callers authorize BEFORE calling, so a hit leaks nothing.
  * Concurrent identical queries share one execution. In-process only (ponytail: per-container; Redis if several API replicas matter).
+ * Least recently used entries leave first, so what dashboards keep opening stays. The long life is safe because the key
+ * holds the revision and the whole query; erasing a dataset also drops its entries from memory.
  */
-const CACHE_TTL_MS = 10 * 60_000;
+const CACHE_TTL_MS = 12 * 60 * 60_000;
 const CACHE_MAX_ENTRIES = 500;
 const CACHE_MAX_ROWS = 2_000;
 const resultCache = new Map<string, { at: number; value: Promise<unknown> }>();
+export const queryCacheStats = { hits: 0, misses: 0 };
+
+export function evictDatasetResults(organizationId: string, datasetId: string) {
+  const prefix = `${organizationId}|${datasetId}|`;
+  for (const key of resultCache.keys()) if (key.startsWith(prefix)) resultCache.delete(key);
+}
 
 export async function executeDatasetQuery(tx: Transaction, organizationId: string, datasetId: string, query: DatasetQuery) {
   const active = await tx.northDataset.findFirst({ where: { id: datasetId, organizationId, status: "ACTIVE" }, select: { activeRevisionId: true } });
   if (!active?.activeRevisionId) return executeDatasetQueryUncached(tx, organizationId, datasetId, query);
   const key = `${organizationId}|${datasetId}|${active.activeRevisionId}|${JSON.stringify(query)}`;
   const hit = resultCache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as ReturnType<typeof executeDatasetQueryUncached>;
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    resultCache.delete(key);
+    resultCache.set(key, hit);
+    queryCacheStats.hits += 1;
+    return hit.value as ReturnType<typeof executeDatasetQueryUncached>;
+  }
+  queryCacheStats.misses += 1;
   const value = executeDatasetQueryUncached(tx, organizationId, datasetId, query);
   resultCache.set(key, { at: Date.now(), value });
   if (resultCache.size > CACHE_MAX_ENTRIES) resultCache.delete(resultCache.keys().next().value!);
@@ -196,9 +201,10 @@ async function executeDatasetQueryUncached(tx: Transaction, organizationId: stri
       for (const { index, key } of distinctMeasures) projection.push(Prisma.sql`COALESCE(${typed(fields.get(key)!)}::text, r."id"::text) AS ${Prisma.raw(`"k${index}"`)}`);
       if (distinctMeasures.length) projection.push(Prisma.sql`r."id" AS "rid"`);
       if (!projection.length) projection.push(Prisma.sql`1 AS "one"`);
-      const ranks = distinctMeasures.flatMap(({ index, field }) => {
-        const window = Prisma.sql`(PARTITION BY ${Prisma.join([...groupExpressions, Prisma.raw(`"k${index}"`)], ", ")} ORDER BY "rid" ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)`;
-        return [Prisma.sql`max(${column(field)}) OVER ${window} AS ${Prisma.raw(`"__v${index}"`)}`, Prisma.sql`row_number() OVER ${window} AS ${Prisma.raw(`"__rn${index}"`)}`];
+      // One window per such measure: the row holding the key's largest value is numbered 1 and only it is summed.
+      const ranks = distinctMeasures.map(({ index, field }) => {
+        const partition = Prisma.join([...groupExpressions, Prisma.raw(`"k${index}"`)], ", ");
+        return Prisma.sql`row_number() OVER (PARTITION BY ${partition} ORDER BY ${column(field)} DESC NULLS LAST) AS ${Prisma.raw(`"__rn${index}"`)}`;
       });
       const selects: Prisma.Sql[] = groupExpressions.map((expression, index) => Prisma.sql`${expression} AS ${Prisma.raw(`"g${index}"`)}`);
       for (const [index, measure] of query.measures.entries()) {
@@ -207,7 +213,7 @@ async function executeDatasetQueryUncached(tx: Transaction, organizationId: stri
         else {
           if (!measure.fieldId) fail(422, "DATASET_QUERY_MEASURE_INVALID", "Measure requires a field");
           const field = fields.get(measure.fieldId)!;
-          const expression = measure.distinctBy ? Prisma.raw(`"__v${index}"`) : column(measure.fieldId);
+          const expression = column(measure.fieldId);
           if (["SUM", "AVG"].includes(measure.operation) && !["INTEGER", "DECIMAL"].includes(field.canonicalType)) fail(422, "DATASET_QUERY_MEASURE_INVALID", "SUM and AVG require numeric fields");
           if (["MIN", "MAX"].includes(measure.operation) && field.canonicalType === "BOOLEAN") fail(422, "DATASET_QUERY_MEASURE_INVALID", "MIN and MAX do not support boolean fields");
           const aggregate = measure.operation === "COUNT_DISTINCT" ? Prisma.sql`COUNT(DISTINCT ${expression})` : Prisma.sql`${Prisma.raw(measure.operation)}(${expression})`;

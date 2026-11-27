@@ -18,6 +18,15 @@ export function sessionBucket(request: { headers: { cookie?: string }; ip: strin
 }
 const json = (schema: z.ZodTypeAny) =>
   zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
+/** Aborts when the connection closes before an answer was sent: the caller navigated away or replaced the request. */
+export function callerGone(reply: FastifyReply): AbortSignal {
+  const controller = new AbortController();
+  const check = () => { if (!reply.raw.writableEnded) controller.abort(); };
+  if (reply.raw.destroyed) check();
+  else reply.raw.once("close", check);
+  return controller.signal;
+}
+
 export function contract<
   B extends z.ZodTypeAny = z.ZodUndefined,
   P extends z.ZodTypeAny = z.ZodUndefined,

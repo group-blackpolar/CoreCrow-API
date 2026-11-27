@@ -113,7 +113,7 @@ export const northShowcase = {
   },
 
   /** Same bounded engine and allowlisted filters as the member path; no extra capability beyond publication. */
-  results(slug: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[]) {
+  results(slug: string, panelId: string, bindingId: string, runtimeFilters: DatasetQueryFilter[], signal?: AbortSignal) {
     // RM-012: same concurrency gate and read time budget as the member path, with a short queue because the caller is anonymous.
     return gated(() => transaction(async (tx) => {
       const organization = await showcaseOrganization(tx, slug);
@@ -148,7 +148,7 @@ export const northShowcase = {
         return { fieldId: field!.id, key: field!.key, displayName: field!.displayName, type: field!.canonicalType, operators: item.operators };
       });
       return { bindingId, filterDefinitions, ...result };
-    }, readTransaction), 8);
+    }, readTransaction), { maxWaiting: 8, signal });
   },
 
   /** Publication configuration is authorized and audited like any other publish transition. */
