@@ -187,9 +187,10 @@ async function executeDatasetQueryUncached(tx: Transaction, organizationId: stri
       for (const { index, key } of distinctMeasures) projection.push(Prisma.sql`COALESCE(${typed(fields.get(key)!)}::text, r."id"::text) AS ${Prisma.raw(`"k${index}"`)}`);
       if (distinctMeasures.length) projection.push(Prisma.sql`r."id" AS "rid"`);
       if (!projection.length) projection.push(Prisma.sql`1 AS "one"`);
-      const ranks = distinctMeasures.flatMap(({ index, field }) => {
-        const window = Prisma.sql`(PARTITION BY ${Prisma.join([...groupExpressions, Prisma.raw(`"k${index}"`)], ", ")} ORDER BY "rid" ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)`;
-        return [Prisma.sql`max(${column(field)}) OVER ${window} AS ${Prisma.raw(`"__v${index}"`)}`, Prisma.sql`row_number() OVER ${window} AS ${Prisma.raw(`"__rn${index}"`)}`];
+      // One window per such measure: the row holding the key's largest value is numbered 1 and only it is summed.
+      const ranks = distinctMeasures.map(({ index, field }) => {
+        const partition = Prisma.join([...groupExpressions, Prisma.raw(`"k${index}"`)], ", ");
+        return Prisma.sql`row_number() OVER (PARTITION BY ${partition} ORDER BY ${column(field)} DESC NULLS LAST) AS ${Prisma.raw(`"__rn${index}"`)}`;
       });
       const selects: Prisma.Sql[] = groupExpressions.map((expression, index) => Prisma.sql`${expression} AS ${Prisma.raw(`"g${index}"`)}`);
       for (const [index, measure] of query.measures.entries()) {
@@ -198,7 +199,7 @@ async function executeDatasetQueryUncached(tx: Transaction, organizationId: stri
         else {
           if (!measure.fieldId) fail(422, "DATASET_QUERY_MEASURE_INVALID", "Measure requires a field");
           const field = fields.get(measure.fieldId)!;
-          const expression = measure.distinctBy ? Prisma.raw(`"__v${index}"`) : column(measure.fieldId);
+          const expression = column(measure.fieldId);
           if (["SUM", "AVG"].includes(measure.operation) && !["INTEGER", "DECIMAL"].includes(field.canonicalType)) fail(422, "DATASET_QUERY_MEASURE_INVALID", "SUM and AVG require numeric fields");
           if (["MIN", "MAX"].includes(measure.operation) && field.canonicalType === "BOOLEAN") fail(422, "DATASET_QUERY_MEASURE_INVALID", "MIN and MAX do not support boolean fields");
           const aggregate = measure.operation === "COUNT_DISTINCT" ? Prisma.sql`COUNT(DISTINCT ${expression})` : Prisma.sql`${Prisma.raw(measure.operation)}(${expression})`;
