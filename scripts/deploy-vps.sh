@@ -26,7 +26,7 @@ candidate="corecrow-check-$version"
 worker_candidate="corecrow-dataset-worker-check-$version"
 worker_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_DATA_IMPORT_WORKER_ENABLED === "true" ? "true" : "false")')"
 asset_storage_enabled="$(sudo -n docker run --rm --env-file "$runtime" "$image" node -e 'process.stdout.write(process.env.NORTH_ASSET_S3_BUCKET?.trim() ? "true" : "false")')"
-sudo -n docker run -d --name "$candidate" --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 512 --network "$network" --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
+sudo -n docker run -d --name "$candidate" --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 512 --network "$network" --env-file "$runtime" -e CONTACT_NOTIFICATIONS_ENABLED=false -e NORTH_VIEW_WARMUP_ENABLED=false -p 127.0.0.1:4101:4000 "$image" >/dev/null
 cleanup() {
   sudo -n docker rm -f "$candidate" >/dev/null 2>&1 || true
   if [[ -n "$worker_candidate" ]]; then
